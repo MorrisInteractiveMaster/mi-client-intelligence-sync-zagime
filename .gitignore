@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+*-service-account*.json
+*serviceAccount*.json
+*.pem
+*.key
