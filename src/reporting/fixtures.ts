@@ -40,3 +40,31 @@ export function fixtureTotals(
   }
   return { seconds, months };
 }
+import type { RawTime } from "./model";
+/** Synthetic Accounting fixture adapter only, not a QuickBooks Time API contract. */
+export function rawFixtureInput(
+  entries: (FixtureTime & {
+    EmployeeRef?: { value: string };
+    VendorRef?: { value: string };
+    Description?: string;
+  })[],
+  tenantId: string,
+  mapping: Record<string, string>,
+): RawTime[] {
+  return [
+    ...new Map(
+      entries
+        .filter((e) => mapping[e.CustomerRef?.value ?? ""])
+        .map((e) => [e.Id, e]),
+    ).values(),
+  ].map((e) => ({
+    id: "fixture-" + e.Id,
+    tenantId,
+    sourcePersonId: e.EmployeeRef?.value ?? e.VendorRef?.value ?? "unknown",
+    sourceWorkOrderId: e.CustomerRef!.value,
+    date: e.TxnDate,
+    seconds: (e.Hours ?? 0) * 3600 + (e.Minutes ?? 0) * 60,
+    description: e.Description ?? "",
+    revision: e.SyncToken,
+  }));
+}

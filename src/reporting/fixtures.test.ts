@@ -63,3 +63,17 @@ for (const [name, total] of Object.entries({
       total,
     );
   });
+import { rawFixtureInput } from "./fixtures";
+test("synthetic fixture adapter preserves raw identity and duration through normalized input", () => {
+  const raw = rawFixtureInput(entries, "fixture-tenant", mapping);
+  assert.equal(
+    raw.reduce((n, r) => n + r.seconds, 0),
+    1054 * 3600,
+  );
+  assert.equal(
+    raw.filter((r) => ["fixture-1366", "fixture-1371"].includes(r.id)).length,
+    2,
+  );
+  assert.ok(raw.some((r) => r.seconds === 900));
+  assert.ok(raw.every((r) => r.tenantId === "fixture-tenant"));
+});

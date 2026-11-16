@@ -149,3 +149,73 @@ test("no-op allocation and persistence produce zero writes; no network dependenc
   );
   assert.equal(writes, 0);
 });
+import { recapInput, attachSource } from "./model";
+test("recap and Nordic use identical decimal totals, including no-data and large values", () => {
+  let s = allocate(
+    demo(),
+    "raw-demo",
+    [{ projectId: "delivery-0", seconds: 900, description: "" }],
+    "now",
+  );
+  assert.equal(
+    recapInput(s).projects.reduce((n, p) => n + p.months[0], 0),
+    project(s).totalSeconds / 3600,
+  );
+  s.raw[0].seconds = 360000000;
+  s = allocate(
+    s,
+    "raw-demo",
+    [{ projectId: "delivery-0", seconds: 360000000, description: "" }],
+    "later",
+  );
+  assert.equal(recapInput(s).projects[0].months[0], 100000);
+  s.projects[0].published = false;
+  assert.equal(recapInput(s).projects[0].months[0], 0);
+});
+test("source attachment preserves stable project and history; duplicate external IDs rejected", () => {
+  const s = allocate(
+    demo(),
+    "raw-demo",
+    [{ projectId: "delivery-0", seconds: 900, description: "" }],
+    "now",
+  );
+  const next = attachSource(s, {
+    projectId: "delivery-0",
+    source: "synthetic-qbo",
+    externalId: "stable",
+    label: "Demo",
+  });
+  assert.deepEqual(next.projects, s.projects);
+  assert.deepEqual(next.allocations, s.allocations);
+  assert.throws(() =>
+    attachSource(next, {
+      projectId: "delivery-1",
+      source: "synthetic-qbo",
+      externalId: "stable",
+      label: "Duplicate",
+    }),
+  );
+});
+test("reserve capacity and latest monthly revisions are projected without project budget duplication", () => {
+  const s = demo();
+  s.agreements[0].caps.push({
+    month: "2026-10",
+    minutes: 15000,
+    revision: 2,
+    note: "Reserve",
+  });
+  assert.equal(project(s).agreements[0].reserveMinutes, 600);
+});
+test("auxiliary domain references, revisions and training basis fail validation", () => {
+  const s = demo();
+  s.assignments.push({ projectId: "missing", memberId: "missing" });
+  assert.throws(() => validate(s));
+  const t = demo();
+  t.projects[0].plan.basis = "monthly";
+  t.projects[0].trainingSessions.push({
+    id: "session",
+    date: "2026-10-01",
+    minutes: 60,
+  });
+  assert.throws(() => validate(t));
+});

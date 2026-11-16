@@ -10,11 +10,13 @@ import {
   persist,
   project,
   validate,
+  attachSource,
   type ReportingState,
 } from "./model";
 import "./nordic.css";
 export function Reporting() {
   const { role } = usePortal();
+  const loadIssue = useRef("");
   const [state, setState] = useState<ReportingState>(() => {
     try {
       const text = localStorage.getItem("mi-reporting-v2");
@@ -24,7 +26,8 @@ export function Reporting() {
         return s;
       }
     } catch {
-      /* Invalid saved data is retained until an explicit successful edit. */
+      loadIssue.current =
+        "Saved reporting data could not be loaded. A read-only synthetic preview is shown; your saved data has not been changed.";
     }
     return demo();
   });
@@ -33,7 +36,7 @@ export function Reporting() {
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const view = project(state);
-  const admin = role === "admin";
+  const admin = role === "admin" && !loadIssue.current;
   function save(next: ReportingState) {
     try {
       persist(localStorage, state, next);
@@ -55,6 +58,7 @@ export function Reporting() {
   }
   return (
     <section className="nordic">
+      {loadIssue.current && <p role="alert">{loadIssue.current}</p>}
       <header>
         <img
           src={`${import.meta.env.BASE_URL}branding/zagime/zagime.jpeg`}
@@ -184,6 +188,48 @@ export function Reporting() {
           ))}
         </article>
       ))}
+      {admin && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const f = new FormData(e.currentTarget);
+            try {
+              save(
+                attachSource(state, {
+                  projectId: String(f.get("project")),
+                  source: "synthetic-qbo",
+                  externalId: String(f.get("external")),
+                  label: String(f.get("label")),
+                }),
+              );
+            } catch (err) {
+              setError(String(err));
+            }
+          }}
+        >
+          <h3>Attach illustrative source work order</h3>
+          <label>
+            Existing delivery project
+            <select name="project">
+              {state.projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Stable source ID
+            <input name="external" required />
+          </label>
+          <label>
+            Display reference
+            <input name="label" />
+          </label>
+          <button>Attach reference</button>
+          <p>Project identity and reporting history are preserved.</p>
+        </form>
+      )}
       {admin && (
         <>
           <h2>Morris local editing</h2>

@@ -96,6 +96,12 @@ export interface Audit {
   action: string;
   at: string;
 }
+export interface StatusEvent {
+  projectId: string;
+  status: "Upcoming" | "On track" | "Attention" | "Delayed" | "Completed";
+  at: string;
+  note: string;
+}
 export interface ReportingState {
   version: 2;
   tenant: Tenant;
@@ -112,6 +118,7 @@ export interface ReportingState {
   blockers: Blocker[];
   publications: Publication[];
   audits: Audit[];
+  statuses?: StatusEvent[];
 }
 const integer = (n: number) => Number.isSafeInteger(n) && n >= 0;
 export function latestAllocation(s: ReportingState, id: string) {
@@ -120,6 +127,70 @@ export function latestAllocation(s: ReportingState, id: string) {
     .sort((a, b) => b.revision - a.revision)[0];
 }
 export function validate(s: ReportingState) {
+  if (s.version !== 2 || !s.tenant.id || !s.tenant.name)
+    throw Error("Invalid reporting version or tenant");
+  const unique = (values: string[]) => {
+    if (new Set(values).size !== values.length)
+      throw Error("Duplicate mapping or revision");
+  };
+  const hasProject = (id: string) => s.projects.some((p) => p.id === id);
+  unique(
+    s.budgets.map((b) => b.agreementId + ":" + b.departmentId + ":" + b.month),
+  );
+  unique(s.allocations.map((a) => a.sourceId + ":" + a.revision));
+  unique(s.links.map((l) => l.source + ":" + l.externalId));
+  unique(s.team.flatMap((t) => t.externalIds));
+  for (const a of s.agreements)
+    unique(a.caps.map((c) => c.month + ":" + c.revision));
+  for (const b of s.budgets)
+    if (
+      !s.agreements
+        .find((a) => a.id === b.agreementId)
+        ?.caps.some((c) => c.month === b.month)
+    )
+      throw Error("Missing monthly agreement cap");
+  for (const l of s.links)
+    if (!hasProject(l.projectId) || !l.externalId.trim())
+      throw Error("Invalid source link");
+  for (const a of s.assignments)
+    if (!hasProject(a.projectId) || !s.team.some((t) => t.id === a.memberId))
+      throw Error("Invalid team assignment");
+  for (const m of s.milestones)
+    if (
+      !hasProject(m.projectId) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(m.due) ||
+      typeof m.done !== "boolean"
+    )
+      throw Error("Invalid milestone");
+  for (const b of s.blockers)
+    if (
+      !hasProject(b.projectId) ||
+      !b.description.trim() ||
+      typeof b.resolved !== "boolean"
+    )
+      throw Error("Invalid blocker");
+  for (const p of s.publications)
+    if (!hasProject(p.projectId) || typeof p.published !== "boolean")
+      throw Error("Invalid publication");
+  for (const e of s.statuses ?? [])
+    if (
+      !hasProject(e.projectId) ||
+      !["Upcoming", "On track", "Attention", "Delayed", "Completed"].includes(
+        e.status,
+      )
+    )
+      throw Error("Invalid status");
+  for (const p of s.projects) {
+    if (
+      !["monthly", "fixed"].includes(p.plan.basis) ||
+      typeof p.published !== "boolean"
+    )
+      throw Error("Invalid project plan");
+    if (p.trainingSessions.length && p.plan.basis !== "fixed")
+      throw Error("Training requires a fixed-total plan");
+    unique(p.trainingSessions.map((t) => t.id));
+  }
+
   for (const list of [s.agreements, s.departments, s.projects, s.raw, s.team])
     if (new Set(list.map((x) => x.id)).size !== list.length)
       throw Error("Duplicate identity");
@@ -354,4 +425,38 @@ export function demo(): ReportingState {
     publications: [],
     audits: [],
   };
+}
+
+/** View-only adapter. No new calculations are owned by the animation component. */
+export function recapInput(s: ReportingState) {
+  const v = project(s);
+  return {
+    client: v.tenant.name,
+    partner: "Morris Interactive",
+    asOf: "2026-10-23",
+    months: ["Oct"],
+    monthsLong: ["October 2026"],
+    projects: v.agreements.map((a) => ({
+      name: a.name,
+      wo: a.id,
+      parent: null,
+      status: "On track",
+      cap: a.capMinutes / 60,
+      end: "2026-10-31",
+      months: [
+        v.projects
+          .filter((p) => p.agreementId === a.id)
+          .reduce((n, p) => n + p.seconds, 0) / 3600,
+      ],
+    })),
+  };
+}
+export function attachSource(s: ReportingState, link: SourceLink) {
+  const next = structuredClone(s);
+  next.links = next.links.filter(
+    (l) => !(l.projectId === link.projectId && l.source === link.source),
+  );
+  next.links.push(structuredClone(link));
+  validate(next);
+  return next;
 }

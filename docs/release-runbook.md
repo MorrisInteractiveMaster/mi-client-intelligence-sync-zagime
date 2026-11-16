@@ -15,3 +15,6 @@ Inspect docs/import-review.md and the PR diff. Reproduce tests with a clean inst
 ## Future release
 Hosting, production identity, tenant authorization, cloud configuration, sandbox API entitlement and release owner approval must be established in separate reviewed milestones. A merged PR is not deployment approval. Do not restore the original automatic Pages workflow by following historical docs.
 Rollback of this unmerged draft requires no data migration: there are no cloud writes. Preserve source repository and local browser saves.
+
+## Current milestone status
+PR #1 was merged before M2. M2 branches from main 45cde462f394eb467b11cb3fdb8e8a6fbbda9fa0 and uses one draft PR against main. No M2 merge or deployment authorized. The v2 local save is separate from legacy storage; preserve both for rollback.

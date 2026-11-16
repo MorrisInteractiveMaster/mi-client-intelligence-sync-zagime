@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { hours, project, type ReportingState } from "./model";
+import { hours, project, recapInput, type ReportingState } from "./model";
 // The approved renderer is a plain-JavaScript canvas module. Keep the boundary local.
 type Pulse = {
   story: (d: unknown) => any;
@@ -52,29 +52,7 @@ export function Dots({ state }: { state: ReportingState }) {
   useEffect(() => {
     if (!loaded) return;
     const P = window.PULSE;
-    const story = P.story({
-      client: view.tenant.name,
-      partner: "Morris Interactive",
-      asOf: "2026-10-23",
-      months: ["Oct"],
-      monthsLong: ["October 2026"],
-      projects: state.agreements.map((a) => ({
-        name: a.name,
-        wo: a.id,
-        parent: null,
-        status: "On track",
-        cap:
-          a.caps
-            .filter((c) => c.month === "2026-10")
-            .sort((a, b) => b.revision - a.revision)[0]?.minutes / 60 || 0,
-        end: "2026-10-31",
-        months: [
-          view.projects
-            .filter((p) => p.agreementId === a.id)
-            .reduce((n, p) => n + p.seconds, 0) / 3600,
-        ],
-      })),
-    });
+    const story = P.story(recapInput(state));
     const ctx = canvas.current?.getContext("2d");
     if (!ctx) return;
     P.styles.dots.draw(ctx, story, P.sceneAt(time), time, {});
