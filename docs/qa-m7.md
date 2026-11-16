@@ -1,3 +1,5 @@
+CORRECTED SECURITY REVIEW: the PowerShell checker below was only mock-tested and failed live with INVALID_RESOURCE_NAME. It is retired. Historical offline success is not operational evidence. Current regression/collection evidence is in qa-m7-correction.md; actual IAM and attached-runtime certification remain pending authorized inspection.
+
 # M7 deployment-preparation verification
 
 Base main 691f5aa3babe140420425794f0b016c33986c954; PR #6 verified merged. Branch codex/m7-staging-deployment-preparation. Supplied cloud evidence is recorded with explicit owner provenance in m7-cloud-evidence.json. Completed read probes and Token Creator grants were not repeated.

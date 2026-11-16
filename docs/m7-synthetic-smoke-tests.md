@@ -1,10 +1,10 @@
 # M7 controlled remote synthetic smoke acceptance — NOT RUN
 
-This is a prepared test plan, not permission to deploy, activate, seed or write. Read-only owner evidence is in m7-cloud-evidence.json. Write IAM isolation and actual attached identity remain independently verifiable gates. Local emulator suites exercise the underlying M5 workflows; they do not certify cloud rollout.
+This is a prepared test plan, not permission to deploy, activate, seed or write. Read-only owner evidence is in m7-cloud-evidence.json. Write IAM isolation requires the corrected complete policy/role/inheritance review and approved runtime checks; the unsupported Troubleshooter matrix is not evidence. Actual attached identity remains a separate gate. Local emulator suites exercise the underlying M5 workflows; they do not certify cloud rollout.
 
 ## Preconditions
 
-- Exact existing project/database/UID/service identity verified; create/update denied on default and delete denied on both DBs for API identity. No production writes are used as tests.
+- Exact existing project/database/UID/service identity verified; complete authorized actual-policy review supports default create/update/delete denial and the intended least-privilege staging profile (no UNKNOWN treated as denial). No production writes are used as tests.
 - Named deny-all browser rules release recorded, approved edge/origin/API image configuration, metadata identity check passed, explicit owner release/seed/write approval after architecture review.
 - Approved existing synthetic Auth identities and named-database memberships: administrator, editor scoped to one project, client, and valid-identity user with no staging membership. No real client data, QBO records or production membership copying. Never disable/revoke shared Auth users just for this plan.
 - A dedicated new synthetic-m7-smoke tenant with reviewed trusted fixtures only. The future seed preview must show no overwrite; applying fixtures/first-admin membership requires separate approval. Keep source snapshots, allocation history, revision and audit baselines in protected operator evidence outside Git.

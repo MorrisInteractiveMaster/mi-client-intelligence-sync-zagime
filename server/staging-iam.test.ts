@@ -24,8 +24,8 @@ const rows = (): IamCheck[] =>
           : "NOT_GRANTED",
     })),
   );
-test("IAM evidence requires positive named grants and definite default read/write denial, never missing/unknown results", () => {
-  assert.doesNotThrow(() => assertIamEvidence(rows()));
+test("retired Troubleshooter matrices never become effective IAM proof, even with complete positive/negative fixtures", () => {
+  assert.throws(() => assertIamEvidence(rows()), /UNSUPPORTED \/ INCONCLUSIVE/);
   for (const permission of [
     ...STAGING_PERMISSIONS,
     "datastore.entities.delete",
@@ -49,7 +49,10 @@ test("IAM evidence requires positive named grants and definite default read/writ
       x.permission === "datastore.entities.delete",
   )!.state = "GRANTED";
   assert.throws(() => assertIamEvidence(cleanup));
-  assert.doesNotThrow(() => assertIamEvidence(cleanup, true));
+  assert.throws(
+    () => assertIamEvidence(cleanup, true),
+    /UNSUPPORTED \/ INCONCLUSIVE/,
+  );
 });
 test("reviewed IAM artifacts grant only required runtime operations with exact named database equality", () => {
   const role = JSON.parse(
@@ -70,7 +73,7 @@ test("reviewed IAM artifacts grant only required runtime operations with exact n
     ),
   );
 });
-test("actual-read probe contract uses GET only, non-existent random namespace, no production writes and definite permission-denied", async () => {
+test("read-only helper transport contract uses offline fixtures; it is not live IAM evidence", async () => {
   const target = databaseTarget("staging", COMPANY_PROJECT, STAGING_DATABASE, {
     STAGING_FIREBASE_PROJECT_ID: COMPANY_PROJECT,
     STAGING_SERVICE_ACCOUNT_EMAIL:
