@@ -45,3 +45,6 @@ See docs/m4-api-and-persistence.md, docs/firebase-setup.md and docs/operator-set
 
 ## M5 secure Morris administration
 Protected staff workflows now use the authenticated API: assigned project pages, private project creation, editing, split allocations/history and administrator publication. Client reporting remains read-only; synthetic demo stays separate. See [M5 architecture](docs/m5-administration.md) and [operator staging runbook](docs/m5-staging-runbook.md). All live activation remains disabled. Staging is designed for a separately approved isolated project; no resource was created.
+
+## Same-project named staging
+Staging explicitly selects `mi-client-staging` in `morris-client-dash-zagime`; production `(default)` is never a staging fallback. Live startup is still disabled and staged startup verifies the database UID/Montréal/Standard/Native metadata before exposing a database handle. Shared Firebase Auth identities require separate database-local memberships. See [safeguards and tests](docs/same-project-staging.md) and the [current operator runbook](docs/operator-setup-runbook.md). No cloud resources, IAM or data were changed.

@@ -1,4 +1,4 @@
-# REVIEW ONLY: owner-selected isolated staging project/identity/image/origin. DO NOT APPLY.
+# REVIEW ONLY: same-project named database; owner-selected identity/image/origin. DO NOT APPLY.
 # Regional deployment: northamerica-northeast1. Requires approved external HTTPS LB + Cloud Armor.
 apiVersion: serving.knative.dev/v1
 kind: Service
@@ -28,7 +28,13 @@ spec:
             - name: BACKEND_MODE
               value: staging
             - name: STAGING_FIREBASE_PROJECT_ID
-              value: OWNER_VERIFIED_ISOLATED_STAGING_PROJECT_ID
+              value: morris-client-dash-zagime
+            - name: FIRESTORE_DATABASE_ID
+              value: mi-client-staging
+            - name: STAGING_DATABASE_UID
+              value: OWNER_VERIFIED_STAGING_DATABASE_UID
+            - name: STAGING_IAM_VERIFIED
+              value: "false"
             - name: ENABLE_SYNTHETIC_STAGING
               value: "false"
             - name: ENABLE_LIVE_FIREBASE

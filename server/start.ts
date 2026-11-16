@@ -15,6 +15,12 @@ const projectId =
       ? (process.env.STAGING_FIREBASE_PROJECT_ID ?? "")
       : "morris-client-dash-zagime";
 const runtime = firebaseRuntime(mode, projectId);
+try {
+  await runtime.verify();
+} catch {
+  await runtime.close();
+  throw Error("Backend database verification failed; service not started");
+}
 const backend = new ReportingBackend(
   new FirestoreTenantStore(runtime.db),
   new FirebaseIdentityVerifier(runtime.auth),

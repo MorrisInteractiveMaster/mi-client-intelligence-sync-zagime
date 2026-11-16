@@ -1,51 +1,67 @@
-import { initializeApp, type App, deleteApp } from "firebase-admin/app";
+import {
+  databaseTarget,
+  rememberVerifiedDatabase,
+  type DatabaseTarget,
+} from "./database-target";
+import { verifyDatabase } from "./database-verification";
+import {
+  initializeApp,
+  type App,
+  deleteApp,
+  applicationDefault,
+} from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import type { IdentityVerifier } from "./contracts";
 export interface FirebaseRuntime {
   app: App;
   auth: Auth;
-  db: Firestore;
+  readonly db: Firestore;
+  readonly target: DatabaseTarget;
+  verify: () => Promise<void>;
   close: () => Promise<void>;
 }
 export function firebaseRuntime(
   mode: "emulator" | "production" | "staging",
   projectId: string,
+  databaseId?: string,
 ): FirebaseRuntime {
-  if (mode === "emulator") {
-    if (
-      projectId !== "demo-mi-security" ||
-      process.env.FIREBASE_AUTH_EMULATOR_HOST !== "127.0.0.1:9099" ||
-      process.env.FIRESTORE_EMULATOR_HOST !== "127.0.0.1:8080"
-    )
-      throw Error("Local demo emulator required");
-  } else if (
-    (mode === "production"
-      ? projectId !== "morris-client-dash-zagime"
-      : !/^[a-z][a-z0-9-]{5,29}$/.test(projectId) ||
-        projectId === "morris-client-dash-zagime" ||
-        projectId !== process.env.STAGING_FIREBASE_PROJECT_ID ||
-        process.env.ENABLE_SYNTHETIC_STAGING !== "true") ||
-    process.env.ENABLE_LIVE_FIREBASE !== "true" ||
-    process.env.FIRESTORE_RULES_VERIFIED !== "true" ||
-    process.env.FIREBASE_AUTH_EMULATOR_HOST ||
-    process.env.FIRESTORE_EMULATOR_HOST ||
-    process.env.GOOGLE_APPLICATION_CREDENTIALS
-  )
-    throw Error("Live Firebase is disabled or unsafe");
+  const target = Object.freeze(databaseTarget(mode, projectId, databaseId));
   const app = initializeApp({ projectId }, `mi-${mode}-${crypto.randomUUID()}`);
   const auth = getAuth(app);
-  const db = getFirestore(app, "(default)");
-  if (mode !== "emulator")
-    db.settings({
-      host: "firestore.northamerica-northeast1.rep.googleapis.com",
-    });
+  let db: Firestore | undefined;
+  let verified = mode !== "staging";
+  let verification: Promise<void> | undefined;
+  const database = () => {
+    if (!verified) throw Error("Verify named staging database before access");
+    if (!db) {
+      db = getFirestore(app, target.databaseId);
+      if (mode !== "emulator")
+        db.settings({
+          host: "firestore.northamerica-northeast1.rep.googleapis.com",
+        });
+      rememberVerifiedDatabase(db, target);
+    }
+    return db;
+  };
   return {
     app,
     auth,
-    db,
+    target,
+    get db() {
+      return database();
+    },
+    verify: () => {
+      if (verified) return Promise.resolve();
+      return (verification ??= verifyDatabase(
+        target,
+        app.options.credential ?? applicationDefault(),
+      ).then(() => {
+        verified = true;
+      }));
+    },
     close: async () => {
-      await db.terminate();
+      if (db) await db.terminate();
       await deleteApp(app);
     },
   };

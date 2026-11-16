@@ -1,3 +1,4 @@
+import { assertOperatorDatabase } from "./database-target";
 import { createHash, randomUUID } from "node:crypto";
 import type { Auth } from "firebase-admin/auth";
 import type { Firestore } from "firebase-admin/firestore";
@@ -19,6 +20,7 @@ export async function bootstrapAdministrator(
   approval: BootstrapApproval,
   apply = false,
 ) {
+  assertOperatorDatabase(db);
   if (
     !approval ||
     Object.keys(approval).some(
@@ -145,6 +147,7 @@ export async function pruneIdempotency(
   apply = false,
   now = Date.now(),
 ) {
+  assertOperatorDatabase(db);
   safeId(tenantId);
   return db.runTransaction(
     async (tx) => {

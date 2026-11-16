@@ -14,6 +14,8 @@ const result = spawnSync(
   [
     "node_modules/firebase-tools/lib/bin/firebase.js",
     "emulators:exec",
+    "--config",
+    "firebase.emulators.json",
     "--project",
     "demo-mi-security",
     "--only",

@@ -1,3 +1,5 @@
+Current same-project staging: [named database safeguards](same-project-staging.md) and [operator runbook](operator-setup-runbook.md) supersede prior isolated-project/default-database staging assumptions below. Production (default) remains untouched; all staging operators require mi-client-staging.
+
 # M5 secured Morris administration
 
 Base: verified main `615ae61a510ed496d79364751ef662a081a88187`, PR #4 merged. Branch `codex/m5-secure-morris-administration`. No live configuration, user, credential, data or infrastructure changes.

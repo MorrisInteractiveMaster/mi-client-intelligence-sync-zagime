@@ -1,3 +1,5 @@
+Current same-project staging: [named database safeguards](same-project-staging.md) and [operator runbook](operator-setup-runbook.md) supersede prior isolated-project/default-database staging assumptions below. Production (default) remains untouched; all staging operators require mi-client-staging.
+
 # Firebase setup — M4 current handoff
 
 Owner-confirmed project: morris-client-dash-zagime; web app 1:892989290947:web:d5189c017d20b65cc0a576; auth domain morris-client-dash-zagime.firebaseapp.com.

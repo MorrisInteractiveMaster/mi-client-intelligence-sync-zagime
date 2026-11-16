@@ -20,3 +20,6 @@ dist-server/
 
 # Operator approval artifacts belong outside the repository.
 *.bootstrap-approval.json
+
+# Read-only IAM proof artifacts are operator-private and must not be published.
+*.iam-evidence.json

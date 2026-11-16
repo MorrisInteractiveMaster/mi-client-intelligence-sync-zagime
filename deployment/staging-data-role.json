@@ -1,0 +1,13 @@
+{
+  "title": "Morris named staging data runtime",
+  "description": "Review only. Bind conditionally to mi-client-staging; never unconditional/project-wide data access.",
+  "stage": "GA",
+  "includedPermissions": [
+    "datastore.databases.get",
+    "datastore.databases.getMetadata",
+    "datastore.entities.get",
+    "datastore.entities.list",
+    "datastore.entities.create",
+    "datastore.entities.update"
+  ]
+}

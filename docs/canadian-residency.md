@@ -30,3 +30,5 @@ No legal/compliance assurance is claimed. No cloud resources, users, keys, roles
 - [Logging locations](https://docs.cloud.google.com/logging/docs/region-support), [managed backups](https://firebase.google.com/docs/firestore/backups)
 
 M5 staging clarification: separately approved isolated synthetic project preferred, with Montréal Firestore/Cloud Run/Artifact Registry. The M4 internal-ingress browser assumption is replaced by the edge topology in docs/m5-staging-runbook.md; no infrastructure was provisioned. Existing production-intended database remains unchanged and must not receive staging fixtures.
+
+Current owner target supersedes the M5 separate-project preference for this staging task: use existing project morris-client-dash-zagime with explicit named staging database mi-client-staging, verifying Montréal metadata and pinned UID before startup. This does not approve shared Auth user/provider changes or production access. See operator-setup-runbook.md.
