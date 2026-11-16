@@ -14,3 +14,5 @@ External merge allowlists preserve manual metadata, narratives and time allocati
 No live approval status is verified. Current approved/unapproved time flags are synthetic examples.
 
 M2: raw source duration/description/reference are immutable in reporting edits. Each allocation revision is append-only; active portions cannot exceed source seconds. Source corrections preserve history and flag conflicts. Monthly agreement cap revisions and department budgets are separate from fixed/monthly project plans.
+
+Review correction: source links may belong to an agreement umbrella or a granular project. Internal IDs are independent of external IDs; allocations need no one-work-order-per-project assumption. Source corrections retain previous/new revisions and duration snapshots, reject stale numeric revisions, and never erase manual allocation revisions. Client projections exclude source identity/reconciliation metadata.

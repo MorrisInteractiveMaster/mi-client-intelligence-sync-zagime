@@ -37,7 +37,9 @@ export interface DeliveryProject {
   trainingSessions: { id: string; date: string; minutes: number }[];
 }
 export interface SourceLink {
-  projectId: string;
+  projectId?: string;
+  agreementId?: string;
+  verified?: boolean;
   source: "synthetic-qbo";
   externalId: string;
   label: string;
@@ -119,6 +121,7 @@ export interface ReportingState {
   publications: Publication[];
   audits: Audit[];
   statuses?: StatusEvent[];
+  sourceCorrections?: { sourceId: string; previous: RawTime; next: RawTime }[];
 }
 const integer = (n: number) => Number.isSafeInteger(n) && n >= 0;
 export function latestAllocation(s: ReportingState, id: string) {
@@ -150,7 +153,13 @@ export function validate(s: ReportingState) {
     )
       throw Error("Missing monthly agreement cap");
   for (const l of s.links)
-    if (!hasProject(l.projectId) || !l.externalId.trim())
+    if (
+      !l.projectId === !l.agreementId ||
+      (l.projectId
+        ? !hasProject(l.projectId)
+        : !s.agreements.some((a) => a.id === l.agreementId)) ||
+      !l.externalId.trim()
+    )
       throw Error("Invalid source link");
   for (const a of s.assignments)
     if (!hasProject(a.projectId) || !s.team.some((t) => t.id === a.memberId))
@@ -284,72 +293,183 @@ export function allocate(
   return next;
 }
 export function reconcile(s: ReportingState, raw: RawTime): ReportingState {
+  const old = s.raw.find((r) => r.id === raw.id);
+  if (old) {
+    if (JSON.stringify(old) === JSON.stringify(raw)) return s;
+    if (!/^\d+$/.test(old.revision) || !/^\d+$/.test(raw.revision))
+      throw Error("Source revisions must be comparable numeric strings");
+    if (BigInt(raw.revision) <= BigInt(old.revision))
+      throw Error("Stale or conflicting source revision");
+  }
   const next = structuredClone(s);
-  const index = next.raw.findIndex((r) => r.id === raw.id);
-  if (index < 0) next.raw.push(structuredClone(raw));
-  else next.raw[index] = structuredClone(raw);
+  const i = next.raw.findIndex((r) => r.id === raw.id);
+  if (i < 0) next.raw.push(structuredClone(raw));
+  else {
+    next.raw[i] = structuredClone(raw);
+    (next.sourceCorrections ??= []).push({
+      sourceId: raw.id,
+      previous: structuredClone(old!),
+      next: structuredClone(raw),
+    });
+  }
   validate(next);
   return next;
 }
-export function project(s: ReportingState) {
+export const DEMO_MONTH = "2026-10";
+export interface ReportingScope {
+  month: string;
+  agreementId?: string;
+}
+/** Period-filtered allocation portions; source IDs are unique and never expanded into raw clones. */
+export function project(
+  s: ReportingState,
+  scope: ReportingScope = { month: DEMO_MONTH },
+) {
   validate(s);
-  const conflicts = s.raw
-    .filter(
-      (r) =>
-        (latestAllocation(s, r.id)?.portions.reduce(
-          (n, p) => n + p.seconds,
-          0,
-        ) ?? 0) > r.seconds,
-    )
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(scope.month))
+    throw Error("Invalid reporting month");
+  if (
+    scope.agreementId &&
+    !s.agreements.some((a) => a.id === scope.agreementId)
+  )
+    throw Error("Unknown agreement");
+  const belongs = (id: string) =>
+    !scope.agreementId ||
+    s.projects.find((p) => p.id === id)?.agreementId === scope.agreementId;
+  const conflict = (r: RawTime) =>
+    (latestAllocation(s, r.id)?.portions.reduce((n, p) => n + p.seconds, 0) ??
+      0) > r.seconds;
+  const rows = s.raw.filter((r) => r.date.slice(0, 7) === scope.month);
+  const relevant = (r: RawTime) =>
+    !scope.agreementId ||
+    (latestAllocation(s, r.id)?.portions.some((p) => belongs(p.projectId)) ??
+      false) ||
+    s.links.some(
+      (l) =>
+        l.agreementId === scope.agreementId &&
+        l.externalId === r.sourceWorkOrderId,
+    );
+  const conflicts = rows
+    .filter((r) => relevant(r) && conflict(r))
     .map((r) => r.id);
-  const portions = s.raw
-    .filter((r) => !conflicts.includes(r.id))
+  const portions = rows
+    .filter((r) => !conflict(r))
+    .flatMap((r) => latestAllocation(s, r.id)?.portions ?? [])
+    .filter((p) => belongs(p.projectId));
+  const lifetime = s.raw
+    .filter((r) => !conflict(r))
     .flatMap((r) => latestAllocation(s, r.id)?.portions ?? []);
-  const visible = s.projects
-    .filter((p) => p.published)
+  const projects = s.projects
+    .filter((p) => belongs(p.id))
     .map((p) => ({
       id: p.id,
       name: p.name,
       agreementId: p.agreementId,
       departmentId: p.departmentId,
       progress: p.progress,
-      plan: p.plan,
+      plan: { ...p.plan },
+      published: p.published,
       seconds: portions
-        .filter((a) => a.projectId === p.id)
-        .reduce((n, a) => n + a.seconds, 0),
+        .filter((x) => x.projectId === p.id)
+        .reduce((n, x) => n + x.seconds, 0),
+      lifetimeSeconds: lifetime
+        .filter((x) => x.projectId === p.id)
+        .reduce((n, x) => n + x.seconds, 0),
     }));
-  const total = visible.reduce((n, p) => n + p.seconds, 0);
-  const allocated = portions.reduce((n, p) => n + p.seconds, 0);
-  const agreements = s.agreements.map((a) => {
-    const cap =
-      a.caps
-        .filter((c) => c.month === "2026-10")
-        .sort((x, y) => y.revision - x.revision)[0]?.minutes ?? 0;
-    const departments = s.budgets.filter(
-      (b) => b.agreementId === a.id && b.month === "2026-10",
+  const agreements = s.agreements
+    .filter((a) => !scope.agreementId || a.id === scope.agreementId)
+    .map((a) => {
+      const cap =
+        a.caps
+          .filter((c) => c.month === scope.month)
+          .sort((x, y) => y.revision - x.revision)[0]?.minutes ?? 0;
+      const departments = s.budgets
+        .filter((b) => b.agreementId === a.id && b.month === scope.month)
+        .map((b) => ({
+          id: b.departmentId,
+          name: s.departments.find((d) => d.id === b.departmentId)!.name,
+          agreementId: a.id,
+          minutes: b.minutes,
+          seconds: projects
+            .filter(
+              (p) =>
+                p.agreementId === a.id && p.departmentId === b.departmentId,
+            )
+            .reduce((n, p) => n + p.seconds, 0),
+        }));
+      return {
+        id: a.id,
+        name: a.name,
+        capMinutes: cap,
+        reserveMinutes: cap - departments.reduce((n, b) => n + b.minutes, 0),
+        seconds: projects
+          .filter((p) => p.agreementId === a.id)
+          .reduce((n, p) => n + p.seconds, 0),
+        departments,
+      };
+    });
+  // Remainders are owned by their source record. Agreement scoping attributes a remainder only through an explicit agreement source link.
+  const unallocatedSeconds = rows
+    .filter(
+      (r) =>
+        !scope.agreementId ||
+        s.links.some(
+          (l) =>
+            l.agreementId === scope.agreementId &&
+            l.externalId === r.sourceWorkOrderId,
+        ),
+    )
+    .reduce(
+      (n, r) =>
+        n +
+        (conflict(r)
+          ? r.seconds
+          : r.seconds -
+            (latestAllocation(s, r.id)?.portions.reduce(
+              (n, p) => n + p.seconds,
+              0,
+            ) ?? 0)),
+      0,
     );
-    return {
-      id: a.id,
-      name: a.name,
-      capMinutes: cap,
-      reserveMinutes: cap - departments.reduce((n, b) => n + b.minutes, 0),
-      departments,
-    };
-  });
   return {
+    month: scope.month,
+    tenant: { ...s.tenant },
     agreements,
-    tenant: s.tenant,
-    projects: visible,
-    totalSeconds: total,
-    unallocatedSeconds: s.raw.reduce((n, r) => n + r.seconds, 0) - allocated,
+    projects,
+    totalSeconds: projects.reduce((n, p) => n + p.seconds, 0),
+    unallocatedSeconds,
     conflicts,
-    departments: s.departments.map((d) => ({
-      id: d.id,
-      name: d.name,
-      seconds: visible
-        .filter((p) => p.departmentId === d.id)
+    departments: agreements.flatMap((a) => a.departments),
+  };
+}
+/** Explicit publication allowlist: internal source/reconciliation fields never leave this view. */
+export function clientProjection(
+  s: ReportingState,
+  scope: ReportingScope = { month: DEMO_MONTH },
+) {
+  const internal = project(s, scope);
+  const projects = internal.projects
+    .filter((p) => p.published)
+    .map(({ published, ...p }) => p);
+  const agreements = internal.agreements.map((a) => ({
+    ...a,
+    seconds: projects
+      .filter((p) => p.agreementId === a.id)
+      .reduce((n, p) => n + p.seconds, 0),
+    departments: a.departments.map((d) => ({
+      ...d,
+      seconds: projects
+        .filter((p) => p.agreementId === a.id && p.departmentId === d.id)
         .reduce((n, p) => n + p.seconds, 0),
     })),
+  }));
+  return {
+    month: scope.month,
+    tenant: internal.tenant,
+    projects,
+    agreements,
+    totalSeconds: projects.reduce((n, p) => n + p.seconds, 0),
+    departments: agreements.flatMap((a) => a.departments),
   };
 }
 export const hours = (seconds: number) =>
@@ -428,33 +548,49 @@ export function demo(): ReportingState {
 }
 
 /** View-only adapter. No new calculations are owned by the animation component. */
-export function recapInput(s: ReportingState) {
-  const v = project(s);
+export function recapInput(
+  s: ReportingState,
+  scope: ReportingScope = { month: DEMO_MONTH },
+) {
+  const v = clientProjection(s, scope);
+  const date = new Date(scope.month + "-01T00:00:00Z");
+  const long = date.toLocaleString("en-CA", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  const end = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0),
+  )
+    .toISOString()
+    .slice(0, 10);
   return {
     client: v.tenant.name,
     partner: "Morris Interactive",
-    asOf: "2026-10-23",
-    months: ["Oct"],
-    monthsLong: ["October 2026"],
+    asOf: end,
+    months: [date.toLocaleString("en-CA", { month: "short", timeZone: "UTC" })],
+    monthsLong: [long],
     projects: v.agreements.map((a) => ({
       name: a.name,
       wo: a.id,
       parent: null,
       status: "On track",
       cap: a.capMinutes / 60,
-      end: "2026-10-31",
-      months: [
-        v.projects
-          .filter((p) => p.agreementId === a.id)
-          .reduce((n, p) => n + p.seconds, 0) / 3600,
-      ],
+      end,
+      months: [a.seconds / 3600],
     })),
   };
 }
 export function attachSource(s: ReportingState, link: SourceLink) {
   const next = structuredClone(s);
   next.links = next.links.filter(
-    (l) => !(l.projectId === link.projectId && l.source === link.source),
+    (l) =>
+      !(
+        l.source === link.source &&
+        (link.projectId
+          ? l.projectId === link.projectId
+          : l.agreementId === link.agreementId)
+      ),
   );
   next.links.push(structuredClone(link));
   validate(next);

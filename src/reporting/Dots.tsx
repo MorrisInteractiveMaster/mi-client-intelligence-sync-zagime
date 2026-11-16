@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { hours, project, recapInput, type ReportingState } from "./model";
+import {
+  hours,
+  clientProjection,
+  recapInput,
+  DEMO_MONTH,
+  type ReportingState,
+} from "./model";
 // The approved renderer is a plain-JavaScript canvas module. Keep the boundary local.
 type Pulse = {
   story: (d: unknown) => any;
@@ -30,14 +36,20 @@ function load() {
       });
   })());
 }
-export function Dots({ state }: { state: ReportingState }) {
+export function Dots({
+  state,
+  month = DEMO_MONTH,
+}: {
+  state: ReportingState;
+  month?: string;
+}) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [playing, setPlaying] = useState(false);
   const [sound, setSound] = useState(false);
   const [time, setTime] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
-  const view = project(state);
+  const view = clientProjection(state, { month });
   useEffect(() => {
     let active = true;
     load()
@@ -52,11 +64,11 @@ export function Dots({ state }: { state: ReportingState }) {
   useEffect(() => {
     if (!loaded) return;
     const P = window.PULSE;
-    const story = P.story(recapInput(state));
+    const story = P.story(recapInput(state, { month }));
     const ctx = canvas.current?.getContext("2d");
     if (!ctx) return;
     P.styles.dots.draw(ctx, story, P.sceneAt(time), time, {});
-  }, [loaded, time, state, view.totalSeconds]);
+  }, [loaded, time, state, month, view.totalSeconds]);
   useEffect(() => {
     if (!playing || !loaded) return;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;

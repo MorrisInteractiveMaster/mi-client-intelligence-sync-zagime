@@ -129,3 +129,15 @@
     transition: none;
   }
 }
+
+.nordic .reporting-workflows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 24px 0;
+  padding: 0;
+}
+.nordic .reporting-workflows a {
+  padding: 8px 0;
+  margin: 0;
+}

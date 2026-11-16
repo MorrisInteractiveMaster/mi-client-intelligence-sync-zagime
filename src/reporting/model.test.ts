@@ -4,6 +4,7 @@ import {
   demo,
   allocate,
   project,
+  clientProjection,
   reconcile,
   persist,
   hours,
@@ -78,9 +79,9 @@ test("publication excludes internal notes and hidden hours; recomputes from edit
     "now",
   );
   assert.equal(project(s).totalSeconds, 3600);
-  assert.ok(!JSON.stringify(project(s)).includes("internalNotes"));
+  assert.ok(!JSON.stringify(clientProjection(s)).includes("internalNotes"));
   s.projects[0].published = false;
-  assert.equal(project(s).totalSeconds, 0);
+  assert.equal(clientProjection(s).totalSeconds, 0);
 });
 test("stable identity survives source attachment and department rename", () => {
   const s = demo();

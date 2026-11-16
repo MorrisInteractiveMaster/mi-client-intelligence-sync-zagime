@@ -32,3 +32,5 @@ The original reference and QA are historical records. Their personal-repository 
 
 ## Milestone 2 synthetic reporting
 The overview now demonstrates agreement → department → delivery project with Nordic Minimal and Dots. Switch to Morris Internal for local project creation, progress and split allocations. Old saves and pages remain available; see docs/decisions.md and docs/qa-m2/README.md for limitations and browser evidence. Confirmed Firebase Project ID: morris-client-dash-zagime (documentation only). Canadian production data residency is mandatory.
+
+M2 review corrections: Primary Projects, New project, portfolio and Time Allocation share the normalized workspace. Views labeled Legacy use independent v1 data. The month selector scopes dashboard and recap; lifetime effort is separately labeled for fixed plans. Internal mapping and correction information is Morris-only demonstration content. See docs/qa-m2-corrections for updated acceptance evidence. Demo role switching is not production authorization.
