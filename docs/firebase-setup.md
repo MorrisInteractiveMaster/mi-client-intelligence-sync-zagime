@@ -1,10 +1,17 @@
-# Firebase handoff — no integration configured
+# Firebase setup status — M3
 
-User-reported, not independently verified: display name Morris Client dash Zagime; Blaze billing; web app display name Morris Client Intelligence Web - Zagime; empty (default) Firestore database.
+Latest owner handoff, 16 November 2026 (user-confirmed values, not independently verified by live API):
 
-Confirmed by the project owner: immutable project ID `morris-client-dash-zagime`. UNVERIFIED: Web App ID/config, Firestore edition/location/rules, billing-account ownership, enabled APIs, Authentication settings, Cloud Run region, IAM and service accounts. Hosting selection is unapproved. No values were guessed or committed.
+- Project ID: morris-client-dash-zagime
+- Web App ID: 1:892989290947:web:d5189c017d20b65cc0a576
+- Auth domain: morris-client-dash-zagime.firebaseapp.com
+- Firestore: **NOT CREATED**
+- Cloud Storage: **NOT CREATED**
+- QBO Accounting / QuickBooks Time applications: user reports connected, grants/entitlements unverified
+- Mandatory production residency: Canada
 
-Milestone 2 requires a reviewed architect continuation and verified configuration. Plan emulator-only synthetic tests before any live configuration. Required denial cases: unauthenticated, unapproved/disabled user, cross-client scope, client writes, role escalation and backend permission bypass. Admin SDK operations require their own authorization.
-No Firebase SDK, emulator configuration, security rules or cloud directory scaffolding is added in Milestone 1; existing disabled adapters remain the boundary.
+This supersedes the early M1 report of an empty database. No live inventory was performed in M3. The Web App ID/auth domain are documented identifiers, not working frontend configuration. No API key, OAuth secret or credentials are present. Project metadata, billing owner, IAM, enabled APIs, auth settings and actual inventory need authorized operator verification.
 
-Confirmed by project owner, 2026-11-16: Firebase Project ID `morris-client-dash-zagime`. This identifier is documentation only, not live application configuration. Canadian data residency is mandatory for production, including data, backups, logs and processing. No region or service compliance is presumed; architecture approval requires verification before any resource creation.
+The only runnable configuration is local firebase.json for loopback Firestore emulation with project demo-mi-security. No .firebaserc real-project alias or deployment script is added. Rules deny every browser access, even authenticated admins. CI validates without authentication to Google Cloud and without deploying.
+
+Firebase Authentication's documented US-only processing conflicts with strict Canadian identity-data residency. Regional Firestore does not fix that. See [Canadian assessment](canadian-residency.md), [authorization contracts](security-and-access.md) and [ordered owner setup runbook](operator-setup-runbook.md). Every live-changing step is labeled REQUIRES OWNER APPROVAL and none was executed.

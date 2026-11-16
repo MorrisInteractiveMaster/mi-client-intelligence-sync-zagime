@@ -21,3 +21,6 @@ PR #1 was merged before M2. M2 branches from main 45cde462f394eb467b11cb3fdb8e8a
 
 ## M2 re-review validation
 Continue existing draft PR #2 on codex/m2-synthetic-reporting-nordic. Run clean npm ci --ignore-scripts, npm test, npm run typecheck and npm run build. Reproduce the primary-navigation project-manager journey and client filtering using scripts/qa-m2-corrections.cjs with a local Playwright module path as its argument and a local Vite server. Evidence is in docs/qa-m2-corrections. Verify source corrections by period and two-agreement shared-department tests. No merge, deployment or production changes are authorized.
+
+## M3 release boundary
+M2 PR #2 is merged. M3 uses a new draft branch from main 745df43b97750d3c30678e31b7ab5145e81ce03f. CI runs on PRs/main pushes with tests/build/local emulator only. No cloud credentials or deploy step. Every live mutation described in docs/operator-setup-runbook.md is REQUIRES OWNER APPROVAL and was not executed. Resolve Canadian identity/logging/ingress gates and review real backend persistence/token verification before staging, then separately approve production.

@@ -10,3 +10,8 @@ dist/
 *serviceAccount*.json
 *.pem
 *.key
+
+# Local Firebase emulator output
+*-debug.log
+*-debug.log.*
+.firebase/
