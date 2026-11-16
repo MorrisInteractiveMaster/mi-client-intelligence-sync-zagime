@@ -1,3 +1,4 @@
+import { SecureDashboard } from "./api/SecureDashboard";
 import { ReportingProvider } from "./reporting/ReportingContext";
 import { Reporting } from "./reporting/Reporting";
 import { useEffect, useState } from "react";
@@ -156,6 +157,7 @@ function Shell() {
         </Routes>
       </>
     );
+  if (location.pathname === "/secure") return <SecureDashboard />;
   if (location.pathname === "/welcome") return <Landing />;
   const label =
     nav.find((n) => n.path === location.pathname)?.label ||
@@ -314,6 +316,7 @@ function Shell() {
             )}
             <Routes>
               <Route path="/" element={<Reporting />} />
+              <Route path="/secure" element={<SecureDashboard />} />
               <Route path="/legacy-overview" element={<Overview />} />
               <Route path="/portfolio" element={<Reporting />} />
               <Route

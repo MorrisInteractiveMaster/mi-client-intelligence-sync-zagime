@@ -24,3 +24,6 @@ Continue existing draft PR #2 on codex/m2-synthetic-reporting-nordic. Run clean 
 
 ## M3 release boundary
 M2 PR #2 is merged. M3 uses a new draft branch from main 745df43b97750d3c30678e31b7ab5145e81ce03f. CI runs on PRs/main pushes with tests/build/local emulator only. No cloud credentials or deploy step. Every live mutation described in docs/operator-setup-runbook.md is REQUIRES OWNER APPROVAL and was not executed. Resolve Canadian identity/logging/ingress gates and review real backend persistence/token verification before staging, then separately approve production.
+
+## M4 current release boundary
+PR #3 is merged. M4 starts a new branch/PR from d62dc9d8ac853423cf6d62a6775c68b4f1719a57. Read docs/operator-setup-runbook.md (current M4 instructions) rather than executing historical M3 creation commands. The existing Montréal database must be reused. No deployment, users, IAM, secrets, logs/backups, billing or live QuickBooks changes are authorized in this milestone. Owner must verify the actual deployed deny-all rules release before future live startup and explicitly approve provider privacy, identities/IAM and synthetic staging. CI builds server and frontend and runs both emulators; no deploy stage.

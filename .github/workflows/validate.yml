@@ -26,6 +26,7 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
+      - run: npm run build:server
       - run: npm run test:security
         env:
           FIREBASE_CLI_DISABLE_UPDATE_CHECK: "true"

@@ -1,3 +1,5 @@
+> M4 current decision supersedes older residency/infrastructure assumptions below: no blanket Canada-only identity/log/service-processing rule; Canadian project/reporting storage preferred; Firebase Auth requires privacy approval. Existing database (default) already exists in Montréal. See docs/canadian-residency.md.
+
 # Milestone 2 decisions and review boundary
 
 Main was verified at 45cde462f394eb467b11cb3fdb8e8a6fbbda9fa0 after PR #1 merged. Milestone 2 uses codex/m2-synthetic-reporting-nordic and targets main.
@@ -20,3 +22,6 @@ Known limits: broader milestone/status, staffing and training administration is 
 
 ## M3 decisions (16 November 2026)
 M2 main verified at 745df43b97750d3c30678e31b7ab5145e81ce03f. Choose offline Standard emulator, all browser Firestore denied, server-only persistence architecture and provider-neutral identity boundary. Do not activate Firebase Auth: official US processing conflicts with Canada-only identity residency. Proposed Montréal Firestore/Cloud Run/regional Secret Manager are service capabilities, not approved deployed resources. Cloud Run built-in regional-secret mounting is unsupported; future server uses regional API. Existing global mandatory logging and all identity/control-plane/Intuit boundaries are unresolved owner gates. No live resource discovery, login, IAM/billing changes or deployment. Latest handoff says Firestore/Storage NOT CREATED; prior M1 report is superseded.
+
+## M4 decisions
+Verified merged M3 main d62dc9d8ac853423cf6d62a6775c68b4f1719a57. Reuse existing Standard Native database; never create another project/database. Implement Admin SDK verifyIdToken(checkRevoked=true), targeted Firestore transactions, sanitized published period/lifetime summaries and immutable audits. Browser Firestore remains denied. Live startup and protected frontend are disabled by default. Auth privacy/provider approval, deployed rule-release verification, ADC/IAM, ingress and synthetic staging are owner gates. No live changes. See docs/m4-api-and-persistence.md for bounded pilot limits and create-retry limitation.

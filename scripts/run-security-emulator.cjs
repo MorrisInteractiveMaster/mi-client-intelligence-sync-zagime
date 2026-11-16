@@ -17,7 +17,7 @@ const result = spawnSync(
     "--project",
     "demo-mi-security",
     "--only",
-    "firestore",
+    "firestore,auth",
     "node --import tsx --test security-tests/*.test.ts",
   ],
   { env, stdio: "inherit" },

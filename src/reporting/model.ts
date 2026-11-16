@@ -274,6 +274,7 @@ export function allocate(
     portions.reduce((n, p) => n + p.seconds, 0) > raw.seconds
   )
     throw Error("Allocated time exceeds source duration");
+  checkedAllocationSeconds(portions, raw.seconds);
   const previous = latestAllocation(s, sourceId);
   if (JSON.stringify(previous?.portions ?? []) === JSON.stringify(portions))
     return s;
@@ -595,4 +596,21 @@ export function attachSource(s: ReportingState, link: SourceLink) {
   next.links.push(structuredClone(link));
   validate(next);
   return next;
+}
+
+/** Shared exact-duration invariant for reporting edits. */
+export function checkedAllocationSeconds(
+  portions: Allocation[],
+  sourceSeconds: number,
+) {
+  if (
+    !Number.isSafeInteger(sourceSeconds) ||
+    sourceSeconds < 0 ||
+    portions.some((p) => !Number.isSafeInteger(p.seconds) || p.seconds < 0)
+  )
+    throw Error("Invalid allocation duration");
+  const total = portions.reduce((n, p) => n + p.seconds, 0);
+  if (!Number.isSafeInteger(total) || total > sourceSeconds)
+    throw Error("Allocated time exceeds source duration");
+  return total;
 }
