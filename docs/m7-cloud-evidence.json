@@ -1,0 +1,19 @@
+{
+  "source": "Owner supplied M7 verified cloud evidence; not independently rerun by implementation agent",
+  "projectId": "morris-client-dash-zagime",
+  "databaseId": "mi-client-staging",
+  "databaseUid": "6d09ea71-f495-44a5-94a6-732ed1c47d88",
+  "region": "northamerica-northeast1",
+  "serviceAccount": "mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com",
+  "reportedReadResults": {
+    "stagingMissingDocumentGet": 404,
+    "stagingCollectionList": 200,
+    "defaultMissingDocumentGet": 403,
+    "defaultCollectionList": 403
+  },
+  "temporaryTokenCreatorBindingRemoved": true,
+  "executionTimestampProvided": false,
+  "writePermissionIsolation": "pending independent policy verification",
+  "actualAttachedRuntimeIdentity": "pending metadata validation in approved existing runner",
+  "apiActivationApproved": false
+}

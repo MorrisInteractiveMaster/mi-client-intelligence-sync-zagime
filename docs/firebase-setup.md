@@ -1,3 +1,5 @@
+M7: known database UID and existing staging service account now populate the disabled template. Owner-reported cloud reads passed; independent remaining write/attachment/rules verification is in docs/m7-operator-next-steps.md. No provider, user, project/database, IAM or token-grant changes.
+
 Current same-project staging: [named database safeguards](same-project-staging.md) and [operator runbook](operator-setup-runbook.md) supersede prior isolated-project/default-database staging assumptions below. Production (default) remains untouched; all staging operators require mi-client-staging.
 
 # Firebase setup — M4 current handoff

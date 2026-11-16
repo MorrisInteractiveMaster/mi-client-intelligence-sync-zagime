@@ -1,3 +1,4 @@
+import { verifyAttachedIdentity } from "./attached-identity";
 import {
   databaseTarget,
   rememberVerifiedDatabase,
@@ -53,12 +54,18 @@ export function firebaseRuntime(
     },
     verify: () => {
       if (verified) return Promise.resolve();
-      return (verification ??= verifyDatabase(
-        target,
-        app.options.credential ?? applicationDefault(),
-      ).then(() => {
-        verified = true;
-      }));
+      return (verification ??= verifyAttachedIdentity(
+        target.serviceAccountEmail!,
+      )
+        .then(() =>
+          verifyDatabase(
+            target,
+            app.options.credential ?? applicationDefault(),
+          ),
+        )
+        .then(() => {
+          verified = true;
+        }));
     },
     close: async () => {
       if (db) await db.terminate();

@@ -11,6 +11,8 @@ import { verifyDatabase } from "./database-verification";
 import { firebaseRuntime } from "./firebase";
 const uid = "11111111-1111-4111-8111-111111111111";
 const env: NodeJS.ProcessEnv = {
+  STAGING_SERVICE_ACCOUNT_EMAIL:
+    "mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com",
   BACKEND_MODE: "staging",
   STAGING_FIREBASE_PROJECT_ID: COMPANY_PROJECT,
   FIRESTORE_DATABASE_ID: STAGING_DATABASE,
@@ -31,6 +33,13 @@ const metadata = () => ({
 });
 test("same-project staging requires explicit named database and every guard; no default or typo fallback", () => {
   assert.equal(target().databaseId, STAGING_DATABASE);
+  assert.throws(() =>
+    databaseTarget("staging", COMPANY_PROJECT, STAGING_DATABASE, {
+      ...env,
+      STAGING_SERVICE_ACCOUNT_EMAIL:
+        "unapproved@morris-client-dash-zagime.iam.gserviceaccount.com",
+    }),
+  );
   for (const id of ["(default)", "", "mi-client-stagin", "other"])
     assert.throws(() => databaseTarget("staging", COMPANY_PROJECT, id, env));
   for (const k of Object.keys(env).filter((k) => k !== "BACKEND_MODE")) {
@@ -141,8 +150,12 @@ test("runtime withholds database until metadata verification; SDK selects named 
     Object.assign(process.env, env);
 
     let calls = 0;
-    globalThis.fetch = async () => {
+    globalThis.fetch = async (input) => {
       calls++;
+      if (String(input).startsWith("http://metadata.google.internal/"))
+        return new Response(env.STAGING_SERVICE_ACCOUNT_EMAIL!, {
+          headers: { "Metadata-Flavor": "Google" },
+        });
       return Response.json(metadata());
     };
     runtime = firebaseRuntime("staging", COMPANY_PROJECT);
@@ -152,12 +165,17 @@ test("runtime withholds database until metadata verification; SDK selects named 
     });
     assert.throws(() => runtime!.db, /Verify named staging/);
     await Promise.all([runtime.verify(), runtime.verify()]);
-    assert.equal(calls, 1);
+    assert.equal(calls, 2);
     assert.equal(runtime.db.databaseId, STAGING_DATABASE);
     assert.doesNotThrow(() => assertOperatorDatabase(runtime!.db));
     await runtime.close();
     runtime = undefined;
-    globalThis.fetch = async () => new Response("missing", { status: 404 });
+    globalThis.fetch = async (input) =>
+      String(input).startsWith("http://metadata.google.internal/")
+        ? new Response(env.STAGING_SERVICE_ACCOUNT_EMAIL!, {
+            headers: { "Metadata-Flavor": "Google" },
+          })
+        : new Response("missing", { status: 404 });
     runtime = firebaseRuntime("staging", COMPANY_PROJECT);
     runtime.app.options.credential!.getAccessToken = async () => ({
       access_token: "offline-fixture-token",
@@ -166,6 +184,24 @@ test("runtime withholds database until metadata verification; SDK selects named 
     await assert.rejects(() => runtime!.verify());
     assert.throws(() => runtime!.db, /Verify named staging/);
     await assert.rejects(() => runtime!.verify());
+    await runtime.close();
+    runtime = undefined;
+    let tokenCalls = 0;
+    globalThis.fetch = async () =>
+      new Response("wrong@morris-client-dash-zagime.iam.gserviceaccount.com", {
+        headers: { "Metadata-Flavor": "Google" },
+      });
+    runtime = firebaseRuntime("staging", COMPANY_PROJECT);
+    runtime.app.options.credential!.getAccessToken = async () => {
+      tokenCalls++;
+      throw Error("must not acquire credentials");
+    };
+    await assert.rejects(
+      () => runtime!.verify(),
+      /Attached staging identity verification failed/,
+    );
+    assert.equal(tokenCalls, 0);
+    assert.throws(() => runtime!.db, /Verify named staging/);
   } finally {
     await runtime?.close();
     globalThis.fetch = fetchOriginal;

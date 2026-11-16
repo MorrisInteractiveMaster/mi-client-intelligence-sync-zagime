@@ -48,3 +48,8 @@ Protected staff workflows now use the authenticated API: assigned project pages,
 
 ## Same-project named staging
 Staging explicitly selects `mi-client-staging` in `morris-client-dash-zagime`; production `(default)` is never a staging fallback. Live startup is still disabled and staged startup verifies the database UID/Montréal/Standard/Native metadata before exposing a database handle. Shared Firebase Auth identities require separate database-local memberships. See [safeguards and tests](docs/same-project-staging.md) and the [current operator runbook](docs/operator-setup-runbook.md). No cloud resources, IAM or data were changed.
+
+## M7 deployment preparation
+Owner-supplied read-isolation evidence, verified staging database UID and existing service identity are recorded in docs/m7-cloud-evidence.json. Staging startup now validates attached metadata identity before credential acquisition/database access. Live activation remains disabled. Follow [exact next operator steps](docs/m7-operator-next-steps.md) and the [controlled synthetic smoke plan](docs/m7-synthetic-smoke-tests.md); no resource recreation, IAM regrant, automatic seed/deploy/API activation.
+
+M7 security correction: the former named-Firestore Policy Troubleshooter checker failed live and is retired. Cloud Shell operators use the supported policy/role collection and explicit inconclusive review workflow in docs/m7-operator-next-steps.md; Bash inventory comes first and no existing runner or effective permission is assumed. No cloud change is automated.

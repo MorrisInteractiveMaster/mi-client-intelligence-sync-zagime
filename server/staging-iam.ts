@@ -17,29 +17,14 @@ export interface IamCheck {
   permission: string;
   state: string;
 }
-/** Validates actual operator-collected results; not a replacement IAM/CEL evaluator. Unknown/missing/duplicate evidence fails. */
+/** Retired: a matrix built from unsupported named-resource troubleshooting is not IAM proof. */
 export function assertIamEvidence(
-  rows: IamCheck[],
-  allowStagingDelete = false,
-) {
-  const permissions = [...STAGING_PERMISSIONS, "datastore.entities.delete"];
-  if (rows.length !== permissions.length * 2)
-    throw Error("Incomplete IAM evidence");
-  for (const databaseId of [STAGING_DATABASE, "(default)"]) {
-    for (const permission of permissions) {
-      const found = rows.filter(
-        (r) => r.databaseId === databaseId && r.permission === permission,
-      );
-      const granted =
-        databaseId === STAGING_DATABASE &&
-        (permission !== "datastore.entities.delete" || allowStagingDelete);
-      if (
-        found.length !== 1 ||
-        found[0].state !== (granted ? "GRANTED" : "NOT_GRANTED")
-      )
-        throw Error("Database IAM isolation not proven");
-    }
-  }
+  _rows: IamCheck[],
+  _allowStagingDelete = false,
+): never {
+  throw Error(
+    "UNSUPPORTED / INCONCLUSIVE: named Firestore Troubleshooter matrix cannot establish effective IAM. Use actual policy/role/inheritance review and approved runtime checks.",
+  );
 }
 /** Explicit future read-only cloud probe. Never run automatically on startup or in CI. No production writes. */
 export async function probeDatabaseReads(

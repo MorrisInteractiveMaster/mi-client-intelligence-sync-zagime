@@ -31,3 +31,9 @@ M4 main 615ae61a510ed496d79364751ef662a081a88187 verified. Staff UI is API-backe
 
 ## Same-project named staging — supersedes M5 isolated-project restriction
 Owner target: morris-client-dash-zagime / mi-client-staging / northamerica-northeast1. Production (default) is isolated from staging by explicit SDK selection, fail-closed metadata/UID startup checks, separate database memberships and reviewed database-conditional IAM. Existing Authentication is shared; no provider or account changes are implied. Live default-database IAM denial must be independently proved before activation; emulator routing tests are not IAM proof. No cloud change or replacement project is authorized.
+
+## M7 — accept existing cloud read evidence, retain remaining gates
+Main 691f5aa3babe140420425794f0b016c33986c954 verified, PR #6 merged. Owner confirms database UID 6d09ea71-f495-44a5-94a6-732ed1c47d88 and mi-client-staging-api identity, with staging GET/LIST allowed and default GET/LIST denied; temporary Token Creator binding removed. No new IAM grants/resource creation. Remaining create/update/delete isolation is reviewed through read-only policy queries, not production writes; runtime metadata identity is separately validated before credentials/DB exposure. All activation flags stay false.
+
+## M7 corrected security review — same PR #7
+Owner reports actual INVALID_ARGUMENT / INVALID_RESOURCE_NAME for the former named-Firestore Troubleshooter resource. Offline mock success did not validate resource/API support. Retire that checker and matrix probe; do not guess alternate strings. Supported Resource Manager/IAM policy and role reads, complete ancestor/group/impersonation review, preserved live read evidence and separately approved runtime checks replace unsupported per-database troubleshooting. Every incomplete/unsupported result remains inconclusive; activation stays disabled. No actual live IAM policy was inspected by this agent.
