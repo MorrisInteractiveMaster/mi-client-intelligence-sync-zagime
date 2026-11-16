@@ -9,7 +9,7 @@ export interface FirebaseRuntime {
   close: () => Promise<void>;
 }
 export function firebaseRuntime(
-  mode: "emulator" | "production",
+  mode: "emulator" | "production" | "staging",
   projectId: string,
 ): FirebaseRuntime {
   if (mode === "emulator") {
@@ -20,7 +20,12 @@ export function firebaseRuntime(
     )
       throw Error("Local demo emulator required");
   } else if (
-    projectId !== "morris-client-dash-zagime" ||
+    (mode === "production"
+      ? projectId !== "morris-client-dash-zagime"
+      : !/^[a-z][a-z0-9-]{5,29}$/.test(projectId) ||
+        projectId === "morris-client-dash-zagime" ||
+        projectId !== process.env.STAGING_FIREBASE_PROJECT_ID ||
+        process.env.ENABLE_SYNTHETIC_STAGING !== "true") ||
     process.env.ENABLE_LIVE_FIREBASE !== "true" ||
     process.env.FIRESTORE_RULES_VERIFIED !== "true" ||
     process.env.FIREBASE_AUTH_EMULATOR_HOST ||
@@ -31,7 +36,7 @@ export function firebaseRuntime(
   const app = initializeApp({ projectId }, `mi-${mode}-${crypto.randomUUID()}`);
   const auth = getAuth(app);
   const db = getFirestore(app, "(default)");
-  if (mode === "production")
+  if (mode !== "emulator")
     db.settings({
       host: "firestore.northamerica-northeast1.rep.googleapis.com",
     });

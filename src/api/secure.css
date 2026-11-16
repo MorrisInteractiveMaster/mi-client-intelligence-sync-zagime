@@ -1,0 +1,103 @@
+.nordic.secure-shell {
+  padding: 24px;
+  box-sizing: border-box;
+}
+.secure-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 16px 0;
+}
+.secure-staff nav {
+  display: flex;
+  gap: 12px;
+  margin: 24px 0;
+}
+.secure-staff button,
+.secure-shell > button {
+  border: 1px solid #ccd8d4;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 16px;
+  color: #214d45;
+  cursor: pointer;
+}
+.secure-staff button[aria-pressed="true"],
+.secure-form button[type="submit"] {
+  background: #214d45;
+  color: #fff;
+}
+.secure-staff button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.secure-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr));
+  gap: 18px;
+}
+.secure-card {
+  border: 1px solid #e2e8e5;
+  border-radius: 12px;
+  padding: 22px;
+  background: #fff;
+  margin: 16px 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.secure-card h3 {
+  margin-top: 8px;
+}
+.secure-badge {
+  font-size: 12px;
+  background: #edf3ef;
+  padding: 4px 8px;
+  border-radius: 12px;
+}
+.secure-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 12px 0;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  min-width: 0;
+}
+.secure-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.secure-form input,
+.secure-form select {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #cbd6d1;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2933;
+}
+.secure-shell [role="alert"] {
+  padding: 12px;
+  background: #fff1e9;
+  border-radius: 8px;
+}
+.secure-shell button:focus-visible,
+.secure-shell input:focus-visible,
+.secure-shell select:focus-visible {
+  outline: 3px solid #749e91;
+  outline-offset: 2px;
+}
+@media (max-width: 500px) {
+  .nordic.secure-shell {
+    padding: 16px;
+  }
+  .secure-card {
+    padding: 16px;
+  }
+}

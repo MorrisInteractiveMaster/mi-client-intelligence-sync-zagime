@@ -1,0 +1,43 @@
+# REVIEW ONLY: owner-selected isolated staging project/identity/image/origin. DO NOT APPLY.
+# Regional deployment: northamerica-northeast1. Requires approved external HTTPS LB + Cloud Armor.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: OWNER_APPROVED_STAGING_SERVICE_NAME
+  annotations:
+    run.googleapis.com/maxScale: "1"
+    run.googleapis.com/minScale: "0"
+    run.googleapis.com/ingress: internal-and-gclb
+    run.googleapis.com/default-url-disabled: "true"
+    run.googleapis.com/invoker-iam-disabled: "true"
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "1"
+    spec:
+      serviceAccountName: OWNER_APPROVED_STAGING_RUNTIME_IDENTITY
+      containerConcurrency: 20
+      timeoutSeconds: 10
+      containers:
+        - image: OWNER_APPROVED_REGIONAL_IMAGE_AT_SHA256_DIGEST
+          ports:
+            - containerPort: 8080
+          env:
+            - name: BACKEND_MODE
+              value: staging
+            - name: STAGING_FIREBASE_PROJECT_ID
+              value: OWNER_VERIFIED_ISOLATED_STAGING_PROJECT_ID
+            - name: ENABLE_SYNTHETIC_STAGING
+              value: "false"
+            - name: ENABLE_LIVE_FIREBASE
+              value: "false"
+            - name: FIRESTORE_RULES_VERIFIED
+              value: "false"
+            - name: ALLOWED_ORIGIN
+              value: https://OWNER_APPROVED_FRONTEND_ORIGIN
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi

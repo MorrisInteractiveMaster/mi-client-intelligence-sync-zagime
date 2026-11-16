@@ -73,12 +73,6 @@ export function apiServer(
   const limit = options.limit ?? new RequestLimit();
   return createServer(async (req, res) => {
     try {
-      if (!limit.accept(req.socket.remoteAddress ?? "unknown"))
-        return send(res, 429, { error: "rate_limited" });
-      if (req.headers.origin && req.headers.origin !== options.allowedOrigin)
-        return send(res, 403, { error: "forbidden" });
-      if (req.url === "/healthz" && req.method === "GET")
-        return send(res, 200, { status: "ready" });
       if (
         req.headers.origin === options.allowedOrigin &&
         options.allowedOrigin
@@ -86,11 +80,20 @@ export function apiServer(
         res.setHeader("access-control-allow-origin", options.allowedOrigin);
         res.setHeader("vary", "Origin");
       }
+      if (!limit.accept(req.socket.remoteAddress ?? "unknown"))
+        return send(res, 429, { error: "rate_limited" });
+      if (req.headers.origin && req.headers.origin !== options.allowedOrigin)
+        return send(res, 403, { error: "forbidden" });
+      if (
+        (req.url === "/healthz" || req.url === "/health") &&
+        req.method === "GET"
+      )
+        return send(res, 200, { status: "ready" });
       if (req.method === "OPTIONS") {
         res.setHeader("access-control-allow-methods", "GET,POST,PATCH");
         res.setHeader(
           "access-control-allow-headers",
-          "Authorization,Content-Type",
+          "Authorization,Content-Type,Idempotency-Key",
         );
         return send(res, 204, null);
       }
@@ -99,12 +102,66 @@ export function apiServer(
         return send(res, 401, { error: "unauthenticated" });
       if ((req.url?.length ?? 0) > 2048) throw Error("Invalid URL");
       const url = new URL(req.url!, "http://local");
+      const staff =
+        /^\/api\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|sources)(?:\/([-a-zA-Z0-9_]{1,128})\/(history))?$/.exec(
+          url.pathname,
+        );
+      const pageQuery = () => {
+        if (
+          [...url.searchParams.keys()].some(
+            (k) => !["month", "limit", "cursor", "agreementId"].includes(k),
+          ) ||
+          [...url.searchParams.keys()].some(
+            (k) => url.searchParams.getAll(k).length !== 1,
+          )
+        )
+          throw Error("Invalid query");
+        return {
+          month: url.searchParams.get("month") ?? "",
+          limit: Number(url.searchParams.get("limit") ?? 20),
+          ...(url.searchParams.has("cursor")
+            ? { cursor: url.searchParams.get("cursor")! }
+            : {}),
+          ...(url.searchParams.has("agreementId")
+            ? { agreementId: url.searchParams.get("agreementId")! }
+            : {}),
+        };
+      };
+      if (staff && req.method === "GET") {
+        const [, t, r, sourceId] = staff;
+        if (r === "workspace" && !sourceId) {
+          if (url.search) throw Error("Invalid query");
+          return send(res, 200, await backend.workspace(authorization, t));
+        }
+        if (r === "sources")
+          return send(
+            res,
+            200,
+            await backend.staffPage(
+              authorization,
+              t,
+              sourceId ? "history" : "sources",
+              { ...pageQuery(), ...(sourceId ? { sourceId } : {}) },
+            ),
+          );
+      }
       const match =
         /^\/api\/tenants\/([-a-zA-Z0-9_]{1,128})\/(report|projects|allocations)(?:\/([-a-zA-Z0-9_]{1,128}))?(?:\/(publication))?$/.exec(
           url.pathname,
         );
       if (!match) return send(res, 404, { error: "not_found" });
       const [, tenant, resource, id, publication] = match;
+      if (req.method === "GET" && resource === "projects" && !id)
+        return send(
+          res,
+          200,
+          await backend.staffPage(
+            authorization,
+            tenant,
+            "projects",
+            pageQuery(),
+          ),
+        );
       if (req.method === "GET" && resource === "report" && !id) {
         if (
           [...url.searchParams.keys()].some(
@@ -162,13 +219,21 @@ export function apiServer(
         if (
           !["monthly", "fixed"].includes(b.plan.basis) ||
           !Number.isSafeInteger(b.plan.minutes) ||
-          b.plan.minutes < 0
+          b.plan.minutes < 0 ||
+          b.plan.minutes > 60000000
         )
           throw Error("Invalid plan");
         return send(
           res,
           201,
-          await backend.createProject(authorization, tenant, b),
+          await backend.createProject(
+            authorization,
+            tenant,
+            b,
+            typeof req.headers["idempotency-key"] === "string"
+              ? req.headers["idempotency-key"]
+              : "",
+          ),
         );
       }
       if (req.method === "PATCH" && resource === "projects" && id) {
@@ -209,8 +274,17 @@ export function apiServer(
           ? [401, "unauthenticated"]
           : msg === "Forbidden" || msg === "Forbidden fields"
             ? [403, "forbidden"]
-            : msg === "Revision conflict"
-              ? [409, "revision_conflict"]
+            : msg === "Revision conflict" ||
+                msg === "Idempotency conflict" ||
+                msg === "Source conflict"
+              ? [
+                  409,
+                  msg === "Idempotency conflict"
+                    ? "idempotency_conflict"
+                    : msg === "Source conflict"
+                      ? "source_conflict"
+                      : "revision_conflict",
+                ]
               : msg === "Payload too large"
                 ? [413, "payload_too_large"]
                 : msg.startsWith("Invalid") ||

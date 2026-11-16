@@ -45,19 +45,29 @@ test("HTTP internal failure is controlled and subsequent request recovers", asyn
 });
 test("HTTP rate enforcement ignores spoofed forwarding headers", async () => {
   const backend = {} as ReportingBackend;
-  const s = apiServer(backend, { limit: new RequestLimit(1) });
+  const s = apiServer(backend, {
+    allowedOrigin: "https://approved.example",
+    limit: new RequestLimit(1),
+  });
   s.listen(0, "127.0.0.1");
   await once(s, "listening");
-  const url = `http://127.0.0.1:${(s.address() as any).port}/healthz`;
+  const url = `http://127.0.0.1:${(s.address() as any).port}/health`;
   try {
     assert.equal(
       (await fetch(url, { headers: { "x-forwarded-for": "1.1.1.1" } })).status,
       200,
     );
     const denied = await fetch(url, {
-      headers: { "x-forwarded-for": "2.2.2.2" },
+      headers: {
+        "x-forwarded-for": "2.2.2.2",
+        Origin: "https://approved.example",
+      },
     });
     assert.equal(denied.status, 429);
+    assert.equal(
+      denied.headers.get("access-control-allow-origin"),
+      "https://approved.example",
+    );
     assert.deepEqual(await denied.json(), { error: "rate_limited" });
   } finally {
     await new Promise<void>((r) => s.close(() => r()));

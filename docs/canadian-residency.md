@@ -28,3 +28,5 @@ No legal/compliance assurance is claimed. No cloud resources, users, keys, roles
 - [Firestore locations](https://firebase.google.com/docs/firestore/locations) and [regional endpoints](https://firebase.google.com/docs/firestore/regional-endpoints)
 - [Cloud Run locations](https://docs.cloud.google.com/run/docs/locations) and [regional-secret limitation](https://docs.cloud.google.com/run/docs/configuring/services/secrets#regional-secrets)
 - [Logging locations](https://docs.cloud.google.com/logging/docs/region-support), [managed backups](https://firebase.google.com/docs/firestore/backups)
+
+M5 staging clarification: separately approved isolated synthetic project preferred, with Montréal Firestore/Cloud Run/Artifact Registry. The M4 internal-ingress browser assumption is replaced by the edge topology in docs/m5-staging-runbook.md; no infrastructure was provisioned. Existing production-intended database remains unchanged and must not receive staging fixtures.

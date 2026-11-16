@@ -91,3 +91,8 @@ test("live Firebase startup fails closed without explicit configuration", () => 
   );
   assert.throws(() => firebaseRuntime("emulator", "morris-client-dash-zagime"));
 });
+
+test('isolated staging cannot target production or start by merging disabled configuration',()=>{
+  assert.throws(()=>firebaseRuntime('staging','morris-client-dash-zagime'));
+  assert.throws(()=>firebaseRuntime('staging','unapproved-staging'));
+});

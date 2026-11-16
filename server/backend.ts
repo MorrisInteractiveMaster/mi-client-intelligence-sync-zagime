@@ -1,3 +1,4 @@
+import { creationKey } from "./idempotency";
 import { approvedMember, canAccessProject } from "./authorization";
 import { randomUUID } from "node:crypto";
 import {
@@ -104,9 +105,25 @@ export class ReportingBackend {
       DeliveryProject,
       "agreementId" | "departmentId" | "name" | "plan"
     >,
+    idempotencyKey?: string,
   ) {
     safeId(tenantId);
     const who = await this.identity(authorization);
+    const normalized = {
+      agreementId: input.agreementId,
+      departmentId: input.departmentId,
+      name: input.name?.trim(),
+      plan: { basis: input.plan?.basis, minutes: input.plan?.minutes },
+    };
+    const idempotency =
+      idempotencyKey !== undefined
+        ? creationKey(
+            idempotencyKey,
+            who.subject,
+            this.policy.now(),
+            normalized,
+          )
+        : undefined;
     return this.store.transaction(
       tenantId,
       (r) => {
@@ -114,14 +131,16 @@ export class ReportingBackend {
         if (
           m.role === "client" ||
           (m.role !== "administrator" &&
-            !m.agreementIds.includes(input.agreementId))
+            (!m.agreementIds.includes(input.agreementId) ||
+              m.projectIds !== "all-authorized-agreements"))
         )
           throw Error("Forbidden");
         if (
           Object.keys(input).some(
             (k) => !["agreementId", "departmentId", "name", "plan"].includes(k),
           ) ||
-          !input.name ||
+          typeof input.name !== "string" ||
+          !input.name.trim() ||
           input.name.length > 200 ||
           Object.keys(input.plan).some((k) => !["basis", "minutes"].includes(k))
         )
@@ -130,7 +149,7 @@ export class ReportingBackend {
           id: randomUUID(),
           agreementId: input.agreementId,
           departmentId: input.departmentId,
-          name: input.name,
+          name: normalized.name,
           plan: { basis: input.plan.basis, minutes: input.plan.minutes },
           progress: 0,
           published: false,
@@ -146,6 +165,7 @@ export class ReportingBackend {
         subject: who.subject,
         agreementId: input.agreementId,
         departmentId: input.departmentId,
+        ...(idempotency ? { idempotency } : {}),
       },
     );
   }
@@ -171,10 +191,37 @@ export class ReportingBackend {
           !patch ||
           typeof patch !== "object" ||
           Array.isArray(patch) ||
-          Object.keys(patch).some((k) => !["name", "progress"].includes(k))
+          Object.keys(patch).some(
+            (k) =>
+              !["name", "progress", "plan", "workOrderReference"].includes(k),
+          )
         )
           throw Error("Forbidden fields");
-        const change = patch as { name?: string; progress?: number };
+        const change = patch as {
+          name?: string;
+          progress?: number;
+          plan?: DeliveryProject["plan"];
+          workOrderReference?: string;
+        };
+        if (
+          change.plan !== undefined &&
+          (!change.plan ||
+            typeof change.plan !== "object" ||
+            Object.keys(change.plan).some(
+              (k) => !["basis", "minutes"].includes(k),
+            ) ||
+            !["monthly", "fixed"].includes(change.plan.basis) ||
+            !Number.isSafeInteger(change.plan.minutes) ||
+            change.plan.minutes < 0 ||
+            change.plan.minutes > 60000000)
+        )
+          throw Error("Invalid plan");
+        if (
+          change.workOrderReference !== undefined &&
+          (typeof change.workOrderReference !== "string" ||
+            change.workOrderReference.length > 120)
+        )
+          throw Error("Invalid work order reference");
         if (
           change.name !== undefined &&
           (typeof change.name !== "string" ||
@@ -227,6 +274,23 @@ export class ReportingBackend {
       },
       { subject: who.subject, projectId },
     );
+  }
+  async workspace(authorization: string, tenantId: string) {
+    safeId(tenantId);
+    const who = await this.identity(authorization);
+    if (!this.store.workspace) throw Error("Persistent workspace unavailable");
+    return this.store.workspace(tenantId, who.subject);
+  }
+  async staffPage(
+    authorization: string,
+    tenantId: string,
+    resource: "projects" | "sources" | "history",
+    query: import("../src/api/types").PageQuery,
+  ) {
+    safeId(tenantId);
+    const who = await this.identity(authorization);
+    if (!this.store.staffPage) throw Error("Persistent workspace unavailable");
+    return this.store.staffPage(tenantId, who.subject, resource, query);
   }
   async allocateTime(
     authorization: string,

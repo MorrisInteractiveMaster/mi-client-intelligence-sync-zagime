@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { StaffWorkspace } from "./StaffWorkspace";
+import type { Workspace } from "./types";
+import "./secure.css";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Auth } from "firebase/auth";
 import { SecuredApiClient, type Report } from "./client";
@@ -9,6 +12,7 @@ export function SecureDashboard() {
   const [auth, setAuth] = useState<Auth>();
   const [subject, setSubject] = useState<string | null>(null);
   const signedIn = subject !== null;
+  const [workspace, setWorkspace] = useState<Workspace>();
   const [view, setView] = useState<Report>();
   const [error, setError] = useState("");
   const [month, setMonth] = useState("2026-10");
@@ -21,22 +25,42 @@ export function SecureDashboard() {
       const { initializeApp } = await import("firebase/app");
       const sdk = await import("firebase/auth");
       const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
-      if (!apiKey) throw Error("Protected sign-in is not configured.");
+      if (
+        !apiKey ||
+        !import.meta.env.VITE_FIREBASE_PROJECT_ID ||
+        !import.meta.env.VITE_FIREBASE_APP_ID ||
+        !import.meta.env.VITE_FIREBASE_AUTH_DOMAIN
+      )
+        throw Error("Protected sign-in is not configured.");
+      if (import.meta.env.VITE_AUTH_EMULATOR === "true") {
+        if (
+          location.hostname !== "127.0.0.1" ||
+          import.meta.env.VITE_FIREBASE_PROJECT_ID !== "demo-mi-security" ||
+          import.meta.env.VITE_SECURE_API_ORIGIN !== "http://127.0.0.1:8081"
+        )
+          throw Error("Unsafe emulator configuration");
+      }
       const app = initializeApp(
         {
           apiKey,
-          projectId: "morris-client-dash-zagime",
-          appId: "1:892989290947:web:d5189c017d20b65cc0a576",
-          authDomain: "morris-client-dash-zagime.firebaseapp.com",
+          projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+          appId: import.meta.env.VITE_FIREBASE_APP_ID,
+          authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
         },
         "protected-browser",
       );
       const a = sdk.getAuth(app);
+      if (import.meta.env.VITE_AUTH_EMULATOR === "true") {
+        sdk.connectAuthEmulator(a, "http://127.0.0.1:9099", {
+          disableWarnings: true,
+        });
+      }
       await sdk.setPersistence(a, sdk.inMemoryPersistence);
       if (active) {
         setAuth(a);
         unsubscribe = sdk.onAuthStateChanged(a, (u) => {
           setView(undefined);
+          setWorkspace(undefined);
           setSubject(u?.uid ?? null);
         });
       }
@@ -48,15 +72,10 @@ export function SecureDashboard() {
       unsubscribe?.();
     };
   }, []);
-  useEffect(() => {
-    if (!signedIn || !auth) return;
-    const abort = new AbortController();
-    let active = true;
-    setLoading(true);
-    setView(undefined);
-    let client: SecuredApiClient;
+  const client = useMemo(() => {
+    if (!signedIn || !auth) return undefined;
     try {
-      client = new SecuredApiClient(
+      return new SecuredApiClient(
         enabled,
         import.meta.env.VITE_SECURE_API_ORIGIN ?? "",
         async () => {
@@ -66,14 +85,47 @@ export function SecureDashboard() {
         },
       );
     } catch {
-      setLoading(false);
-      setError("Protected workspace is not configured.");
-      return () => abort.abort();
+      return undefined;
     }
+  }, [auth, signedIn, subject]);
+  useEffect(() => {
+    if (!client) return;
+    const abort = new AbortController();
+    let active = true;
+    setLoading(true);
+    client
+      .call<Workspace>(
+        import.meta.env.VITE_SECURE_TENANT_ID ?? "",
+        "workspace",
+        { signal: abort.signal },
+      )
+      .then((w) => {
+        if (active) {
+          setWorkspace(w);
+          setError("");
+        }
+      })
+      .catch((e) => {
+        if (active) setError(e.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+      abort.abort();
+    };
+  }, [client]);
+  useEffect(() => {
+    if (!client || workspace?.role !== "client") return;
+    const abort = new AbortController();
+    let active = true;
+    setLoading(true);
+    setView(undefined);
     client
       .report(import.meta.env.VITE_SECURE_TENANT_ID ?? "", month, abort.signal)
       .then((v) => {
-        if (active && auth.currentUser?.uid === subject) {
+        if (active) {
           setView(v);
           setError("");
         }
@@ -88,7 +140,7 @@ export function SecureDashboard() {
       active = false;
       abort.abort();
     };
-  }, [auth, signedIn, subject, month]);
+  }, [client, workspace, month]);
   if (!enabled)
     return (
       <section>
@@ -111,8 +163,8 @@ export function SecureDashboard() {
     }
   }
   return (
-    <section className="nordic">
-      <h1>Protected client workspace</h1>
+    <section className="nordic secure-shell">
+      <h1>Morris protected workspace</h1>
       <Link to="/">Synthetic demonstration</Link>
       {!signedIn ? (
         <>
@@ -122,6 +174,34 @@ export function SecureDashboard() {
           <button disabled={!auth} onClick={() => void signIn("microsoft")}>
             Sign in with Microsoft
           </button>
+          {import.meta.env.VITE_AUTH_EMULATOR === "true" && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const f = new FormData(e.currentTarget);
+                try {
+                  const sdk = await import("firebase/auth");
+                  await sdk.signInWithEmailAndPassword(
+                    auth!,
+                    String(f.get("email")),
+                    String(f.get("password")),
+                  );
+                } catch {
+                  setError("Synthetic emulator sign-in failed.");
+                }
+              }}
+            >
+              <label>
+                Synthetic email
+                <input name="email" type="email" required />
+              </label>
+              <label>
+                Synthetic password
+                <input name="password" type="password" required />
+              </label>
+              <button disabled={!auth}>Sign in to local emulator</button>
+            </form>
+          )}
           <p>An account must be separately approved for this workspace.</p>
         </>
       ) : (
@@ -132,6 +212,7 @@ export function SecureDashboard() {
                 const sdk = await import("firebase/auth");
                 await sdk.signOut(auth);
                 setView(undefined);
+                setWorkspace(undefined);
               }
             }}
           >
@@ -151,6 +232,20 @@ export function SecureDashboard() {
       )}
       {loading && <p role="status">Loading approved reporting…</p>}
       {error && <p role="alert">{error}</p>}
+      {workspace && workspace.role !== "client" && client && (
+        <StaffWorkspace
+          key={subject}
+          client={client}
+          tenant={import.meta.env.VITE_SECURE_TENANT_ID ?? ""}
+          workspace={workspace}
+          month={month}
+          onDenied={() => {
+            setWorkspace(undefined);
+            setView(undefined);
+            setError("Access changed. Sign out and sign in again.");
+          }}
+        />
+      )}
       {view && (
         <>
           <h2>{view.tenant.name}</h2>

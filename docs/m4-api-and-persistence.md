@@ -1,3 +1,5 @@
+Current M5 handoff: see [M5 administration](m5-administration.md) and [ordered staging runbook](m5-staging-runbook.md). M4 HTTP-only administration, non-idempotent create and internal-ingress browser assumptions below are historical and superseded. No live release occurred.
+
 # M4 API and persistence architecture
 
 ## Verified identity and permission boundaries

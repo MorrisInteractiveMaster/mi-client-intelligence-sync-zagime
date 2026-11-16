@@ -17,3 +17,6 @@ dist/
 .firebase/
 
 dist-server/
+
+# Operator approval artifacts belong outside the repository.
+*.bootstrap-approval.json
