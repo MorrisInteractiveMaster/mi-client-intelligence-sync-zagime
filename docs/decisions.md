@@ -28,3 +28,6 @@ Verified merged M3 main d62dc9d8ac853423cf6d62a6775c68b4f1719a57. Reuse existing
 
 ## M5 — secure administration and staging design
 M4 main 615ae61a510ed496d79364751ef662a081a88187 verified. Staff UI is API-backed; timestamped actor/tenant-bound creation keys prevent duplicates through a 24-hour retry window and 30-day operator-pruned retention. First administrator bootstrap is operator-only, provider-verified and dry-run by default. Prefer a separately approved isolated synthetic staging project. External HTTPS load balancer + Cloud Armor with internal-and-gclb ingress and default URL disabled resolves M4 browser reachability; no live topology or resource change was executed. Production-intended Montréal database is untouched.
+
+## Same-project named staging — supersedes M5 isolated-project restriction
+Owner target: morris-client-dash-zagime / mi-client-staging / northamerica-northeast1. Production (default) is isolated from staging by explicit SDK selection, fail-closed metadata/UID startup checks, separate database memberships and reviewed database-conditional IAM. Existing Authentication is shared; no provider or account changes are implied. Live default-database IAM denial must be independently proved before activation; emulator routing tests are not IAM proof. No cloud change or replacement project is authorized.

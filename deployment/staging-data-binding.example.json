@@ -1,0 +1,9 @@
+{
+  "role": "projects/morris-client-dash-zagime/roles/OWNER_APPROVED_STAGING_DATA_ROLE",
+  "members": ["serviceAccount:OWNER_APPROVED_STAGING_SERVICE_ACCOUNT"],
+  "condition": {
+    "title": "mi_client_staging_only",
+    "description": "Review only. No grant to the production default database.",
+    "expression": "resource.name == \"projects/morris-client-dash-zagime/databases/mi-client-staging\""
+  }
+}

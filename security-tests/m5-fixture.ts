@@ -6,7 +6,11 @@ import { apiServer, RequestLimit } from "../server/http";
 import { demo, allocate, project } from "../src/reporting/model";
 export const PASSWORD = "synthetic-emulator-only-password";
 export async function m5Fixture(port = 0) {
-  const runtime = firebaseRuntime("emulator", "demo-mi-security");
+  const runtime = firebaseRuntime(
+    "emulator",
+    "demo-mi-security",
+    "mi-client-staging",
+  );
   const tenant = "m5-lab",
     root = runtime.db.doc(`tenants/${tenant}`);
   for (const uid of [

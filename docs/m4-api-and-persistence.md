@@ -1,3 +1,5 @@
+Current same-project staging: [named database safeguards](same-project-staging.md) and [operator runbook](operator-setup-runbook.md) supersede prior isolated-project/default-database staging assumptions below. Production (default) remains untouched; all staging operators require mi-client-staging.
+
 Current M5 handoff: see [M5 administration](m5-administration.md) and [ordered staging runbook](m5-staging-runbook.md). M4 HTTP-only administration, non-idempotent create and internal-ingress browser assumptions below are historical and superseded. No live release occurred.
 
 # M4 API and persistence architecture

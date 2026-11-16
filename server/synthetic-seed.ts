@@ -1,3 +1,4 @@
+import { assertOperatorDatabase } from "./database-target";
 import type { Firestore } from "firebase-admin/firestore";
 import { demo } from "../src/reporting/model";
 import { key } from "./firestore-store";
@@ -8,6 +9,7 @@ export async function seedSynthetic(
   tenantId: string,
   apply = false,
 ) {
+  assertOperatorDatabase(db);
   safeId(tenantId);
   if (!tenantId.startsWith("synthetic-"))
     throw Error("Synthetic tenant prefix required");

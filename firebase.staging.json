@@ -1,0 +1,7 @@
+{
+  "firestore": {
+    "database": "mi-client-staging",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}
