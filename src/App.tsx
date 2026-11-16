@@ -1,3 +1,5 @@
+import { ReportingProvider } from "./reporting/ReportingContext";
+import { Reporting } from "./reporting/Reporting";
 import { useEffect, useState } from "react";
 import {
   HashRouter,
@@ -134,9 +136,25 @@ function Shell() {
   }, [location.pathname]);
   if (location.pathname.startsWith("/presentation"))
     return (
-      <Routes>
-        <Route path="/presentation/:chapter?" element={<Presentation />} />
-      </Routes>
+      <>
+        <p
+          role="note"
+          style={{
+            position: "fixed",
+            top: 0,
+            zIndex: 9999,
+            background: "white",
+            color: "#01264f",
+            padding: 8,
+          }}
+        >
+          Legacy demonstration presentation · separate v1 data ·{" "}
+          <Link to="/">M2 dashboard</Link>
+        </p>
+        <Routes>
+          <Route path="/presentation/:chapter?" element={<Presentation />} />
+        </Routes>
+      </>
     );
   if (location.pathname === "/welcome") return <Landing />;
   const label =
@@ -178,10 +196,19 @@ function Shell() {
               key={n.path}
               to={n.path}
               end={n.path === "/"}
-              title={role === "admin" && n.admin ? n.admin : n.label}
+              title={
+                (["/", "/portfolio", "/projects"].includes(n.path)
+                  ? ""
+                  : "Legacy · ") +
+                (role === "admin" && n.admin ? n.admin : n.label)
+              }
             >
               <n.icon size={18} />
-              <span>{role === "admin" && n.admin ? n.admin : n.label}</span>
+              <span>
+                {!["/", "/portfolio", "/projects"].includes(n.path) &&
+                  "Legacy · "}
+                {role === "admin" && n.admin ? n.admin : n.label}
+              </span>
             </NavLink>
           ))}
           {role === "admin" && (
@@ -193,11 +220,11 @@ function Shell() {
               </NavLink>
               <NavLink to="/pipeline" title="Upcoming pipeline">
                 <Compass size={18} />
-                <span>Upcoming pipeline</span>
+                <span>Legacy · Upcoming pipeline</span>
               </NavLink>
               <NavLink to="/content" title="Client content controls">
                 <Eye size={18} />
-                <span>Client content controls</span>
+                <span>Legacy · Client content controls</span>
               </NavLink>
             </>
           )}
@@ -237,7 +264,7 @@ function Shell() {
               onClick={() => navigate("/presentation/1")}
             >
               <PresentationIcon size={17} />
-              <span>Present partnership</span>
+              <span>Legacy presentation</span>
             </button>
             <label className="role-switch">
               <span className="sr-only">Prototype role</span>
@@ -272,12 +299,47 @@ function Shell() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.18 }}
           >
+            {![
+              "/",
+              "/portfolio",
+              "/projects",
+              "/projects/new",
+              "/time",
+            ].includes(location.pathname) && (
+              <p role="note">
+                Legacy demonstration view · separate v1 browser data. Edits here
+                do not change M2 reporting.{" "}
+                <Link to="/">Return to M2 dashboard</Link>
+              </p>
+            )}
             <Routes>
-              <Route path="/" element={<Overview />} />
-              <Route path="/portfolio" element={<Projects portfolioView />} />
-              <Route path="/projects" element={<Projects />} />
+              <Route path="/" element={<Reporting />} />
+              <Route path="/legacy-overview" element={<Overview />} />
+              <Route path="/portfolio" element={<Reporting />} />
+              <Route
+                path="/legacy/portfolio"
+                element={<Projects portfolioView />}
+              />
+              <Route path="/projects" element={<Reporting />} />
+              <Route path="/legacy/projects" element={<Projects />} />
               <Route
                 path="/projects/new"
+                element={
+                  <Internal>
+                    <Reporting />
+                  </Internal>
+                }
+              />
+              <Route
+                path="/legacy/time"
+                element={
+                  <Internal>
+                    <TimeReview />
+                  </Internal>
+                }
+              />
+              <Route
+                path="/legacy/projects/new"
                 element={
                   <Internal>
                     <NewProject />
@@ -305,7 +367,7 @@ function Shell() {
                 path="/time"
                 element={
                   <Internal>
-                    <TimeReview />
+                    <Reporting />
                   </Internal>
                 }
               />
@@ -359,7 +421,9 @@ export default function App() {
   return (
     <HashRouter>
       <PortalProvider>
-        <Shell />
+        <ReportingProvider>
+          <Shell />
+        </ReportingProvider>
       </PortalProvider>
     </HashRouter>
   );

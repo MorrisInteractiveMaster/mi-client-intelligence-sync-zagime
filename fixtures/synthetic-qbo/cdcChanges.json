@@ -1,0 +1,115 @@
+{
+  "CDCResponse": [
+    {
+      "QueryResponse": [
+        {
+          "TimeActivity": [
+            {
+              "Id": "1587",
+              "SyncToken": "1",
+              "domain": "QBO",
+              "sparse": false,
+              "TxnDate": "2026-10-22",
+              "NameOf": "Employee",
+              "EmployeeRef": {
+                "value": "60",
+                "name": "Sophie Martin"
+              },
+              "CustomerRef": {
+                "value": "110",
+                "name": "Zagimē Anishinabēk:WO1372 Community wellness planning:WO1372.1 Prevention service roadmap"
+              },
+              "ItemRef": {
+                "value": "23",
+                "name": "LINK - Prevention"
+              },
+              "BillableStatus": "Billable",
+              "Taxable": false,
+              "Hours": 4,
+              "Minutes": 0,
+              "Description": "Roadmap recommendations drafting (corrected)",
+              "MetaData": {
+                "CreateTime": "2026-10-22T17:30:00-06:00",
+                "LastUpdatedTime": "2026-10-23T09:20:00-06:00"
+              },
+              "_testCase": "Edited after pull 1: 3 h to 4 h"
+            },
+            {
+              "domain": "QBO",
+              "status": "Deleted",
+              "Id": "1589",
+              "MetaData": {
+                "LastUpdatedTime": "2026-10-23T09:35:00-06:00"
+              },
+              "_testCase": "Deleted after pull 1 (2 h entered in error)"
+            },
+            {
+              "Id": "1594",
+              "SyncToken": "0",
+              "domain": "QBO",
+              "sparse": false,
+              "TxnDate": "2026-10-23",
+              "NameOf": "Employee",
+              "EmployeeRef": {
+                "value": "55",
+                "name": "Maya Sinclair"
+              },
+              "CustomerRef": {
+                "value": "102",
+                "name": "Zagimē Anishinabēk:WO1267 Community leadership & advisory"
+              },
+              "ItemRef": {
+                "value": "21",
+                "name": "LINK - Consulting"
+              },
+              "BillableStatus": "Billable",
+              "Taxable": false,
+              "Hours": 1,
+              "Minutes": 30,
+              "Description": "Advisory meeting with leadership",
+              "MetaData": {
+                "CreateTime": "2026-10-23T09:45:00-06:00",
+                "LastUpdatedTime": "2026-10-23T09:45:00-06:00"
+              },
+              "_testCase": "New after pull 1"
+            },
+            {
+              "Id": "1595",
+              "SyncToken": "0",
+              "domain": "QBO",
+              "sparse": false,
+              "TxnDate": "2026-10-23",
+              "NameOf": "Employee",
+              "EmployeeRef": {
+                "value": "60",
+                "name": "Sophie Martin"
+              },
+              "CustomerRef": {
+                "value": "111",
+                "name": "Zagimē Anishinabēk:WO1372 Community wellness planning:WO1372.2 Community engagement sessions"
+              },
+              "ItemRef": {
+                "value": "27",
+                "name": "LINK - Health"
+              },
+              "BillableStatus": "Billable",
+              "Taxable": false,
+              "Hours": 2,
+              "Minutes": 0,
+              "Description": "Community engagement session",
+              "MetaData": {
+                "CreateTime": "2026-10-23T09:45:00-06:00",
+                "LastUpdatedTime": "2026-10-23T09:45:00-06:00"
+              },
+              "_testCase": "New after pull 1"
+            }
+          ],
+          "startPosition": 1,
+          "maxResults": 4
+        }
+      ]
+    }
+  ],
+  "time": "2026-10-23T10:00:00-06:00",
+  "_changedSince": "2026-10-23T09:00:00-06:00"
+}

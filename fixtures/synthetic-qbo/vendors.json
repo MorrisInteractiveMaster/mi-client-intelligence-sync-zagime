@@ -1,0 +1,24 @@
+{
+  "QueryResponse": {
+    "Vendor": [
+      {
+        "Id": "77",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "DisplayName": "Jordan Reyes",
+        "GivenName": "Jordan",
+        "FamilyName": "Reyes",
+        "Vendor1099": true,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-10-01T11:00:00-06:00",
+          "LastUpdatedTime": "2026-10-01T11:00:00-06:00"
+        }
+      }
+    ],
+    "startPosition": 1,
+    "maxResults": 1
+  },
+  "time": "2026-10-23T09:00:00-06:00"
+}

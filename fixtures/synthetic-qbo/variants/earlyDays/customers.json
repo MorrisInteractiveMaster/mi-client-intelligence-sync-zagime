@@ -1,0 +1,78 @@
+{
+  "QueryResponse": {
+    "Customer": [
+      {
+        "Id": "101",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "Zagimē Anishinabēk",
+        "FullyQualifiedName": "Zagimē Anishinabēk",
+        "CompanyName": "Zagimē Anishinabēk",
+        "Job": false,
+        "Level": 0,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-09-01T09:00:00-06:00",
+          "LastUpdatedTime": "2026-09-01T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "102",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1401 Governance review",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1401 Governance review",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "101"
+        },
+        "Level": 1,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-09-01T09:00:00-06:00",
+          "LastUpdatedTime": "2026-09-01T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "103",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1401.1 Board orientation",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1401 Governance review:WO1401.1 Board orientation",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "102"
+        },
+        "Level": 2,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-09-08T09:00:00-06:00",
+          "LastUpdatedTime": "2026-09-08T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "104",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1401.2 Policy inventory",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1401 Governance review:WO1401.2 Policy inventory",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "102"
+        },
+        "Level": 2,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-10-01T09:00:00-06:00",
+          "LastUpdatedTime": "2026-10-01T09:00:00-06:00"
+        }
+      }
+    ],
+    "startPosition": 1,
+    "maxResults": 4
+  },
+  "time": "2026-10-23T09:00:00-06:00"
+}

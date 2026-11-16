@@ -14,3 +14,13 @@ Future adapter classes throw before accessing any service. Existing contracts ar
 ## Performance baseline and gaps
 Existing tests verify one repository load across repeated service reads, isolated clones, queued updates and storage failure recovery. Baseline and imported code have zero Firestore reads/writes and zero external integration calls because no integration exists; this is not a cloud benchmark. No background jobs or infrastructure are introduced.
 Future work needs bounded authorized summaries, paginated lazy details, auth-scoped caches, source revisions/checkpoints, no-op detection, idempotency, conflict resolution, immutable material-change audits and measured cost limits.
+
+## Milestone 2
+The normalized local reporting slice is in src/reporting. ReportingState separates raw source, manual allocations, plans and publication. project(state) produces the shared Nordic/Dots view. See docs/decisions.md for the explicit legacy-save compatibility boundary. No network persistence is implemented.
+
+## M2 architecture-review corrections
+ReportingProvider owns the v2 state and selected month across primary overview, portfolio, Projects, New project and Time Allocation routes. All these controls call the same persistence boundary. Legacy views retain v1 storage behind clearly marked legacy navigation/banners and explicit legacy project/time routes. They are regression demonstrations, not another editor for the M2 workspace.
+
+project(state, {month, agreementId?}) is the internal calculation. It filters raw record dates before consuming latest allocation revisions, scopes portions to agreements and builds agreement-department totals. Fixed-plan projects additionally expose lifetimeSeconds. Caps use only the latest revision for the selected month; project plans are never added to caps. clientProjection is an explicit published-field view that excludes raw identities, correction cases, allocation history and unpublished project details. Dots uses the selected-month client projection.
+
+Unallocated portfolio time includes only selected-month raw remainder. Over-allocated corrected records are held entirely for review. An agreement owns raw remainder only through an explicit umbrella source link; an unmapped remainder stays in the portfolio reconciliation bucket rather than being duplicated across agreements. Cross-agreement portions are counted in their destination agreement.

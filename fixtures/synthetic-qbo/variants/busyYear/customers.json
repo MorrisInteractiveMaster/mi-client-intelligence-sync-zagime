@@ -1,0 +1,240 @@
+{
+  "QueryResponse": {
+    "Customer": [
+      {
+        "Id": "101",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "Zagimē Anishinabēk",
+        "FullyQualifiedName": "Zagimē Anishinabēk",
+        "CompanyName": "Zagimē Anishinabēk",
+        "Job": false,
+        "Level": 0,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2025-11-01T09:00:00-06:00",
+          "LastUpdatedTime": "2025-11-01T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "102",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1180 Community leadership & advisory",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1180 Community leadership & advisory",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "101"
+        },
+        "Level": 1,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2025-11-03T09:00:00-06:00",
+          "LastUpdatedTime": "2025-11-03T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "103",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1180.1 HR policy renewal",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1180 Community leadership & advisory:WO1180.1 HR policy renewal",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "102"
+        },
+        "Level": 2,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2025-11-10T09:00:00-06:00",
+          "LastUpdatedTime": "2025-11-10T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "104",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1180.2 Governance framework",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1180 Community leadership & advisory:WO1180.2 Governance framework",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "102"
+        },
+        "Level": 2,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-01-05T09:00:00-06:00",
+          "LastUpdatedTime": "2026-01-05T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "105",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1180.3 Leadership capacity building",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1180 Community leadership & advisory:WO1180.3 Leadership capacity building",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "102"
+        },
+        "Level": 2,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-03-02T09:00:00-06:00",
+          "LastUpdatedTime": "2026-03-02T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "106",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1192 Financial resilience",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1192 Financial resilience",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "101"
+        },
+        "Level": 1,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2025-11-03T09:00:00-06:00",
+          "LastUpdatedTime": "2025-11-03T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "107",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1192.1 Budget planning & reporting",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1192 Financial resilience:WO1192.1 Budget planning & reporting",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "106"
+        },
+        "Level": 2,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-01-05T09:00:00-06:00",
+          "LastUpdatedTime": "2026-01-05T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "108",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1192.2 Finance team development",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1192 Financial resilience:WO1192.2 Finance team development",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "106"
+        },
+        "Level": 2,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-06T09:00:00-06:00",
+          "LastUpdatedTime": "2026-04-06T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "109",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1215 Community-led emergency preparedness and response planning",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1215 Community-led emergency preparedness and response planning",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "101"
+        },
+        "Level": 1,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-02-02T09:00:00-06:00",
+          "LastUpdatedTime": "2026-02-02T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "110",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1215.1 Prevention service roadmap",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1215 Community-led emergency preparedness and response planning:WO1215.1 Prevention service roadmap",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "109"
+        },
+        "Level": 2,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-06T09:00:00-06:00",
+          "LastUpdatedTime": "2026-04-06T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "111",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1215.2 Community engagement sessions",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1215 Community-led emergency preparedness and response planning:WO1215.2 Community engagement sessions",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "109"
+        },
+        "Level": 2,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-05-04T09:00:00-06:00",
+          "LastUpdatedTime": "2026-05-04T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "112",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1240 Education & training partnership",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1240 Education & training partnership",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "101"
+        },
+        "Level": 1,
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-01-12T09:00:00-06:00",
+          "LastUpdatedTime": "2026-01-12T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "113",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "WO1198 Proposal development sprint",
+        "FullyQualifiedName": "Zagimē Anishinabēk:WO1198 Proposal development sprint",
+        "Job": true,
+        "BillWithParent": true,
+        "ParentRef": {
+          "value": "101"
+        },
+        "Level": 1,
+        "Active": false,
+        "MetaData": {
+          "CreateTime": "2025-11-03T09:00:00-06:00",
+          "LastUpdatedTime": "2025-11-03T09:00:00-06:00"
+        }
+      }
+    ],
+    "startPosition": 1,
+    "maxResults": 13
+  },
+  "time": "2026-10-23T09:00:00-06:00"
+}
