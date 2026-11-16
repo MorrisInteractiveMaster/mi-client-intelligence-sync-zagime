@@ -10,8 +10,9 @@
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test:security": "node scripts/run-security-emulator.cjs",
-    "build:server": "esbuild server/start.ts --bundle --platform=node --packages=external --format=esm --outfile=dist-server/start.mjs",
-    "start:server": "node dist-server/start.mjs"
+    "build:server": "esbuild server/start.ts --bundle --platform=node --packages=external --format=esm --outfile=dist-server/start.mjs && esbuild server/operator.ts --bundle --platform=node --packages=external --format=esm --outfile=dist-server/operator.mjs",
+    "start:server": "node dist-server/start.mjs",
+    "operator": "node dist-server/operator.mjs"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",

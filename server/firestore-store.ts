@@ -1,3 +1,5 @@
+import { Timestamp } from "firebase-admin/firestore";
+import { readWorkspace, readStaffPage } from "./staff-read";
 import { createHash } from "node:crypto";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import {
@@ -42,7 +44,7 @@ const bounded = async (tx: Transaction, q: FirebaseFirestore.Query) => {
 /** All histories are separate documents. Generic mutations load only targeted metadata, never source records or growing history. */
 export class FirestoreTenantStore implements TenantStore {
   constructor(readonly db: Firestore) {}
-  private async base(tx: Transaction, tenantId: string, subject: string) {
+  async base(tx: Transaction, tenantId: string, subject: string) {
     safeId(tenantId);
     const root = this.db.doc(`tenants/${tenantId}`);
     const [tenant, membership] = await tx.getAll(
@@ -72,6 +74,28 @@ export class FirestoreTenantStore implements TenantStore {
     return this.db.runTransaction(
       async (tx) => {
         const { root, record } = await this.base(tx, tenantId, plan.subject);
+        const member = approvedMember(record, tenantId, plan.subject);
+        const idem = plan.idempotency;
+        const idemRef = idem
+          ? root.collection("idempotency").doc(idem.id)
+          : undefined;
+        if (!plan.projectId && !idem)
+          throw Error("Invalid missing idempotency key");
+        if (idemRef) {
+          if (
+            member.role === "client" ||
+            (member.role !== "administrator" &&
+              (member.projectIds !== "all-authorized-agreements" ||
+                !member.agreementIds.includes(plan.agreementId!)))
+          )
+            throw Error("Forbidden");
+          const prior = await tx.get(idemRef);
+          if (prior.exists) {
+            if (prior.data()!.payloadHash !== idem!.payloadHash)
+              throw Error("Idempotency conflict");
+            return prior.data()!.result as T;
+          }
+        }
         let target: DeliveryProject | undefined;
         if (plan.projectId) {
           safeId(plan.projectId);
@@ -154,6 +178,15 @@ export class FirestoreTenantStore implements TenantStore {
             { merge: true },
           );
         }
+        if (idemRef)
+          tx.create(idemRef, {
+            payloadHash: idem!.payloadHash,
+            result,
+            actor: plan.subject,
+            operation: "create-project",
+            createdAt: Timestamp.fromMillis(idem!.now),
+            expiresAt: Timestamp.fromMillis(idem!.now + 30 * 86400000),
+          });
         const audit = record.audits[0];
         tx.create(root.collection("audits").doc(audit.id), audit);
         tx.update(root, { revision: record.revision });
@@ -161,6 +194,17 @@ export class FirestoreTenantStore implements TenantStore {
       },
       { maxAttempts: 3 },
     );
+  }
+  async workspace(tenantId: string, subject: string) {
+    return readWorkspace(this, tenantId, subject);
+  }
+  async staffPage(
+    tenantId: string,
+    subject: string,
+    resource: "projects" | "sources" | "history",
+    query: import("../src/api/types").PageQuery,
+  ) {
+    return readStaffPage(this, tenantId, subject, resource, query);
   }
   async readPublished(
     tenantId: string,
@@ -343,7 +387,14 @@ export class FirestoreTenantStore implements TenantStore {
         };
         if (m.role !== "administrator" && !headDoc.exists)
           throw Error("Forbidden");
+        if (
+          head.sourceRevision !== undefined &&
+          head.sourceRevision !== raw.revision
+        )
+          throw Error("Source conflict");
         const previous = head.appliedPortions ?? head.portions;
+        if (m.role !== "administrator" && !previous.length)
+          throw Error("Forbidden");
         if (previous.length > 10) throw Error("Reporting capacity exceeded");
         const ids = [
           ...new Set<string>(
@@ -355,9 +406,30 @@ export class FirestoreTenantStore implements TenantStore {
               ...ids.map((id) => root.collection("projects").doc(id)),
             )
           : [];
+        if (!Array.isArray(head.portions) || head.portions.length > 10)
+          throw Error("Reporting capacity exceeded");
+        const extraIntended = [
+          ...new Set<string>(head.portions.map((p: any) => p.projectId)),
+        ].filter((id) => !ids.includes(id));
+        if (m.role !== "administrator" && extraIntended.length) {
+          const intended = await tx.getAll(
+            ...extraIntended.map((id) =>
+              root.collection("projects").doc(safeId(id)),
+            ),
+          );
+          if (
+            intended.some(
+              (d) => !d.exists || !canAccessProject(m, d.data() as any),
+            )
+          )
+            throw Error("Forbidden");
+        }
         if (ps.some((d) => !d.exists || !canAccessProject(m, d.data() as any)))
           throw Error("Forbidden");
-        if (JSON.stringify(head.portions) === JSON.stringify(portions))
+        if (
+          JSON.stringify(head.portions) === JSON.stringify(portions) &&
+          JSON.stringify(previous) === JSON.stringify(portions)
+        )
           return { revision: record.revision, changed: false };
         const month = raw.date.slice(0, 7);
         const views = ids.length
@@ -377,9 +449,20 @@ export class FirestoreTenantStore implements TenantStore {
           root
             .collection("allocationRevisions")
             .doc(key(sourceId, String(revision))),
-          { sourceId, revision, portions, at: new Date(now).toISOString() },
+          {
+            sourceId,
+            revision,
+            portions,
+            actor: subject,
+            at: new Date(now).toISOString(),
+          },
         );
-        tx.set(headRef, { revision, portions, appliedPortions: portions });
+        tx.set(headRef, {
+          revision,
+          portions,
+          appliedPortions: portions,
+          sourceRevision: raw.revision,
+        });
         ids.forEach((id, i) => {
           if (!views[i].exists) throw Error("Invalid reporting summary");
           const delta =

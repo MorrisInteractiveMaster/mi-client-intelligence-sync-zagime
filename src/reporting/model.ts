@@ -34,6 +34,7 @@ export interface DeliveryProject {
   progress: number;
   published: boolean;
   internalNotes: string;
+  workOrderReference?: string;
   trainingSessions: { id: string; date: string; minutes: number }[];
 }
 export interface SourceLink {

@@ -1,3 +1,4 @@
+# Historical M4 internal-only template; browser staging must use reviewed cloud-run-staging.yaml topology.
 # Review-only manifest. DO NOT apply/deploy during M4.
 # gcloud run services replace deployment/cloud-run.yaml --region=northamerica-northeast1
 # requires separate owner approval and an approved regional image digest.

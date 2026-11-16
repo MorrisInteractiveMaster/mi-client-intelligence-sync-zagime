@@ -1,0 +1,22 @@
+{
+  "syntheticOnly": true,
+  "viewports": [
+    1440,
+    1366,
+    768,
+    390
+  ],
+  "overflow": false,
+  "adminCreateEditPublish": true,
+  "createResponseLostThenRetried": true,
+  "sameIdempotencyKey": true,
+  "duplicateProjects": 0,
+  "allocationAndHistory": true,
+  "cosmeticTabReads": 0,
+  "editorPublicationControls": false,
+  "membershipRevocationClearsStaff": true,
+  "clientInternalRequests": 0,
+  "disabledDefaultProtectedRequests": 0,
+  "syntheticDemoPreserved": true,
+  "pageErrors": []
+}

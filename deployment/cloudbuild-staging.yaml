@@ -1,0 +1,8 @@
+# REVIEW ONLY. Builds an API image, does not deploy. _IMAGE must be an approved regional staging tag.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: [build, -f, deployment/Dockerfile, -t, '${_IMAGE}', .]
+images: ['${_IMAGE}']
+substitutions:
+  _IMAGE: OWNER_APPROVED_REGIONAL_IMAGE_TAG
+timeout: 900s

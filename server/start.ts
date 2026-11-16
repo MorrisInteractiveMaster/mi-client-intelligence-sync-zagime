@@ -4,12 +4,16 @@ import { ReportingBackend } from "./backend";
 import { apiServer } from "./http";
 // Invoked explicitly; importing backend modules never connects to Firebase.
 const mode = process.env.BACKEND_MODE;
-if (mode !== "emulator" && mode !== "production")
+if (mode !== "emulator" && mode !== "production" && mode !== "staging")
   throw Error(
     "Set BACKEND_MODE explicitly; live access is disabled by default",
   );
 const projectId =
-  mode === "emulator" ? "demo-mi-security" : "morris-client-dash-zagime";
+  mode === "emulator"
+    ? "demo-mi-security"
+    : mode === "staging"
+      ? (process.env.STAGING_FIREBASE_PROJECT_ID ?? "")
+      : "morris-client-dash-zagime";
 const runtime = firebaseRuntime(mode, projectId);
 const backend = new ReportingBackend(
   new FirestoreTenantStore(runtime.db),

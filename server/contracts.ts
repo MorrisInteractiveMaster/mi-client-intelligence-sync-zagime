@@ -94,8 +94,19 @@ export interface TransactionPlan {
   projectId?: string;
   agreementId?: string;
   departmentId?: string;
+  idempotency?: { id: string; payloadHash: string; now: number };
 }
 export interface TenantStore {
+  workspace?(
+    tenantId: string,
+    subject: string,
+  ): Promise<import("../src/api/types").Workspace>;
+  staffPage?(
+    tenantId: string,
+    subject: string,
+    resource: "projects" | "sources" | "history",
+    query: import("../src/api/types").PageQuery,
+  ): Promise<import("../src/api/types").StaffPage>;
   allocateReporting?(
     tenantId: string,
     subject: string,

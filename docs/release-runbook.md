@@ -27,3 +27,5 @@ M2 PR #2 is merged. M3 uses a new draft branch from main 745df43b97750d3c30678e3
 
 ## M4 current release boundary
 PR #3 is merged. M4 starts a new branch/PR from d62dc9d8ac853423cf6d62a6775c68b4f1719a57. Read docs/operator-setup-runbook.md (current M4 instructions) rather than executing historical M3 creation commands. The existing Montréal database must be reused. No deployment, users, IAM, secrets, logs/backups, billing or live QuickBooks changes are authorized in this milestone. Owner must verify the actual deployed deny-all rules release before future live startup and explicitly approve provider privacy, identities/IAM and synthetic staging. CI builds server and frontend and runs both emulators; no deploy stage.
+
+M5 current handoff: docs/m5-staging-runbook.md separates immediate read-only checks, manual owner configuration, resource/deployment approval, emulator testing, remote staging smoke checks and blocked production. Merging never activates a live endpoint.

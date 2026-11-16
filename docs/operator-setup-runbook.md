@@ -1,3 +1,5 @@
+Current M5 handoff: see [M5 administration](m5-administration.md) and [ordered staging runbook](m5-staging-runbook.md). M4 HTTP-only administration, non-idempotent create and internal-ingress browser assumptions below are historical and superseded. No live release occurred.
+
 # M4 ordered owner runbook — NOT EXECUTED
 
 Target project **morris-client-dash-zagime**. Existing database **(default), Standard Native, northamerica-northeast1**. No database/project creation belongs in this runbook. Every live-changing action below is **REQUIRES OWNER APPROVAL**. A code merge does not approve deployment, credentials or live data.

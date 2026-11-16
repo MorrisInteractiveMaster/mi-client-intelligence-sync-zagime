@@ -42,3 +42,6 @@ See docs/security-and-access.md, docs/canadian-residency.md, docs/operator-setup
 ## M4 secure integration
 The existing Montréal Firestore database is reused by prepared server code; no live access occurred. Firebase Admin signature/revocation verification, transactional persistence and scoped API are implemented. Run npm run build:server and npm run test:security in addition to the existing checks (Node 24/Java 21+). Live startup is disabled. Optional /#/secure is unavailable unless explicitly enabled and owner-configured; the synthetic dashboard remains unchanged.
 See docs/m4-api-and-persistence.md, docs/firebase-setup.md and docs/operator-setup-runbook.md for actual capabilities, pilot limits, approval gates and how future QuickBooks credentials will be handled.
+
+## M5 secure Morris administration
+Protected staff workflows now use the authenticated API: assigned project pages, private project creation, editing, split allocations/history and administrator publication. Client reporting remains read-only; synthetic demo stays separate. See [M5 architecture](docs/m5-administration.md) and [operator staging runbook](docs/m5-staging-runbook.md). All live activation remains disabled. Staging is designed for a separately approved isolated project; no resource was created.

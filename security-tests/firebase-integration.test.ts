@@ -191,6 +191,7 @@ async function request(
     method,
     headers: {
       Authorization: `Bearer ${tokens[who] ?? who}`,
+      ...(method === "POST" ? { "Idempotency-Key": `${Date.now()}-${crypto.randomUUID()}` } : {}),
       ...(body === undefined ? {} : { "content-type": "application/json" }),
       ...extra,
     },
