@@ -1,0 +1,105 @@
+{
+  "QueryResponse": {
+    "Employee": [
+      {
+        "Id": "55",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "Maya Sinclair",
+        "GivenName": "Maya",
+        "FamilyName": "Sinclair",
+        "Active": true,
+        "PrimaryEmailAddr": {
+          "Address": "maya.sinclair@example.com"
+        },
+        "MetaData": {
+          "CreateTime": "2025-11-01T09:00:00-06:00",
+          "LastUpdatedTime": "2025-11-01T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "56",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "Daniel Cardinal",
+        "GivenName": "Daniel",
+        "FamilyName": "Cardinal",
+        "Active": true,
+        "PrimaryEmailAddr": {
+          "Address": "daniel.cardinal@example.com"
+        },
+        "MetaData": {
+          "CreateTime": "2025-11-01T09:00:00-06:00",
+          "LastUpdatedTime": "2025-11-01T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "57",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "Elena Brooks",
+        "GivenName": "Elena",
+        "FamilyName": "Brooks",
+        "Active": true,
+        "PrimaryEmailAddr": {
+          "Address": "elena.brooks@example.com"
+        },
+        "MetaData": {
+          "CreateTime": "2025-11-01T09:00:00-06:00",
+          "LastUpdatedTime": "2025-11-01T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "58",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "Noah Bennett",
+        "GivenName": "Noah",
+        "FamilyName": "Bennett",
+        "Active": true,
+        "PrimaryEmailAddr": {
+          "Address": "noah.bennett@example.com"
+        },
+        "MetaData": {
+          "CreateTime": "2025-11-01T09:00:00-06:00",
+          "LastUpdatedTime": "2025-11-01T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "59",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "Avery Thomas",
+        "GivenName": "Avery",
+        "FamilyName": "Thomas",
+        "Active": true,
+        "PrimaryEmailAddr": {
+          "Address": "avery.thomas@example.com"
+        },
+        "MetaData": {
+          "CreateTime": "2025-11-01T09:00:00-06:00",
+          "LastUpdatedTime": "2025-11-01T09:00:00-06:00"
+        }
+      },
+      {
+        "Id": "60",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "DisplayName": "Sophie Martin",
+        "GivenName": "Sophie",
+        "FamilyName": "Martin",
+        "Active": true,
+        "PrimaryEmailAddr": {
+          "Address": "sophie.martin@example.com"
+        },
+        "MetaData": {
+          "CreateTime": "2025-11-01T09:00:00-06:00",
+          "LastUpdatedTime": "2025-11-01T09:00:00-06:00"
+        }
+      }
+    ],
+    "startPosition": 1,
+    "maxResults": 6
+  },
+  "time": "2026-10-23T09:00:00-06:00"
+}

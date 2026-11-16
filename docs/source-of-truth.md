@@ -12,3 +12,5 @@
 No production audit exists yet. Existing project fields combine local work-order labels with future external metadata; their mock semantics must be reconciled with verified API contracts before connecting any source.
 External merge allowlists preserve manual metadata, narratives and time allocations. Project attachment retains internal IDs. Do not match principally on titles/names; use explicit stable external-ID mappings.
 No live approval status is verified. Current approved/unapproved time flags are synthetic examples.
+
+M2: raw source duration/description/reference are immutable in reporting edits. Each allocation revision is append-only; active portions cannot exceed source seconds. Source corrections preserve history and flag conflicts. Monthly agreement cap revisions and department budgets are separate from fixed/monthly project plans.

@@ -1,0 +1,163 @@
+{
+  "QueryResponse": {
+    "Item": [
+      {
+        "Id": "20",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "Name": "Learning Services",
+        "FullyQualifiedName": "Learning Services",
+        "Type": "Service",
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-28T10:15:00-06:00",
+          "LastUpdatedTime": "2026-04-28T10:15:00-06:00"
+        }
+      },
+      {
+        "Id": "21",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "Name": "LINK - Consulting",
+        "FullyQualifiedName": "LINK - Consulting",
+        "Type": "Service",
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-28T10:15:00-06:00",
+          "LastUpdatedTime": "2026-04-28T10:15:00-06:00"
+        }
+      },
+      {
+        "Id": "22",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "Name": "LINK - Governance & Strategy",
+        "FullyQualifiedName": "LINK - Governance & Strategy",
+        "Type": "Service",
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-28T10:15:00-06:00",
+          "LastUpdatedTime": "2026-04-28T10:15:00-06:00"
+        }
+      },
+      {
+        "Id": "23",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "Name": "LINK - Prevention",
+        "FullyQualifiedName": "LINK - Prevention",
+        "Type": "Service",
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-28T10:15:00-06:00",
+          "LastUpdatedTime": "2026-04-28T10:15:00-06:00"
+        }
+      },
+      {
+        "Id": "24",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "Name": "LINK - HR Services",
+        "FullyQualifiedName": "LINK - HR Services",
+        "Type": "Service",
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-28T10:15:00-06:00",
+          "LastUpdatedTime": "2026-04-28T10:15:00-06:00"
+        }
+      },
+      {
+        "Id": "25",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "Name": "LINK - Financial Services",
+        "FullyQualifiedName": "LINK - Financial Services",
+        "Type": "Service",
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-28T10:15:00-06:00",
+          "LastUpdatedTime": "2026-04-28T10:15:00-06:00"
+        }
+      },
+      {
+        "Id": "26",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "Name": "LINK - Proposals & Applications",
+        "FullyQualifiedName": "LINK - Proposals & Applications",
+        "Type": "Service",
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-28T10:15:00-06:00",
+          "LastUpdatedTime": "2026-04-28T10:15:00-06:00"
+        }
+      },
+      {
+        "Id": "27",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "Name": "LINK - Health",
+        "FullyQualifiedName": "LINK - Health",
+        "Type": "Service",
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-28T10:15:00-06:00",
+          "LastUpdatedTime": "2026-04-28T10:15:00-06:00"
+        }
+      },
+      {
+        "Id": "28",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "Name": "Public Courses (Conferences & Workshops)",
+        "FullyQualifiedName": "Public Courses (Conferences & Workshops)",
+        "Type": "Service",
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-28T10:15:00-06:00",
+          "LastUpdatedTime": "2026-04-28T10:15:00-06:00"
+        }
+      },
+      {
+        "Id": "29",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "Name": "Career Transformation",
+        "FullyQualifiedName": "Career Transformation",
+        "Type": "Service",
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-28T10:15:00-06:00",
+          "LastUpdatedTime": "2026-04-28T10:15:00-06:00"
+        }
+      },
+      {
+        "Id": "40",
+        "SyncToken": "0",
+        "domain": "QBO",
+        "sparse": false,
+        "Name": "Internal (non-billable)",
+        "FullyQualifiedName": "Internal (non-billable)",
+        "Type": "Service",
+        "Active": true,
+        "MetaData": {
+          "CreateTime": "2026-04-28T10:15:00-06:00",
+          "LastUpdatedTime": "2026-04-28T10:15:00-06:00"
+        }
+      }
+    ],
+    "startPosition": 1,
+    "maxResults": 11
+  },
+  "time": "2026-10-23T09:00:00-06:00"
+}

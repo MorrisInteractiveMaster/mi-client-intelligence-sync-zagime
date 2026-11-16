@@ -14,3 +14,6 @@ Future adapter classes throw before accessing any service. Existing contracts ar
 ## Performance baseline and gaps
 Existing tests verify one repository load across repeated service reads, isolated clones, queued updates and storage failure recovery. Baseline and imported code have zero Firestore reads/writes and zero external integration calls because no integration exists; this is not a cloud benchmark. No background jobs or infrastructure are introduced.
 Future work needs bounded authorized summaries, paginated lazy details, auth-scoped caches, source revisions/checkpoints, no-op detection, idempotency, conflict resolution, immutable material-change audits and measured cost limits.
+
+## Milestone 2
+The normalized local reporting slice is in src/reporting. ReportingState separates raw source, manual allocations, plans and publication. project(state) produces the shared Nordic/Dots view. See docs/decisions.md for the explicit legacy-save compatibility boundary. No network persistence is implemented.

@@ -1,3 +1,4 @@
+import { Reporting } from "./reporting/Reporting";
 import { useEffect, useState } from "react";
 import {
   HashRouter,
@@ -273,7 +274,7 @@ function Shell() {
             transition={{ duration: 0.18 }}
           >
             <Routes>
-              <Route path="/" element={<Overview />} />
+              <Route path="/" element={<Reporting />} /><Route path="/legacy-overview" element={<Overview />} />
               <Route path="/portfolio" element={<Projects portfolioView />} />
               <Route path="/projects" element={<Projects />} />
               <Route
