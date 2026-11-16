@@ -69,6 +69,57 @@ test("complete direct policy declarations never become operational IAM proof or 
   assert.deepEqual(r.violations, []);
   assert.ok(!JSON.stringify(r).includes("NOT_GRANTED")); // No fake effective-permission matrix.
 });
+test("owner's exact live condition and supported whitespace/quotes match only the review-required profile", () => {
+  for (const expression of [
+    'resource.name=="projects/morris-client-dash-zagime/databases/mi-client-staging"',
+    CONDITION,
+    "resource.name=='projects/morris-client-dash-zagime/databases/mi-client-staging'",
+    " \tresource.name\t==\n'projects/morris-client-dash-zagime/databases/mi-client-staging'\r\n",
+    'resource.name =="projects/morris-client-dash-zagime/databases/mi-client-staging"',
+    'resource.name== "projects/morris-client-dash-zagime/databases/mi-client-staging"',
+  ]) {
+    const f = fixture();
+    f.policies[0].policy.bindings[0].condition.expression = expression;
+    const r = assess(f);
+    assert.equal(r.status, "PROFILE_MATCH_REQUIRES_REVIEW", expression);
+    assert.deepEqual(r.findings, []);
+    assert.deepEqual(r.violations, []);
+    assert.equal(r.activationAuthorized, false);
+    assert.match(r.stagingCreateUpdate, /policy declarations only/);
+  }
+});
+test("condition whitespace support cannot accept broader, compound, alternate or unsafe expressions", () => {
+  const path = "projects/morris-client-dash-zagime/databases/mi-client-staging";
+  for (const expression of [
+    CONDITION + " || true", CONDITION + " && true", "true || " + CONDITION,
+    "(" + CONDITION + ")", "!" + CONDITION,
+    `resource.name.startsWith("${path}")`,
+    `resource.name=="${path}/documents"`,
+    `resource.name=="${path}-other"`,
+    'resource.name=="projects/morris-client-dash-zagime/databases/(default)"',
+    'resource.name=="projects/other-project/databases/mi-client-staging"',
+    `resource.name=="${path} "`, `resource.name==" ${path}"`,
+    `resource.name=="${path}'`, `resource.name=="${path}""`,
+    `resource.name==r"${path}"`, `resource.name=="""${path}"""`,
+    `resource.name=="${path.replace("staging", "\\u0073taging")}"`,
+    `resource.name=="${path}" // comment`, `resource.name=="${path}"; true`,
+    `resource.name= ="${path}"`, `resource.name==="${path}"`,
+    `resource . name=="${path}"`, "", null, 42,
+  ]) {
+    const f = fixture();
+    f.policies[0].policy.bindings[0].condition.expression = expression;
+    const r = assess(f);
+    assert.equal(r.status, "INCONCLUSIVE", String(expression));
+    assert.ok(r.findings.some((x: any) => x.code === "UNSUPPORTED_CONDITION"));
+    assert.equal(r.activationAuthorized, false);
+  }
+  const f = fixture();
+  f.policies[0].policy.bindings[0].condition.expression = `resource.name=="${path}"`;
+  f.roles["projects/morris-client-dash-zagime/roles/stagingData"].includedPermissions.push("datastore.entities.delete");
+  const r = assess(f);
+  assert.equal(r.status, "VIOLATION");
+  assert.equal(r.activationAuthorized, false);
+});
 test("owner-observed INVALID_ARGUMENT/INVALID_RESOURCE_NAME and unsupported APIs are inconclusive, never denial", () => {
   for (const [message, code] of [
     [

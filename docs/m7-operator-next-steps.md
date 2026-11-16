@@ -69,6 +69,8 @@ Separate project-scoped Firebase Auth permission:
 
 Require no API-runtime delete, Auth create/update/delete, import/export/bulk delete, database administration, IAM administration, Owner/Editor/admin roles, public access or Token Creator/impersonation privileges. Other read-only Auth roles may still exceed the approved minimum; review their actual includedPermissions rather than approving the name. Do not add a role to make a missing permission disappear. Compare project policy with every folder/organization policy; inspect service-account policy and inherited impersonation/delegation routes. The removed temporary Token Creator binding stays removed.
 
+The checker accepts optional spaces, tabs and line breaks between equality tokens and matched single or double quotes around the exact literal. The owner's `resource.name=="projects/morris-client-dash-zagime/databases/mi-client-staging"` therefore matches the same review-required profile as the spaced example. It does not normalize the literal, evaluate CEL, accept prefixes/alternate databases or permit additional Boolean operators, comments or escaped literals. A profile match still means activationAuthorized=false and exit 2, never effective IAM authorization.
+
 For unresolved memberships/indirect routes, an already authorized organization reviewer can optionally use [Cloud Asset IAM analysis](https://docs.cloud.google.com/sdk/gcloud/reference/asset/analyze-iam-policy), without submitting a guessed Firestore resource:
 
 ~~~bash

@@ -17,6 +17,15 @@ const DATA = [
 const AUTH = "firebaseauth.users.get";
 const CONDITION =
   'resource.name == "projects/' + PROJECT + '/databases/mi-client-staging"';
+function isExactStagingCondition(expression) {
+  if (typeof expression !== "string") return false;
+  // Recognize only this complete equality grammar, never rewrite/evaluate CEL.
+  // Whitespace is permitted between tokens, never inside the literal or identifier.
+  const match = expression.match(
+    /^[ \t\r\n]*resource\.name[ \t\r\n]*==[ \t\r\n]*(["'])([^"'\\\r\n]*)\1[ \t\r\n]*$/,
+  );
+  return !!match && match[2] === "projects/" + PROJECT + "/databases/mi-client-staging";
+}
 function classifyFailure(message = "") {
   if (/INVALID_RESOURCE_NAME|INVALID_ARGUMENT/i.test(message))
     return "UNSUPPORTED_RESOURCE";
@@ -150,9 +159,7 @@ function assess(snapshot) {
         unknown("CONDITION_NOT_VISIBLE", b.role);
         continue;
       }
-      const expr = b.condition?.expression?.trim();
-      const exact =
-        expr === CONDITION || expr === CONDITION.replaceAll('"', "'");
+      const exact = isExactStagingCondition(b.condition?.expression);
       if (b.condition && !exact) {
         unknown("UNSUPPORTED_CONDITION", b.role);
         continue;

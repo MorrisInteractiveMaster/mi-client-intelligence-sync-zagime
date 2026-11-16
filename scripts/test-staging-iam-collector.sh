@@ -17,7 +17,7 @@ case "$*" in
    disabled) echo 'SERVICE_DISABLED: API not enabled' >&2; exit 1 ;;
    denied) echo 'PERMISSION_DENIED: getIamPolicy permission missing' >&2; exit 1 ;;
   esac
-  echo '{"version":3,"bindings":[{"role":"projects/morris-client-dash-zagime/roles/data","members":["serviceAccount:mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com"],"condition":{"expression":"resource.name == \"projects/morris-client-dash-zagime/databases/mi-client-staging\""}},{"role":"projects/morris-client-dash-zagime/roles/auth","members":["serviceAccount:mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com"]}]}' ;;
+  echo '{"version":3,"bindings":[{"role":"projects/morris-client-dash-zagime/roles/data","members":["serviceAccount:mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com"],"condition":{"expression":"resource.name==\"projects/morris-client-dash-zagime/databases/mi-client-staging\""}},{"role":"projects/morris-client-dash-zagime/roles/auth","members":["serviceAccount:mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com"]}]}' ;;
  'organizations get-iam-policy '*) echo '{"bindings":[]}' ;;
  'iam service-accounts describe '*) echo '{"email":"mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com","disabled":false}' ;;
  'iam service-accounts get-iam-policy '*) echo '{"bindings":[]}' ;;
