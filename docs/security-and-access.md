@@ -1,6 +1,6 @@
 # Backend data and authorization contracts
 
-M3 is an offline foundation. No production identity verifier or Firestore persistence adapter is installed. server/ is outside the browser bundle; tsconfig.server.json checks it separately. MemoryTenantStore is a transactional test double, not a production database adapter. It serializes mutations and rejects failed callbacks atomically. Future Firestore adapter must use real transactions with membership and expected-revision reads inside the transaction; it must not store an unbounded whole-tenant snapshot document.
+M4 supersedes the offline-only M3 status: FirebaseIdentityVerifier, FirestoreTenantStore and the secured HTTP interface are implemented and emulator-tested, with live activation disabled. See docs/m4-api-and-persistence.md for the current architecture. server/ is outside the browser bundle; tsconfig.server.json checks it separately. MemoryTenantStore is a transactional test double, not a production database adapter. It serializes mutations and rejects failed callbacks atomically. The implemented Firestore adapter uses real transactions; any subsequent adapter must also use transactions with membership and expected-revision reads inside the transaction; it must not store an unbounded whole-tenant snapshot document.
 
 ## Tenant document layout
 
@@ -24,7 +24,7 @@ Raw and mapping IDs must be namespaced by product + source company + external ID
 
 ## Authorization boundary
 
-ReportingBackend accepts a bearer header only. A real verifier must validate signature using trusted configured keys/algorithm, issuer, audience, expiry, disabled/revoked account state and session policy; never decode a token without verification. denyAllVerifier is the only shipped default. Unit tests inject synthetic verified identities; that does not demonstrate real JWT/OIDC/Firebase validation.
+ReportingBackend accepts a bearer header only. A real verifier must validate signature using trusted configured keys/algorithm, issuer, audience, expiry, disabled/revoked account state and session policy; never decode a token without verification. denyAllVerifier remains the offline default; explicit guarded M4 startup selects the Firebase Admin verifier. Retained M3 unit tests inject synthetic identities; M4 additionally tests Admin SDK RSA verification offline and Auth/Firestore emulators. No live provider configuration is verified.
 
 Every method then checks current enabled/approved membership and tenant identity inside the transaction. Administrators can perform tenant-scoped privileged actions; editors can modify name/progress only within assigned agreement/project scopes. Clients read published information within their scope and cannot write. Membership/role changes and raw sync are intentionally not public commands. Client-supplied role/actor/tenant/source/publication fields are rejected by edit allowlists. Reads recheck access rather than trusting a previous session role. A future HTTP layer must extract the Authorization header, bound body sizes, implement CSRF/origin/session/rate controls as appropriate, and map failures to non-sensitive errors.
 

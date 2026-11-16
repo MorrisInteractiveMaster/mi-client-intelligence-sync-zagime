@@ -6,20 +6,24 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
-    "test": "node --import tsx --test src/domain/*.test.ts src/services/*.test.ts src/reporting/*.test.ts server/*.test.ts",
+    "test": "node --import tsx --test src/domain/*.test.ts src/services/*.test.ts src/reporting/*.test.ts server/*.test.ts src/api/*.test.ts",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
-    "test:security": "node scripts/run-security-emulator.cjs"
+    "test:security": "node scripts/run-security-emulator.cjs",
+    "build:server": "esbuild server/start.ts --bundle --platform=node --packages=external --format=esm --outfile=dist-server/start.mjs",
+    "start:server": "node dist-server/start.mjs"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",
     "@fontsource-variable/manrope": "^5.3.0",
+    "firebase-admin": "14.5.1",
     "framer-motion": "^12.16.0",
     "lucide-react": "^0.511.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.2",
-    "recharts": "^2.15.3"
+    "recharts": "^2.15.3",
+    "firebase": "13.3.0"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "6.0.0",
@@ -27,7 +31,7 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.5.0",
-    "firebase": "13.3.0",
+    "esbuild": "0.28.2",
     "firebase-tools": "15.36.0",
     "tsx": "^4.19.4",
     "typescript": "~5.8.3",

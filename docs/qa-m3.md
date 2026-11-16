@@ -1,3 +1,5 @@
+> Historical M3 evidence. Its blanket Canada-only blocker assumptions and NOT CREATED infrastructure snapshot are superseded by the M4 owner decision and existing database. See docs/canadian-residency.md and docs/firebase-setup.md for current status.
+
 # M3 verification and limitations
 
 Base main: 745df43b97750d3c30678e31b7ab5145e81ce03f, PR #2 verified merged. New branch codex/m3-security-canadian-foundation. No app behavior or v1/v2 data is modified.

@@ -1,110 +1,67 @@
-# Owner setup runbook — M3 (NOT EXECUTED)
+# M4 ordered owner runbook — NOT EXECUTED
 
-Target project: **morris-client-dash-zagime**. Every cloud-changing step below is **REQUIRES OWNER APPROVAL**, even if an earlier step was approved. This document is an operator plan, not permission to execute it. No command below was run in this milestone. Do not paste the entire document into a terminal. Confirm each gated operation and its rollback before proceeding. No secrets, tokens or real records belong in terminal history, GitHub or screenshots.
+Target project **morris-client-dash-zagime**. Existing database **(default), Standard Native, northamerica-northeast1**. No database/project creation belongs in this runbook. Every live-changing action below is **REQUIRES OWNER APPROVAL**. A code merge does not approve deployment, credentials or live data.
 
-## 1. Inventory and stop/go decision (read-only)
+## 1. Confirm existing configuration (read-only)
 
-Use a reviewed local Google Cloud CLI installation and an authorized operator account. Do not use globally hosted Cloud Shell for sensitive credential handling under the Canada-only policy.
+Use the authorized local Console/CLI account. Verify exact project, billing owner, database ID/edition/mode/location, realtime setting and disabled scheduled backups. Read-only examples:
 
 ```powershell
-gcloud auth list
 gcloud projects describe morris-client-dash-zagime
 gcloud billing projects describe morris-client-dash-zagime
-gcloud services list --enabled --project=morris-client-dash-zagime
-gcloud firestore databases list --project=morris-client-dash-zagime
-gcloud logging buckets list --project=morris-client-dash-zagime --location=global
-gcloud logging buckets list --project=morris-client-dash-zagime --location=northamerica-northeast1
-```
-
-Console: project selector → exact ID → Billing → verify owning organization/account, operator authority, Blaze linkage and budgets. Firebase → Project settings → Your apps: compare Web App ID 1:892989290947:web:d5189c017d20b65cc0a576 and auth domain morris-client-dash-zagime.firebaseapp.com to the user-reported values; no API key is required here. Check Firestore/Storage inventory rather than assuming previous snapshots are current. The latest user handoff supersedes the earlier report of an existing empty database: **Firestore and Storage are reported NOT CREATED**. Stop if inventory differs; do not replace an existing database.
-
-Review docs/canadian-residency.md. Verify Montréal support in linked service docs. Inspect Logging → Logs Storage and all sinks, including organization/folder sinks and immutable _Required buckets. Existing global mandatory logs are a gate: routing new application logs does not relocate them. Resolve Firebase Auth's US processing and any global identity/control-plane exceptions with the owner before data-bearing infrastructure. If the current project cannot meet policy, stop for owner decision; do not create a replacement project automatically.
-
-**REQUIRES OWNER APPROVAL:** billing linkage/budget changes, organization restrictions, regional endpoint policies, log-location defaults, sink modifications, or a replacement project. Record separate reviewed recovery procedures; no changes in this runbook's read-only stage.
-
-## 2. Enable approved prerequisite APIs
-
-**REQUIRES OWNER APPROVAL — API activation changes cloud configuration.** Only after residency/ownership gates are resolved:
-
-```powershell
-gcloud services enable firestore.googleapis.com run.googleapis.com secretmanager.googleapis.com logging.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com --project=morris-client-dash-zagime
-```
-
-Enable Scheduler or additional identity/database APIs only in a later approved task that needs them; this foundation has no schedules or functions. Verify the enabled list afterward. Rollback must check all existing dependants before disabling APIs; never disable a shared production API as a generic undo.
-
-## 3. Create a locked Canadian Firestore Standard database
-
-**REQUIRES OWNER APPROVAL — paid resource creation, irreversible location decision and security configuration.** Recheck database absence. Console → Firestore → Create database → **Standard**, Native mode, database (default), **regional northamerica-northeast1 (Montréal)**. In Firebase's database wizard choose **production/locked mode**, never test mode. Review final location before confirming. No Cloud Storage bucket is needed; do not create one.
-
-Equivalent reviewed CLI creation (owner selects one method, not both):
-
-```powershell
-gcloud firestore databases create --project=morris-client-dash-zagime --database='(default)' --location=northamerica-northeast1 --type=firestore-native --edition=standard --delete-protection
-```
-
-Read-only verification:
-
-```powershell
 gcloud firestore databases describe --project=morris-client-dash-zagime --database='(default)'
+gcloud services list --enabled --project=morris-client-dash-zagime
 ```
 
-Before any data, verify browser rules are deny-all. **REQUIRES OWNER APPROVAL — publishing reviewed rules** (a future separate operation, not performed here):
+Firestore Console → Rules: inspect the published release/version timestamp and ruleset content, not an unsaved editor buffer. Verify deny-all for all browser paths against this repository. Record the release identifier/timestamp and operator review. If access or deployed state cannot be verified, stop live activation; do not infer deployment from the local file or Console editor alone. No live read/write is performed by M4. FIRESTORE_RULES_VERIFIED is a future operator attestation after this check. Do not publish rules or create a replacement database as a shortcut.
 
-```powershell
-npx firebase deploy --only firestore:rules --project=morris-client-dash-zagime
-```
+Latest owner decision supersedes M3: no blanket Canada-only rule for every identity/log/service process. Montréal project/reporting storage is preferred; contractual requirements still apply. Global Logging buckets are not automatic blockers. Scheduled backups remain disabled until separately approved. See docs/canadian-residency.md.
 
-This uses the reviewed firestore.rules file; keep all indexes and browser access closed until separately reviewed. Test denial without writing real records. Prefer a separately approved Canadian synthetic staging environment for first remote tests; do not point the current demo/emulator tests at this project.
+## 2. Approve identity processing, then configure providers
 
-Rollback: no automatic deletion. A created database with deletion protection requires another reviewed owner action to delete; preserve configuration and audit evidence. No data migration/restore is authorized by creation approval.
+**REQUIRES OWNER APPROVAL — privacy/provider configuration and user changes.** Approve Firebase Authentication US identity processing, provider data sharing, retention, sign-in domains and intended users first. Firebase Console → Authentication → Sign-in method: enable Google with owner-selected support email; enable Microsoft with owner-registered application settings. Microsoft client secret is entered only in the approved provider configuration UI, never React/Git/Firestore. Authorize exact frontend domains and provider callback URI shown by Firebase; do not guess or register URLs in this milestone. Disable anonymous/unused providers. No provider was enabled by M4.
 
-## 4. Backend service identities
+A provider account is only identity. New/unknown UIDs have no membership and cannot access tenant data. Approve initial Morris administrator through a separately reviewed server-side bootstrap, then editors/client users with explicit agreement/project scopes, approved=true and enabled=true. No self-assigned custom-claim role, no public membership route. Any creating/disabling/revoking Auth users or writing memberships is **REQUIRES OWNER APPROVAL**. Use synthetic test accounts first. Document revocation and account disable procedures; backend checks current account/membership on subsequent requests.
 
-**REQUIRES OWNER APPROVAL — IAM/service-account changes.** Console → IAM & Admin → Service Accounts → create separate candidates mi-api, mi-qbo-sync, mi-time-sync (only when that worker is approved), and a separately governed release identity. Do not create downloadable JSON keys. Future Cloud Run services use attached service identity/ADC; future CI uses reviewed Workload Identity Federation, never a long-lived service-account key in GitHub.
+## 3. Approve backend identity/IAM and API prerequisites
 
-Candidate API data role: roles/datastore.user scoped to the intended project/database where supported. It is a privileged database role and is not tenant/project-record authorization; application membership/scope checks remain mandatory. Never grant Owner/Editor to runtime accounts. Sync identities must be isolated from interactive API credentials and reviewed for their precise read/write permissions. Firestore IAM cannot be assumed to enforce per-collection ownership, so worker code must preserve Morris-owned fields independently.
+**REQUIRES OWNER APPROVAL — IAM/API activation/configuration.** Inventory before enabling anything. The backend uses an attached dedicated service account and ADC, no downloaded JSON keys. Candidate data permission: roles/datastore.user on the intended database/project; token revocation/account checks need narrowly reviewed Firebase Auth user-read permission (e.g. custom role containing firebaseauth.users.get). Neither role grants tenant/project authorization; backend checks remain mandatory. Do not grant broad Owner/Editor or user-management roles to runtime simply to read accounts. Release identity and runtime identity remain separate.
 
-Console IAM → grant only reviewed minimal roles; Secret Manager → each specific regional secret → Permissions → runtime accessor only for approved identities. Token rotation identity additionally needs approved secret-version-add permission; it must not broadly administer all secrets. No IAM changes are implemented here.
+If prerequisites are missing, owner reviews activation of Firestore, Firebase Auth/Identity Toolkit, Cloud Run, Artifact Registry, Cloud Build and logging APIs as appropriate. No activation, billing or IAM command was executed here. Existing global log buckets require policy/redaction/access review rather than replacement. No backup/log changes are authorized by this step.
 
-## 5. Regional secrets, logging and recovery controls
+## 4. Validate local synthetic behavior before remote staging
 
-**REQUIRES OWNER APPROVAL — regional secret creation.** Console → Secret Manager → **Regional secrets** → Create regional secret → Region **northamerica-northeast1**, use separate IDs per source/company and purpose. Do not use the default global secret page or automatic replication. Never upload a real value during this milestone; a later approved task can create a synthetic staging secret first.
-
-For a future authorized CLI operator, use a separate local gcloud configuration/profile to avoid changing other projects' defaults. Configure the regional endpoint, then create an empty container:
-
-```powershell
-gcloud config set api_endpoint_overrides/secretmanager https://secretmanager.northamerica-northeast1.rep.googleapis.com/
-gcloud secrets create qbo-oauth-staging --location=northamerica-northeast1 --project=morris-client-dash-zagime
-```
-
-Both the profile/endpoint setup and cloud mutation require the operator's reviewed scope; the create is **REQUIRES OWNER APPROVAL**. No real secret-version upload command is provided. Never pass secret values on the command line. Future credential handling must use the approved secret UI or secure input, without screen recording/logging. Resource name: projects/morris-client-dash-zagime/locations/northamerica-northeast1/secrets/SECRET_ID/versions/VERSION. Cloud Run does not support built-in regional-secret injection: the future application must call the regional Secret Manager API from Montréal using ADC, and prove that path in synthetic staging. Do not silently substitute a global secret.
-
-**REQUIRES OWNER APPROVAL — log configuration:** Logging → Logs Storage → Create bucket in Montréal with approved retention; review routing and organization defaults before workloads. Do not enable global analytics/Gemini log-query storage or payload logging. Verify _Required/_Default location gates from step 1 remain satisfied.
-
-**REQUIRES OWNER APPROVAL — backup/PITR/retention:** Firestore database → Disaster recovery/Backups → select approved daily schedule/retention; enable PITR if approved. Verify backup location equals Montréal. Approve RPO/RTO and deletion/legal-hold policy before schedules or TTL. Do not export to Storage or another region. Test restore later into a separately approved locked Canadian destination; database deletion does not remove backups. These are design gates, not active settings.
-
-## 6. Approve authentication and delivery architecture
-
-**REQUIRES OWNER APPROVAL — identity provider, accounts, MFA, session storage, ingress, TLS, hosting and backend deployment.** Do not enable Firebase Authentication under strict Canada-only identity processing. Select a Canadian-hosted OIDC alternative (including Canadian identity DB/backups/logs) or obtain a separately documented policy exception before using any global identity provider. Define trusted issuer, audience, key rotation, signature algorithms, short session lifetimes, revocation, CSRF/origin controls and account approval. Never make prototype roles into credentials.
-
-Future persistence: keep deny-all browser Firestore rules and put a Canadian authenticated backend between the browser and Firestore. No production HTTP handler, real token verifier or database adapter exists yet. Approve and implement these as a separate continuation with synthetic staging tests. Only then bootstrap the first approved tenant administrator through a controlled server-side procedure; no self-assignment of roles.
-
-Proposed delivery: static React build served from Canadian runtime with approved regional/private ingress, no global CDN by assumption. Keep future backend/jobs/artifact storage/build processing Canadian. Region selection alone does not certify internet transit, control-plane metadata or Intuit processing. No Cloud Run deployment command or OAuth callback registration is authorized here.
-
-## 7. Test safely, then obtain release review
-
-Local commands (no cloud approval needed; uses demo-mi-security only):
+Node 24 and Java 21+ on PATH:
 
 ```powershell
 npm ci --ignore-scripts
 npm test
 npm run typecheck
 npm run build
+npm run build:server
 npm run test:security
 ```
 
-Node 24 and Java 21+ must be on PATH. The security runner uses loopback Firestore, a demo project and synthetic records; it never uses the real project ID. Do not run firebase login/use/deploy or copy real configuration into these tests. Unit tests simulate verified identities and independently test backend permissions; they do not verify a real provider's JWT signatures.
+The security runner starts Auth 127.0.0.1:9099 and Firestore 127.0.0.1:8080 for **demo-mi-security only**, strips credential environment variables, seeds synthetic data and closes emulators. Never substitute the real project ID or production configuration in tests. No login or live deploy command is part of the scripts. Emulator tokens are unsigned; separate offline RSA tests exercise production verifier signature rejection. Emulator identity success does not prove provider/privacy setup.
 
-**REQUIRES OWNER APPROVAL — future staging provisioning/data writes, sandbox OAuth or remote smoke tests.** Define exact synthetic test accounts, private-default project, allowed editor changes, publication read, client denial, cross-tenant/disabled denial, audit and no-op expectations. Inspect regional logs and secret access without values. Do not connect Morris's live QuickBooks company. Pass architecture/security review before any production release, scheduled job, real data or traffic change. A merged code PR alone is not deployment authority.
+**REQUIRES OWNER APPROVAL — any remote synthetic staging users, data writes or release.** Do not seed the existing database automatically. Before remote testing, agree on a distinct synthetic tenant namespace, bounded fixture, cleanup plan and preexisting-data protection; use a separately approved staging project/database if the owner chooses, never create one implicitly. First verify deployed deny-all browser rules. Test unknown/disabled/revoked users, wrong tenant/scope, client writes, unpublished visibility, admin publication, allocation raw integrity, audits, concurrency, transport recovery and no-op writes with synthetic data. Do not begin with Morris production records.
 
-Sources and capability gates: docs/canadian-residency.md; [Firestore create command](https://docs.cloud.google.com/sdk/gcloud/reference/firestore/databases/create); [regional secret creation](https://docs.cloud.google.com/secret-manager/regional-secrets/create-regional-secret).
+## 5. Review Cloud Run package and enable only after gates
+
+**REQUIRES OWNER APPROVAL — image build/storage, service deployment, service-account attachment, ingress/origin, traffic and cost.** deployment/Dockerfile builds the server; deployment/cloud-run.yaml is a review template with deliberately non-runnable image/account/origin placeholders and ENABLE_LIVE_FIREBASE=false. Do not apply it in M4.
+
+After separate approval, build in approved infrastructure, record exact image digest, attach approved runtime identity, target region **northamerica-northeast1**, review internal ingress and approved browser delivery path, initial maximum one instance, request concurrency and rate limits. No API needs unauthenticated tenant-data access; health is non-sensitive. Choose an authenticated ingress/session topology that actually supports the approved browser; an internal-only template will not be reachable from arbitrary public browsers. Resolve this before activation, not by blindly opening traffic.
+
+Live startup requires BACKEND_MODE=production, ENABLE_LIVE_FIREBASE=true, FIRESTORE_RULES_VERIFIED=true, correct ALLOWED_ORIGIN, and no emulator/key-file variables. These flags are disabled/unset now. The rules flag is an attestation, not automated verification. Readiness requires startup; backend errors fail closed without exposing details. Approve rollback to exact prior image/config and zero-traffic synthetic smoke testing before traffic migration.
+
+## 6. Configure optional protected React workspace
+
+**REQUIRES OWNER APPROVAL — hosted build/configuration/traffic changes.** Default demo remains. Owner supplies verified Firebase public web API key (not guessed), approved API HTTPS origin and tenant ID, then sets VITE_ENABLE_SECURE_API=true in the approved frontend build. Optional /#/secure uses in-memory Firebase Auth and server publication reads. Public web configuration is not authorization. Never put Intuit client secrets/refresh tokens, service-account keys or server credentials in VITE_* variables. Do not mix the demonstration role switch with authenticated roles. Protected write administration is currently available via the authenticated HTTP contract, not the synthetic editor.
+
+Sign-in providers/callbacks/domains, privacy approval, deploy path, ingress and scoped memberships must all be tested using synthetic users before any real client use.
+
+## 7. QuickBooks credentials and backup decisions come later
+
+No live QuickBooks integration exists or runs. **REQUIRES OWNER APPROVAL — future OAuth registration, company authorization, secret creation/version upload and sync activation.** Credentials will be entered only in regional Secret Manager under the approved Canadian project/location during a later connector task, after sandbox endpoint/scopes/callback/rotation design review. They are not entered into Firebase Auth, Firestore, GitHub, the React app or this API. Cloud Run built-in secret mounts do not support regional secrets; future connector uses regional Secret Manager API with attached identity. No credential is required to run local emulators.
+
+**REQUIRES OWNER APPROVAL — backup/PITR, retention, logs, billing or schedules.** Existing scheduled backups stay disabled. Owner selects RPO/RTO, retention, access and deletion/legal-hold policy, then separately approves and tests any changes. No cloud resource, user, secret, IAM, billing, logs, backups, synchronization or deployment operation was executed in M4.

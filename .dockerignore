@@ -1,0 +1,10 @@
+.git
+node_modules
+dist
+dist-server
+.env*
+.firebase
+*-debug.log*
+docs
+fixtures
+security-tests

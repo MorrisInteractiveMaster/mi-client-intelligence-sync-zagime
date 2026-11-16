@@ -27,3 +27,6 @@ Unallocated portfolio time includes only selected-month raw remainder. Over-allo
 
 ## M3 offline backend foundation
 server/ provides provider-neutral verified identity/membership contracts, scoped backend create/edit/publication/read commands and a synthetic transactional memory store. It reuses the M2 model and publication calculation. Server paths are outside the app bundle; no frontend Firebase initialization. New persistent projects are unpublished regardless of demo defaults. Deny-all browser rules leave backend permissions independently mandatory. A production database adapter and real signature-verifying identity provider are future reviewed work. See docs/security-and-access.md and docs/canadian-residency.md.
+
+## M4 current runtime path
+M4 supersedes the M3 future-adapter status: server/firebase.ts verifies Firebase signatures/revocation; server/firestore-store.ts performs targeted transactions and bounded publication reads; server/http.ts exposes authenticated/validated/limited endpoints. Source records and allocation revisions live in separate documents; reporting allocation writes update summaries and audit atomically. Browser Firestore remains denied. Existing synthetic UI remains default; optional /#/secure is disabled until approved configuration. Details: docs/m4-api-and-persistence.md.

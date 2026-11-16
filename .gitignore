@@ -15,3 +15,5 @@ dist/
 *-debug.log
 *-debug.log.*
 .firebase/
+
+dist-server/

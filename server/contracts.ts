@@ -89,10 +89,34 @@ export interface TenantRecord {
   checkpoints: SyncCheckpoint[];
 }
 /** Production adapter must implement a serializable transaction with membership reads inside it. */
+export interface TransactionPlan {
+  subject: string;
+  projectId?: string;
+  agreementId?: string;
+  departmentId?: string;
+}
 export interface TenantStore {
+  allocateReporting?(
+    tenantId: string,
+    subject: string,
+    sourceId: string,
+    expectedRevision: number,
+    portions: import("../src/reporting/model").Allocation[],
+    now: number,
+  ): Promise<{ revision: number; changed: boolean }>;
+  readPublished?(
+    tenantId: string,
+    subject: string,
+    scope: import("../src/reporting/model").ReportingScope,
+  ): Promise<
+    ReturnType<typeof import("../src/reporting/model").clientProjection> & {
+      revision: number;
+    }
+  >;
   transaction<T>(
     tenantId: string,
     work: (record: TenantRecord) => T | Promise<T>,
+    plan?: TransactionPlan,
   ): Promise<T>;
 }
 export interface IdentityPolicy {

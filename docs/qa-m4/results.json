@@ -1,0 +1,19 @@
+{
+  "pmJourney": true,
+  "sharedRouteState": true,
+  "monthFilter": true,
+  "monthSurvivesNavigation": true,
+  "rawUnchanged": true,
+  "partialRemainder": true,
+  "clientFiltering": true,
+  "internalConflictVisible": true,
+  "legacyLabel": true,
+  "dotsControls": true,
+  "widths": [
+    1440,
+    1366,
+    768,
+    390
+  ],
+  "errors": []
+}

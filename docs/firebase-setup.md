@@ -1,17 +1,11 @@
-# Firebase setup status — M3
+# Firebase setup — M4 current handoff
 
-Latest owner handoff, 16 November 2026 (user-confirmed values, not independently verified by live API):
+Owner-confirmed project: morris-client-dash-zagime; web app 1:892989290947:web:d5189c017d20b65cc0a576; auth domain morris-client-dash-zagime.firebaseapp.com.
 
-- Project ID: morris-client-dash-zagime
-- Web App ID: 1:892989290947:web:d5189c017d20b65cc0a576
-- Auth domain: morris-client-dash-zagime.firebaseapp.com
-- Firestore: **NOT CREATED**
-- Cloud Storage: **NOT CREATED**
-- QBO Accounting / QuickBooks Time applications: user reports connected, grants/entitlements unverified
-- Mandatory production residency: Canada
+Existing database: (default), Standard/Native, northamerica-northeast1. Realtime updates enabled; scheduled backups disabled. **Do not create another database or replacement project.** This supersedes M3's NOT CREATED report.
 
-This supersedes the early M1 report of an empty database. No live inventory was performed in M3. The Web App ID/auth domain are documented identifiers, not working frontend configuration. No API key, OAuth secret or credentials are present. Project metadata, billing owner, IAM, enabled APIs, auth settings and actual inventory need authorized operator verification.
+The Console reportedly shows deny-all browser rules. M4 did not inspect/deploy a live release or perform any live access. Owner must verify release ID/timestamp/content before future live access. The backend's live startup requires ENABLE_LIVE_FIREBASE=true and FIRESTORE_RULES_VERIFIED=true plus absence of emulator/key-file environment variables; neither flag is enabled here. A rules-verification flag records operator attestation, not automated proof of the deployed release.
 
-The only runnable configuration is local firebase.json for loopback Firestore emulation with project demo-mi-security. No .firebaserc real-project alias or deployment script is added. Rules deny every browser access, even authenticated admins. CI validates without authentication to Google Cloud and without deploying.
+Firebase Authentication integration is implemented using firebase-admin; actual provider enablement and US identity processing need owner privacy approval. Google/Microsoft are the intended providers. Account identity alone never creates membership or administrative access. Registration/provider login may establish an Auth user but has zero data access until a trusted operator approves a tenant membership. No public membership-management API exists.
 
-Firebase Authentication's documented US-only processing conflicts with strict Canadian identity-data residency. Regional Firestore does not fix that. See [Canadian assessment](canadian-residency.md), [authorization contracts](security-and-access.md) and [ordered owner setup runbook](operator-setup-runbook.md). Every live-changing step is labeled REQUIRES OWNER APPROVAL and none was executed.
+Local test configuration uses only demo-mi-security with Auth 127.0.0.1:9099 and Firestore 127.0.0.1:8080. No real API key or ADC credentials are needed. Auth Emulator tokens are unsigned and must never be accepted in production; runtime guards reject emulator variables in production. See docs/operator-setup-runbook.md for the ordered handoff.

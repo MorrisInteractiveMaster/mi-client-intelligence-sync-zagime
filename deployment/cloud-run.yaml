@@ -1,0 +1,33 @@
+# Review-only manifest. DO NOT apply/deploy during M4.
+# gcloud run services replace deployment/cloud-run.yaml --region=northamerica-northeast1
+# requires separate owner approval and an approved regional image digest.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: mi-client-intelligence-api
+  annotations:
+    run.googleapis.com/ingress: internal
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "1"
+    spec:
+      serviceAccountName: OWNER_APPROVED_SERVICE_ACCOUNT
+      containerConcurrency: 40
+      timeoutSeconds: 30
+      containers:
+        - image: OWNER_APPROVED_NORTHAMERICA_NORTHEAST1_IMAGE_DIGEST
+          ports:
+            - containerPort: 8080
+          env:
+            - name: BACKEND_MODE
+              value: production
+            - name: ENABLE_LIVE_FIREBASE
+              value: "false"
+            - name: ALLOWED_ORIGIN
+              value: OWNER_APPROVED_FRONTEND_ORIGIN
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
