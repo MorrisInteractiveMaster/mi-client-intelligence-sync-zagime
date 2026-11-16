@@ -17,7 +17,7 @@ spec:
         autoscaling.knative.dev/minScale: "0"
         autoscaling.knative.dev/maxScale: "1"
     spec:
-      serviceAccountName: OWNER_APPROVED_STAGING_RUNTIME_IDENTITY
+      serviceAccountName: mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com
       containerConcurrency: 20
       timeoutSeconds: 10
       containers:
@@ -32,7 +32,9 @@ spec:
             - name: FIRESTORE_DATABASE_ID
               value: mi-client-staging
             - name: STAGING_DATABASE_UID
-              value: OWNER_VERIFIED_STAGING_DATABASE_UID
+              value: 6d09ea71-f495-44a5-94a6-732ed1c47d88
+            - name: STAGING_SERVICE_ACCOUNT_EMAIL
+              value: mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com
             - name: STAGING_IAM_VERIFIED
               value: "false"
             - name: ENABLE_SYNTHETIC_STAGING

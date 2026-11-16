@@ -34,3 +34,5 @@ M4 supersedes the M3 future-adapter status: server/firebase.ts verifies Firebase
 M5 extends the same secured API with scoped staff reads and administration, transactional idempotent creates, isolated operator bootstrap and disabled staging preparation. See docs/m5-administration.md for cursor/caching/read-write budgets and docs/m5-staging-runbook.md for the approved-review topology.
 
 Current staging target is a named database in the existing project. See docs/same-project-staging.md: mandatory target/UID verification, ready gate, operator-handle restrictions, shared Auth/database-local membership boundary, read-only IAM verification and no default fallback. Frontend/API/reporting contracts remain M5-compatible.
+
+M7 adds a trusted attached-service-identity metadata check before staging credential acquisition and database verification. The standalone identity-only checker opens no Firestore connection and starts no API. Write-only IAM evidence collection does not repeat completed GET/LIST probes; no cloud action is automated.

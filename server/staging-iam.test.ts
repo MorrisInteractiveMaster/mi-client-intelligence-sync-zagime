@@ -73,6 +73,8 @@ test("reviewed IAM artifacts grant only required runtime operations with exact n
 test("actual-read probe contract uses GET only, non-existent random namespace, no production writes and definite permission-denied", async () => {
   const target = databaseTarget("staging", COMPANY_PROJECT, STAGING_DATABASE, {
     STAGING_FIREBASE_PROJECT_ID: COMPANY_PROJECT,
+    STAGING_SERVICE_ACCOUNT_EMAIL:
+      "mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com",
     STAGING_DATABASE_UID: "11111111-1111-4111-8111-111111111111",
     STAGING_IAM_VERIFIED: "true",
     ENABLE_LIVE_FIREBASE: "true",

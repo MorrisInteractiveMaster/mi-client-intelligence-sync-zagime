@@ -1,3 +1,5 @@
+M7 current handoff: see [accepted owner evidence](m7-cloud-evidence.json), [next steps](m7-operator-next-steps.md) and [synthetic smoke plan](m7-synthetic-smoke-tests.md). The owner reports staging GET 404/LIST 200 and default GET/LIST 403 under the existing staging identity; Token Creator binding removed. Write-permission and actual attached-runtime validation remain pending. Do not recreate resources/repeat grants.
+
 # Secure named staging in the existing Firebase project
 
 Verified starting main: `ad4c2cfddc0d3d879c093885e6d2d910d4baf4a2` (PR #5 merged). Branch: `codex/same-project-named-staging`. This owner-directed change supersedes M5's unconditional same-project staging refusal. It does not approve production access or any cloud mutation.
@@ -11,11 +13,11 @@ Verified starting main: `ad4c2cfddc0d3d879c093885e6d2d910d4baf4a2` (PR #5 merged
 | Tenant records, roles, audits, bootstrap markers, allocation history | Production database only | Named staging database only |
 | Data IAM | Existing policies unchanged | New dedicated identities and database-conditional grants require separate owner approval |
 
-Names/region are owner-provided targets; no live metadata, UID, policies or deployed rules were inspected in this coding task. Staging Standard/Native edition and its actual UUID4 must be verified, never guessed. A missing/mismatched database blocks startup; code never creates one.
+Names/region are owner-provided targets; no live metadata, UID, policies or deployed rules were inspected in this coding task. Owner supplied actual staging UID 6d09ea71-f495-44a5-94a6-732ed1c47d88; metadata/edition checks still run at startup. A missing/mismatched database blocks startup; code never creates one.
 
 ## Fail-closed runtime
 
-`databaseTarget` centralizes mode/project/database validation. Live staging requires matching explicit `STAGING_FIREBASE_PROJECT_ID`, `FIRESTORE_DATABASE_ID=mi-client-staging`, actual `STAGING_DATABASE_UID`, `ENABLE_SYNTHETIC_STAGING=true`, `ENABLE_LIVE_FIREBASE=true`, `FIRESTORE_RULES_VERIFIED=true` and `STAGING_IAM_VERIFIED=true`. All flags remain off/unset in committed examples. Credential key-file/emulator environment variables are refused in live modes. Production rejects named-database settings and leftover staging activation settings; its database remains `(default)`.
+`databaseTarget` centralizes mode/project/database validation. Live staging now also requires STAGING_SERVICE_ACCOUNT_EMAIL and a trusted metadata-server check before acquiring credentials. Live staging requires matching explicit `STAGING_FIREBASE_PROJECT_ID`, `FIRESTORE_DATABASE_ID=mi-client-staging`, actual `STAGING_DATABASE_UID`, `ENABLE_SYNTHETIC_STAGING=true`, `ENABLE_LIVE_FIREBASE=true`, `FIRESTORE_RULES_VERIFIED=true` and `STAGING_IAM_VERIFIED=true`. All flags remain off/unset in committed examples. Credential key-file/emulator environment variables are refused in live modes. Production rejects named-database settings and leftover staging activation settings; its database remains `(default)`.
 
 Staging can use the company project only under these guards. The same explicit named-database requirements also apply if a separately approved alternative project is used later; no project has been invented or provisioned.
 

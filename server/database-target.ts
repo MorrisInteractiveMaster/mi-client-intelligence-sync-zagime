@@ -1,3 +1,4 @@
+import { STAGING_SERVICE_ACCOUNT } from "./attached-identity";
 import type { Firestore } from "firebase-admin/firestore";
 export const COMPANY_PROJECT = "morris-client-dash-zagime";
 export const STAGING_DATABASE = "mi-client-staging";
@@ -9,6 +10,7 @@ export interface DatabaseTarget {
   databaseId: string;
   resource: string;
   uid?: string;
+  serviceAccountEmail?: string;
 }
 export function databaseTarget(
   mode: RuntimeMode,
@@ -45,6 +47,14 @@ export function databaseTarget(
         env.ENABLE_SYNTHETIC_STAGING !== "true" ||
         databaseId !== STAGING_DATABASE ||
         env.STAGING_IAM_VERIFIED !== "true" ||
+        (projectId === COMPANY_PROJECT
+          ? env.STAGING_SERVICE_ACCOUNT_EMAIL !== STAGING_SERVICE_ACCOUNT
+          : !/^[a-z][a-z0-9-]{5,29}@[a-z][a-z0-9-]{5,29}\.iam\.gserviceaccount\.com$/.test(
+              env.STAGING_SERVICE_ACCOUNT_EMAIL ?? "",
+            ) ||
+            !env.STAGING_SERVICE_ACCOUNT_EMAIL!.endsWith(
+              "@" + projectId + ".iam.gserviceaccount.com",
+            )) ||
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
           env.STAGING_DATABASE_UID ?? "",
         )
@@ -57,7 +67,8 @@ export function databaseTarget(
         env.ENABLE_SYNTHETIC_STAGING === "true" ||
         env.STAGING_FIREBASE_PROJECT_ID ||
         env.STAGING_DATABASE_UID ||
-        env.STAGING_IAM_VERIFIED
+        env.STAGING_IAM_VERIFIED ||
+        env.STAGING_SERVICE_ACCOUNT_EMAIL
       )
         throw Error("Unintended production access refused");
       databaseId = "(default)";
@@ -68,7 +79,12 @@ export function databaseTarget(
     projectId,
     databaseId: databaseId!,
     resource: `projects/${projectId}/databases/${databaseId}`,
-    ...(mode === "staging" ? { uid: env.STAGING_DATABASE_UID } : {}),
+    ...(mode === "staging"
+      ? {
+          uid: env.STAGING_DATABASE_UID,
+          serviceAccountEmail: env.STAGING_SERVICE_ACCOUNT_EMAIL,
+        }
+      : {}),
   };
 }
 /** No metadata mismatch, missing database, permission error or timeout can cause fallback. */

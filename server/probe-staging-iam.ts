@@ -36,16 +36,6 @@ if (
 )
   throw Error("Current runtime identity IAM evidence required");
 assertIamEvidence(evidence.checks);
-const who = await fetch(
-  "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
-  {
-    headers: { "Metadata-Flavor": "Google" },
-    signal: AbortSignal.timeout(3000),
-    redirect: "error",
-  },
-);
-if (!who.ok || (await who.text()).trim() !== expectedIdentity)
-  throw Error("Run probe under the approved attached staging service identity");
 const runtime = firebaseRuntime("staging", "morris-client-dash-zagime");
 try {
   await runtime.verify();
