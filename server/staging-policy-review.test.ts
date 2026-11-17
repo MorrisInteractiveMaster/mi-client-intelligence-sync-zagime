@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname, basename } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -61,6 +61,105 @@ function fixture(): any {
     failures: [],
   };
 }
+function liveFixture(): any {
+  const f = fixture();
+  f.project = { projectId: "morris-client-dash-zagime" };
+  f.ancestors = [{ type: "project", id: "morris-client-dash-zagime" }];
+  f.policies = [f.policies[0]];
+  f.policies[0].id = "morris-client-dash-zagime";
+  const data = "projects/morris-client-dash-zagime/roles/miClientStagingData";
+  const auth = "projects/morris-client-dash-zagime/roles/miClientStagingAuthRead";
+  f.policies[0].policy.bindings[0].role = data;
+  f.policies[0].policy.bindings[0].condition.expression =
+    'resource.name=="projects/morris-client-dash-zagime/databases/mi-client-staging"';
+  f.policies[0].policy.bindings[1].role = auth;
+  f.roles = {
+    [data]: { name: data, includedPermissions: [
+      "datastore.databases.get", "datastore.databases.getMetadata",
+      "datastore.entities.create", "datastore.entities.get",
+      "datastore.entities.list", "datastore.entities.update",
+    ] },
+    [auth]: { name: auth, includedPermissions: ["firebaseauth.users.get"] },
+  };
+  f.serviceAccountPolicy = { bindings: [] };
+  return f;
+}
+test("exact owner live project-ID-only ancestry and IAM values match the review-required profile", () => {
+  const r = assess(liveFixture());
+  assert.equal(r.status, "PROFILE_MATCH_REQUIRES_REVIEW");
+  assert.deepEqual(r.findings, []);
+  assert.deepEqual(r.violations, []);
+  assert.equal(r.activationAuthorized, false);
+});
+test("project ID and verified numeric ancestry retain all inherited policy requirements", () => {
+  for (const id of ["morris-client-dash-zagime", "1000", 1000]) {
+    const f = fixture();
+    f.project.projectId = "morris-client-dash-zagime";
+    f.ancestors[0].id = id;
+    f.policies[0].id = String(id);
+    assert.equal(assess(f).status, "PROFILE_MATCH_REQUIRES_REVIEW");
+    for (const ancestorIndex of [1, 2]) {
+      const missing = structuredClone(f);
+      missing.policies.splice(ancestorIndex, 1);
+      const r = assess(missing);
+      assert.equal(r.status, "INCONCLUSIVE");
+      assert.ok(r.findings.some((x: any) => x.code === "MISSING_POLICY"));
+      assert.equal(r.activationAuthorized, false);
+      const broad = structuredClone(f);
+      broad.policies[ancestorIndex].policy.bindings.push({
+        role: "projects/morris-client-dash-zagime/roles/stagingData", members: [member],
+      });
+      const inherited = assess(broad);
+      assert.equal(inherited.status, "VIOLATION");
+      assert.equal(inherited.activationAuthorized, false);
+    }
+  }
+});
+test("foreign, malformed, unsupported, incomplete and duplicate ancestry never silently matches", () => {
+  for (const mutate of [
+    (f: any) => { f.ancestors[0].id = "other-project"; },
+    (f: any) => { f.ancestors[0].id = "9999"; },
+    (f: any) => { f.ancestors[0].id = "1000"; }, // No metadata number to verify.
+    (f: any) => { f.ancestors.push({ type: "billingAccount", id: "2000" }); },
+    (f: any) => { f.ancestors.push({ type: "folder", id: "not-numeric" }); },
+    (f: any) => { f.ancestors.push({ type: "folder", id: "../2000" }); },
+    (f: any) => { f.ancestors.push(null); },
+    (f: any) => { f.ancestors.push(f.ancestors[0]); },
+    (f: any) => { f.project.parent = { type: "folder", id: "2000" }; },
+    (f: any) => { f.project.projectId = "other-project"; },
+    (f: any) => { f.project = {}; },
+  ]) {
+    const f = liveFixture(); mutate(f);
+    const r = assess(f);
+    assert.equal(r.status, "INCONCLUSIVE");
+    assert.ok(r.findings.some((x: any) => x.code === "MISSING_ANCESTRY"));
+    assert.equal(r.activationAuthorized, false);
+  }
+});
+test("ancestry CLI emits exact project-ID and numeric rows, and no partial output for unsupported ancestors", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mi-policy-test-"));
+  try {
+    for (const f of [liveFixture(), fixture()]) {
+      writeFileSync(join(dir, "project.json"), JSON.stringify(f.project));
+      writeFileSync(join(dir, "ancestors.json"), JSON.stringify(f.ancestors));
+      const run = () => spawnSync(process.execPath,
+        ["scripts/staging-iam-review.cjs", "--ancestors", dir], { encoding: "utf8" });
+      const r = run();
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(r.stdout, f.ancestors.map((a: any) => `${a.type} ${a.id}\n`).join(""));
+      f.ancestors.push({ type: "unsupported", id: "3000" });
+      writeFileSync(join(dir, "ancestors.json"), JSON.stringify(f.ancestors));
+      const invalid = run();
+      assert.notEqual(invalid.status, 0);
+      assert.equal(invalid.stdout, "");
+      assert.match(invalid.stderr, /INCONCLUSIVE/);
+    }
+  } finally {
+    assert.equal(dirname(resolve(dir)), resolve(tmpdir()));
+    assert.ok(basename(dir).startsWith("mi-policy-test-"));
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 test("complete direct policy declarations never become operational IAM proof or an activation grant", () => {
   const r = assess(fixture());
   assert.equal(r.status, "PROFILE_MATCH_REQUIRES_REVIEW");

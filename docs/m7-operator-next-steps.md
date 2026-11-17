@@ -1,4 +1,4 @@
-# M7 corrected Cloud Shell security workflow — SAME PR #7
+# M7 corrected Cloud Shell security workflow
 
 The previous named-Firestore Policy Troubleshooter checker is **retired, unsupported/inconclusive for this workflow**. The owner ran its exact resource pattern and Google returned INVALID_ARGUMENT / INVALID_RESOURCE_NAME. A Firestore IAM condition's resource.name value does not establish that Policy Troubleshooter accepts the corresponding full resource name. Do not guess another database path, project number or context argument; do not convert an invalid/unknown result into NOT_GRANTED. The old PowerShell script and old matrix-probe entrypoint now stop without cloud access.
 
@@ -36,6 +36,8 @@ bash scripts/verify-staging-iam.sh
 ~~~
 
 The script reads project metadata/ancestors, every accessible project/folder/organization policy, the existing service account and its impersonation policy, and all referenced role definitions (including custom roles). It uses only documented read commands, no Troubleshooter request and no database read/write endpoint. It stores raw JSON/errors and review.json in a new private temporary directory under umask 077. Protect the directory outside Git; do not paste policies, member identities or credentials into the public PR.
+
+Ancestry accepts the owner's actual `project morris-client-dash-zagime` response, including a project-only hierarchy without an organization. A numeric project ancestor must match projectNumber from project metadata; an arbitrary numeric ID is not accepted. Folder and organization IDs remain numeric and every listed policy is collected. Unknown/mismatched/duplicate ancestors, missing known parents and inaccessible policies remain explicit inconclusive findings. No folder or organization is invented for a project-only response. Re-run the collector into its new private directory rather than mixing stale error files from an earlier failed collection.
 
 **Exit 2 is intentional even on PROFILE_MATCH_REQUIRES_REVIEW.** This is evidence triage, not an effective-permission simulator or activation grant:
 

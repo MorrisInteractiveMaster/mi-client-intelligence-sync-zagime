@@ -39,6 +39,36 @@ function classifyFailure(message = "") {
     return "MISSING_VISIBILITY";
   return "INCONCLUSIVE";
 }
+function numericId(value) {
+  return (typeof value === "string" && /^[1-9][0-9]*$/.test(value)) ||
+    (typeof value === "number" && Number.isSafeInteger(value) && value > 0);
+}
+function validAncestor(a, project) {
+  if (!a || typeof a !== "object") return false;
+  if (a.type === "project")
+    return a.id === PROJECT || (numericId(a.id) && numericId(project?.projectNumber) &&
+      String(a.id) === String(project.projectNumber));
+  return ["folder", "organization"].includes(a.type) && numericId(a.id);
+}
+function ancestryErrors(project, ancestors) {
+  const errors = [];
+  if (!project || (project.projectId !== undefined && project.projectId !== PROJECT) ||
+      (project.projectId !== PROJECT && !numericId(project.projectNumber)))
+    errors.push("Missing or mismatched project metadata");
+  if (!Array.isArray(ancestors) || !ancestors.length)
+    return [...errors, "Complete authoritative ancestry unavailable"];
+  if (ancestors.some((a) => !validAncestor(a, project)))
+    errors.push("Unsupported, malformed or mismatched ancestor");
+  if (ancestors.filter((a) => a?.type === "project").length !== 1)
+    errors.push("Exactly one configured project ancestor required");
+  const keys = ancestors.map((a) => a?.type + "/" + a?.id);
+  if (new Set(keys).size !== keys.length) errors.push("Duplicate ancestor");
+  const parent = project?.parent;
+  if (parent && (!validAncestor(parent, project) || parent.type === "project" ||
+      !ancestors.some((a) => a?.type === parent.type && String(a.id) === String(parent.id))))
+    errors.push("Known parent missing or unsupported");
+  return errors;
+}
 function assess(snapshot) {
   const findings = [],
     violations = [];
@@ -53,45 +83,20 @@ function assess(snapshot) {
     };
   for (const failure of snapshot.failures ?? [])
     unknown(classifyFailure(failure.message), failure.command);
-  if (
-    !snapshot.project?.projectNumber ||
-    !Array.isArray(snapshot.ancestors) ||
-    !snapshot.ancestors.length
-  )
-    unknown(
-      "MISSING_ANCESTRY",
-      "Project number and complete hierarchy required",
-    );
+  for (const error of ancestryErrors(snapshot.project, snapshot.ancestors))
+    unknown("MISSING_ANCESTRY", error);
   const ancestors = Array.isArray(snapshot.ancestors) ? snapshot.ancestors : [];
-  if (
-    !ancestors.some(
-      (a) =>
-        a.type === "project" &&
-        String(a.id) === String(snapshot.project?.projectNumber),
-    )
-  )
-    unknown(
-      "MISSING_ANCESTRY",
-      "Project missing from authoritative ancestor response",
-    );
-  const parent = snapshot.project?.parent;
-  if (
-    parent &&
-    !ancestors.some(
-      (a) => a.type === parent.type && String(a.id) === String(parent.id),
-    )
-  )
-    unknown("MISSING_ANCESTRY", "Known parent absent");
   const policies = Array.isArray(snapshot.policies) ? snapshot.policies : [];
   if (!Array.isArray(snapshot.policies))
     unknown("MISSING_POLICY", "Policy list unavailable");
   for (const a of ancestors)
     if (
+      !validAncestor(a, snapshot.project) ||
       !policies.some(
         (p) => p.type === a.type && String(p.id) === String(a.id) && p.policy,
       )
     )
-      unknown("MISSING_POLICY", a.type + "/" + a.id);
+      unknown("MISSING_POLICY", a?.type + "/" + a?.id);
   if (
     !snapshot.serviceAccountPolicy ||
     Array.isArray(snapshot.serviceAccountPolicy) ||
@@ -238,7 +243,10 @@ function readSnapshot(dir) {
   };
   const project = read("project.json", "projects describe"),
     ancestors = read("ancestors.json", "projects get-ancestors");
-  const policies = (Array.isArray(ancestors) ? ancestors : []).map((a) => ({
+  // Invalid ancestors remain in the snapshot for explicit findings, but never
+  // become filesystem paths or Cloud Shell command arguments.
+  const policies = (Array.isArray(ancestors) ? ancestors : [])
+    .filter((a) => validAncestor(a, project)).map((a) => ({
     type: a.type,
     id: String(a.id),
     policy: read(
@@ -318,14 +326,11 @@ if (require.main === module) {
   const snapshot = readSnapshot(dir);
   if (mode === "--roles") process.stdout.write(roleNames(snapshot).join("\n"));
   else if (mode === "--ancestors") {
-    if (!Array.isArray(snapshot.ancestors))
-      throw Error("INCONCLUSIVE: ancestors unavailable");
+    const errors = ancestryErrors(snapshot.project, snapshot.ancestors);
+    if (errors.length) throw Error("INCONCLUSIVE: " + errors.join("; "));
+    // Validate the entire response before emitting any rows; never partially
+    // collect a hierarchy after an unsupported or foreign ancestor.
     for (const a of snapshot.ancestors) {
-      if (
-        !["project", "folder", "organization"].includes(a.type) ||
-        !/^\d+$/.test(String(a.id))
-      )
-        throw Error("INCONCLUSIVE: invalid ancestor");
       process.stdout.write(a.type + " " + a.id + "\n");
     }
   } else {
