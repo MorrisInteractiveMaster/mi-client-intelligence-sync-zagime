@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve, basename } from "node:path";
 import { once } from "node:events";
-import { apiServer } from "./http";
+import { apiServer, RequestLimit } from "./http";
 import type { ReportingBackend } from "./backend";
 test("same-origin inactive preview serves only frontend files and never invokes authenticated data operations", async () => {
   const dir = await mkdtemp(join(tmpdir(), "mi-m8-static-"));
@@ -20,7 +20,7 @@ test("same-origin inactive preview serves only frontend files and never invokes 
       },
     },
   ) as ReportingBackend;
-  const server = apiServer(backend, { frontend: dir, previewOnly: true });
+  const server = apiServer(backend, { frontend: dir, previewOnly: true, limit: new RequestLimit(3) });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const base = `http://127.0.0.1:${(server.address() as any).port}`;
@@ -44,6 +44,8 @@ test("same-origin inactive preview serves only frontend files and never invokes 
       "inactive-preview",
     );
     assert.equal(accesses, 0);
+    for (let i=0;i<4;i++) assert.equal((await fetch(base+"/")).status,200);
+    assert.equal((await fetch(base+"/api/tenants/synthetic-zagime/workspace")).status,429);
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
     assert.equal(dirname(resolve(dir)), resolve(tmpdir()));

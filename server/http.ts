@@ -82,11 +82,12 @@ export function apiServer(
         res.setHeader("access-control-allow-origin", options.allowedOrigin);
         res.setHeader("vary", "Origin");
       }
-      if (!limit.accept(req.socket.remoteAddress ?? "unknown"))
-        return send(res, 429, { error: "rate_limited" });
       if (req.headers.origin && req.headers.origin !== options.allowedOrigin)
         return send(res, 403, { error: "forbidden" });
       if (options.frontend && await serveFrontend(req, res, options.frontend)) return;
+      // Static assets cannot consume the protected API's budget.
+      if (!limit.accept(req.socket.remoteAddress ?? "unknown"))
+        return send(res, 429, { error: "rate_limited" });
       if (
         (req.url === "/healthz" || req.url === "/health") &&
         req.method === "GET"
