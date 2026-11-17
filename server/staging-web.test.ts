@@ -32,6 +32,8 @@ test("same-origin inactive preview serves only frontend files and never invokes 
       root.headers.get("content-security-policy")!,
       /frame-ancestors 'none'/,
     );
+    assert.match(root.headers.get("content-security-policy")!, /script-src 'self' https:\/\/apis\.google\.com;/);
+    assert.ok(!root.headers.get("content-security-policy")!.includes("unsafe-eval"));
     assert.equal((await fetch(base + "/.env")).status, 503);
     assert.equal(
       (await fetch(base + "/api/tenants/synthetic-zagime/workspace")).status,

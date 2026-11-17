@@ -44,7 +44,7 @@ export async function serveFrontend(
       "referrer-policy": "no-referrer",
       "cross-origin-opener-policy": "same-origin-allow-popups",
       "content-security-policy":
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.firebaseapp.com; frame-src https://*.firebaseapp.com https://login.microsoftonline.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+        "default-src 'self'; script-src 'self' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://apis.google.com https://*.firebaseapp.com; frame-src https://*.firebaseapp.com https://login.microsoftonline.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     });
     res.end(req.method === "HEAD" ? undefined : bytes);
     return true;
