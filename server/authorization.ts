@@ -1,10 +1,14 @@
 import type { Membership, TenantRecord } from "./contracts";
 import type { DeliveryProject } from "../src/reporting/model";
+import { corporateMembership, requestIdentity } from "./request-identity";
 export function approvedMember(
   record: TenantRecord,
   tenantId: string,
   subject: string,
 ): Membership {
+  const staff = corporateMembership(tenantId, subject);
+  if (record.state.tenant.id !== tenantId) throw Error("Forbidden");
+  if (staff) return staff;
   const m = record.memberships.find(
     (m) => m.tenantId === tenantId && m.subject === subject,
   );
@@ -13,6 +17,7 @@ export function approvedMember(
     m?.approved!==true ||
     m.enabled!==true ||
     !["administrator", "editor", "client"].includes(m.role) ||
+    (requestIdentity.getStore()?.identity?.corporatePolicy && m.role !== "client") ||
     !Array.isArray(m.agreementIds) ||
     !(
       m.projectIds === "all-authorized-agreements" ||

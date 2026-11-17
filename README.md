@@ -1,5 +1,7 @@
 # Morris Interactive Client Intelligence Platform
 
+M8: [controlled staging launch](docs/m8-launch.md) and [next read-only QuickBooks handoff](docs/m8-quickbooks-handoff.md). Verified Morris Microsoft work accounts receive application editing/publishing through server-verified corporate policy, without staff enrollment. Clients remain scoped read-only. Existing styling is retained without claiming design approval. No deployment or activation occurs on merge; the default demo stays synthetic and protected mode stays disabled outside an explicitly built staging image.
+
 Company-owned repository baseline for the Zagimē Anishinabēk synthetic prototype. The default application remains synthetic; M4 adds a disabled-by-default secured API and protected workspace without deploying or connecting live data.
 
 ## Local verification

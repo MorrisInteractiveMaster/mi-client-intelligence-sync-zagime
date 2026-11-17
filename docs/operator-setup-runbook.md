@@ -1,4 +1,6 @@
-# Current M7 corrected security handoff — existing PR #7
+# Current staging operator handoff
+
+M8 launch: follow [ordered commands and independent approval gates](m8-launch.md). This supersedes individual staff onboarding and the previous internal-ingress-only template. No launch has occurred. M7 isolation review below remains mandatory; a direct policy match is not activation authority.
 
 The old named-Firestore Policy Troubleshooter workflow has a confirmed live INVALID_ARGUMENT / INVALID_RESOURCE_NAME failure. It is retired, not patched with a guessed resource string. Unknown/unsupported/incomplete results never prove denial.
 

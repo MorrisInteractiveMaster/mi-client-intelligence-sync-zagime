@@ -42,7 +42,9 @@ export class SecuredApiClient {
     private readonly token: () => Promise<string>,
     private readonly request: typeof fetch = (input, init) =>
       fetch(input, init),
+    private readonly microsoftProof?: () => { idToken: string; accessToken: string } | undefined,
   ) {
+    if (origin === "same-origin" && typeof location !== "undefined") this.origin = origin = location.origin;
     if (enabled) {
       let u: URL;
       try {
@@ -86,16 +88,18 @@ export class SecuredApiClient {
     if (!this.enabled) throw Error("Protected workspace is disabled");
     if (
       !/^[-a-zA-Z0-9_]{1,128}$/.test(tenant) ||
-      !/^(report|workspace|projects|sources|allocations)([/?].*)?$/.test(path)
+      !/^(report|workspace|projects|sources|allocations|audits)([/?].*)?$/.test(path)
     )
       throw Error("Invalid reporting scope");
     const token = await this.token();
+    const proof = this.microsoftProof?.();
     const r = await this.request(
       this.origin + "/api/tenants/" + tenant + "/" + path,
       {
         method: options.method ?? "GET",
         headers: {
           Authorization: "Bearer " + token,
+          ...(proof ? { "X-Morris-Microsoft-Identity": proof.idToken, "X-Morris-Microsoft-Access": proof.accessToken } : {}),
           ...(options.body !== undefined
             ? { "Content-Type": "application/json" }
             : {}),

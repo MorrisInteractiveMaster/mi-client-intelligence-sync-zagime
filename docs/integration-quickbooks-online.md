@@ -1,5 +1,7 @@
 # QuickBooks Online Accounting preparation
 
+Current M8 review: [read-only integration handoff](m8-quickbooks-handoff.md) covers newer Projects GraphQL, sandbox/entitlement verification and separation from Payroll/Time. Historical connection reports below remain independently unverified.
+
 User reports the Accounting app is connected. Company/realm, grants and live authorization remain independently unverified. No API call or OAuth request occurred. disabledAccounting throws before network access. This product is separate from QuickBooks Time.
 
 Proposed server-only Accounting scope: com.intuit.quickbooks.accounting, which is broader than the metadata this platform needs. Request no Payments or OpenID profile scopes merely to read customers. Candidate reads: Customer relationships, Job/sub-customer metadata and available project references. Do not presume every QuickBooks Projects field has an Accounting endpoint or that real work-order hierarchy follows names. Verify actual entitlement/endpoint response schema in an owner-approved sandbox task. M2 TimeActivity is a synthetic Accounting fixture, not the final operational time source. Morris caps/plans are never imported from QBO.

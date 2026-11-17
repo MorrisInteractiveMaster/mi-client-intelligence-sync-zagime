@@ -1,5 +1,6 @@
 import type { Allocation, DeliveryProject } from "../reporting/model";
 export interface Workspace {
+  corporateStaff?: true;
   role: "administrator" | "editor" | "client";
   canCreate: boolean;
   revision: number;
@@ -38,6 +39,7 @@ export interface HistoryRow {
   portions: Allocation[];
 }
 export interface StaffPage {
+  audits?: { id: string; action: string; entityId: string; actor: string; at: string; revision: number }[];
   revision: number;
   projects?: StaffProject[];
   sources?: StaffSource[];

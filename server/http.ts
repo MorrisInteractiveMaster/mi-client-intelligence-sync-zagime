@@ -4,6 +4,8 @@ import {
   type ServerResponse,
 } from "node:http";
 import { ReportingBackend } from "./backend";
+import { requestIdentity } from "./request-identity";
+import { serveFrontend } from "./static-frontend";
 const MAX_BYTES = 16384;
 export class RequestLimit {
   private entries = new Map<string, { count: number; until: number }>();
@@ -68,10 +70,10 @@ const only = (value: Record<string, unknown>, keys: string[]) => {
 };
 export function apiServer(
   backend: ReportingBackend,
-  options: { allowedOrigin?: string; limit?: RequestLimit } = {},
+  options: { allowedOrigin?: string; limit?: RequestLimit; frontend?: string; previewOnly?: boolean } = {},
 ) {
   const limit = options.limit ?? new RequestLimit();
-  return createServer(async (req, res) => {
+  return createServer((req, res) => requestIdentity.run({}, async () => {
     try {
       if (
         req.headers.origin === options.allowedOrigin &&
@@ -84,26 +86,35 @@ export function apiServer(
         return send(res, 429, { error: "rate_limited" });
       if (req.headers.origin && req.headers.origin !== options.allowedOrigin)
         return send(res, 403, { error: "forbidden" });
+      if (options.frontend && await serveFrontend(req, res, options.frontend)) return;
       if (
         (req.url === "/healthz" || req.url === "/health") &&
         req.method === "GET"
       )
-        return send(res, 200, { status: "ready" });
+        return send(res, 200, { status: options.previewOnly ? "inactive-preview" : "ready" });
       if (req.method === "OPTIONS") {
         res.setHeader("access-control-allow-methods", "GET,POST,PATCH");
         res.setHeader(
           "access-control-allow-headers",
-          "Authorization,Content-Type,Idempotency-Key",
+          "Authorization,Content-Type,Idempotency-Key,X-Morris-Microsoft-Identity,X-Morris-Microsoft-Access",
         );
         return send(res, 204, null);
       }
       const authorization = req.headers.authorization ?? "";
+      if (options.previewOnly) return send(res, 503, { error: "staging_not_activated" });
+      const idToken = req.headers["x-morris-microsoft-identity"];
+      const accessToken = req.headers["x-morris-microsoft-access"];
+      if (idToken !== undefined || accessToken !== undefined) {
+        if (typeof idToken !== "string" || typeof accessToken !== "string" || idToken.length > 16000 || accessToken.length > 16000)
+          throw Error("Unauthenticated");
+        requestIdentity.getStore()!.proof = { idToken, accessToken };
+      }
       if (!/^Bearer [^\s]{1,8192}$/.test(authorization))
         return send(res, 401, { error: "unauthenticated" });
       if ((req.url?.length ?? 0) > 2048) throw Error("Invalid URL");
       const url = new URL(req.url!, "http://local");
       const staff =
-        /^\/api\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|sources)(?:\/([-a-zA-Z0-9_]{1,128})\/(history))?$/.exec(
+        /^\/api\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|sources|audits)(?:\/([-a-zA-Z0-9_]{1,128})\/(history))?$/.exec(
           url.pathname,
         );
       const pageQuery = () => {
@@ -133,14 +144,14 @@ export function apiServer(
           if (url.search) throw Error("Invalid query");
           return send(res, 200, await backend.workspace(authorization, t));
         }
-        if (r === "sources")
+        if (r === "sources" || r === "audits")
           return send(
             res,
             200,
             await backend.staffPage(
               authorization,
               t,
-              sourceId ? "history" : "sources",
+              sourceId ? "history" : r as "sources" | "audits",
               { ...pageQuery(), ...(sourceId ? { sourceId } : {}) },
             ),
           );
@@ -294,5 +305,5 @@ export function apiServer(
                   : [503, "temporarily_unavailable"];
       send(res, status as number, { error });
     }
-  });
+  }));
 }

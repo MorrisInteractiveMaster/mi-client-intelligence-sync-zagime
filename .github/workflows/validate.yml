@@ -25,6 +25,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: bash -n scripts/verify-staging-iam.sh scripts/test-staging-iam-collector.sh
       - run: bash scripts/test-staging-iam-collector.sh
+      - run: bash -n scripts/m8-staging.sh scripts/test-m8-staging.sh
+      - run: bash scripts/test-m8-staging.sh
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
@@ -32,3 +34,15 @@ jobs:
       - run: npm run test:security
         env:
           FIREBASE_CLI_DISABLE_UPDATE_CHECK: "true"
+      - name: Build staging container and verify inactive same-origin preview
+        run: |
+          docker build -f deployment/Dockerfile -t mi-m8-local .
+          docker run -d --name mi-m8-preview -p 127.0.0.1:8089:8080 -e BACKEND_MODE=staging -e STAGING_PREVIEW_ONLY=true mi-m8-local
+          trap 'docker rm -f mi-m8-preview' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8089/healthz > /tmp/mi-m8-health.json; then break; fi
+            sleep 1
+          done
+          node -e 'const r=require("/tmp/mi-m8-health.json");if(r.status!=="inactive-preview")process.exit(1)'
+          curl --fail --silent http://127.0.0.1:8089/ | grep -q '<!doctype html>'
+          test "$(curl --silent -o /dev/null -w '%{http_code}' http://127.0.0.1:8089/api/tenants/synthetic-zagime/workspace)" = 503

@@ -32,7 +32,7 @@ const vite = spawn(
   { env, stdio: "ignore" },
 );
 let browser: any, page: any, defaultVite: ReturnType<typeof spawn> | undefined;
-const evidence = "docs/qa-m5";
+const evidence = process.env.MI_BROWSER_EVIDENCE_DIR ?? "docs/qa-m5";
 await mkdir(evidence, { recursive: true });
 try {
   let ready = false;
@@ -166,6 +166,13 @@ try {
   await card.getByText("SYNTHETIC-BROWSER-REF", { exact: false }).waitFor();
   await card.getByRole("button", { name: "Publish", exact: true }).click();
   await page.getByText("Project published.", { exact: true }).waitFor();
+  if (process.env.MI_BROWSER_M8 === "true") {
+    await page.getByText("Audit activity",{exact:true}).click();
+    await page.getByRole("button",{name:"Load audit activity",exact:true}).click();
+    await page.getByText("Audit activity loaded.",{exact:true}).waitFor();
+    await page.getByText(/publication-changed/).first().waitFor();
+    await page.screenshot({path:evidence+"/audit-activity.png",fullPage:true});
+  }
   await page
     .getByRole("button", { name: "Time allocation", exact: true })
     .click();

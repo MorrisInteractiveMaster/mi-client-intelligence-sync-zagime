@@ -10,6 +10,7 @@ import "../reporting/nordic.css";
 const enabled = import.meta.env.VITE_ENABLE_SECURE_API === "true";
 export function SecureDashboard() {
   const [auth, setAuth] = useState<Auth>();
+  const [microsoftProof, setMicrosoftProof] = useState<{ idToken: string; accessToken: string }>();
   const [subject, setSubject] = useState<string | null>(null);
   const signedIn = subject !== null;
   const [workspace, setWorkspace] = useState<Workspace>();
@@ -83,11 +84,13 @@ export function SecureDashboard() {
             throw Error("Please sign in again.");
           return auth.currentUser.getIdToken();
         },
+        undefined,
+        () => microsoftProof,
       );
     } catch {
       return undefined;
     }
-  }, [auth, signedIn, subject]);
+  }, [auth, signedIn, subject, microsoftProof]);
   useEffect(() => {
     if (!client) return;
     const abort = new AbortController();
@@ -152,12 +155,20 @@ export function SecureDashboard() {
     if (!auth) return;
     try {
       const sdk = await import("firebase/auth");
-      await sdk.signInWithPopup(
-        auth,
-        provider === "google"
-          ? new sdk.GoogleAuthProvider()
-          : new sdk.OAuthProvider("microsoft.com"),
-      );
+      setMicrosoftProof(undefined);
+      const p = provider === "google" ? new sdk.GoogleAuthProvider() : new sdk.OAuthProvider("microsoft.com");
+      if (provider === "microsoft") {
+        const tenant = import.meta.env.VITE_MORRIS_ENTRA_TENANT_ID;
+        if (!/^[0-9a-f-]{36}$/i.test(tenant ?? "")) throw Error("Microsoft sign-in is not configured");
+        p.setCustomParameters({ tenant, prompt: "select_account" });
+        p.addScope("User.Read.All");
+      }
+      const result = await sdk.signInWithPopup(auth, p);
+      if (provider === "microsoft") {
+        const credential = sdk.OAuthProvider.credentialFromResult(result);
+        if (!credential?.idToken || !credential.accessToken) { await sdk.signOut(auth); throw Error(); }
+        setMicrosoftProof({ idToken: credential.idToken, accessToken: credential.accessToken });
+      }
     } catch {
       setError("Sign-in was not completed.");
     }
@@ -202,7 +213,7 @@ export function SecureDashboard() {
               <button disabled={!auth}>Sign in to local emulator</button>
             </form>
           )}
-          <p>An account must be separately approved for this workspace.</p>
+          <p>Morris staff use their Microsoft work account. Client accounts have read-only access to approved publications.</p>
         </>
       ) : (
         <>
@@ -211,6 +222,7 @@ export function SecureDashboard() {
               if (auth) {
                 const sdk = await import("firebase/auth");
                 await sdk.signOut(auth);
+                setMicrosoftProof(undefined);
                 setView(undefined);
                 setWorkspace(undefined);
               }
