@@ -6,6 +6,7 @@ import {
 import type { FirestoreTenantStore } from "./firestore-store";
 import { key } from "./firestore-store";
 import { approvedMember, canAccessProject } from "./authorization";
+import { corporateMembership } from "./request-identity";
 import { safeId, type Membership } from "./contracts";
 import type { Allocation, DeliveryProject } from "../src/reporting/model";
 import type { Workspace, PageQuery, StaffPage } from "../src/api/types";
@@ -42,6 +43,7 @@ export async function readWorkspace(
       const { root, record } = await store.base(tx, tenant, subject);
       const m = approvedMember(record, tenant, subject);
       const result: Workspace = {
+        ...(corporateMembership(tenant, subject) ? { corporateStaff: true as const } : {}),
         role: m.role,
         canCreate:
           m.role === "administrator" ||
@@ -103,7 +105,7 @@ export async function readStaffPage(
   store: FirestoreTenantStore,
   tenant: string,
   subject: string,
-  resource: "projects" | "sources" | "history",
+  resource: "projects" | "sources" | "history" | "audits",
   q: PageQuery,
 ): Promise<StaffPage> {
   checkMonth(q.month);
@@ -123,6 +125,22 @@ export async function readStaffPage(
       )
         throw Error("Forbidden");
       const result: StaffPage = { revision: record.revision };
+      if (resource === "audits") {
+        let query = root.collection("audits").orderBy("revision", "desc").limit(q.limit + 1);
+        if (q.cursor) {
+          const revision = Number(q.cursor);
+          if (!Number.isSafeInteger(revision) || revision < 1 || revision > record.revision) throw Error("Invalid audit cursor");
+          query = query.startAfter(revision);
+        }
+        const page = await tx.get(query);
+        const rows = page.docs.slice(0, q.limit);
+        result.audits = rows.map(d => {
+          const a = d.data();
+          return { id: d.id, action: a.action, entityId: a.entityId, actor: a.actor, at: a.at, revision: a.revision };
+        });
+        if (page.size > q.limit) result.nextCursor = String(rows.at(-1)!.data().revision);
+        return result;
+      }
       if (resource === "history") {
         safeId(q.sourceId!);
         const [source, head] = await tx.getAll(

@@ -1,4 +1,5 @@
 import { Timestamp } from "firebase-admin/firestore";
+import { corporateMembership } from "./request-identity";
 import { readWorkspace, readStaffPage } from "./staff-read";
 import { createHash } from "node:crypto";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
@@ -47,18 +48,17 @@ export class FirestoreTenantStore implements TenantStore {
   async base(tx: Transaction, tenantId: string, subject: string) {
     safeId(tenantId);
     const root = this.db.doc(`tenants/${tenantId}`);
-    const [tenant, membership] = await tx.getAll(
-      root,
-      root.collection("memberships").doc(key(subject)),
-    );
-    if (!tenant.exists || !membership.exists) throw Error("Forbidden");
+    const staff = corporateMembership(tenantId, subject);
+    const [tenant, membership] = staff ? [await tx.get(root), undefined] : await tx.getAll(
+      root, root.collection("memberships").doc(key(subject)));
+    if (!tenant.exists || (!staff && !membership?.exists)) throw Error("Forbidden");
     const d = tenant.data()!;
     if (!Number.isSafeInteger(d.revision) || d.revision < 1)
       throw Error("Invalid persisted revision");
     const record: TenantRecord = {
       revision: d.revision,
       state: empty({ id: tenantId, name: d.name }),
-      memberships: [membership.data() as Membership],
+      memberships: staff ? [] : [membership!.data() as Membership],
       audits: [],
       checkpoints: [],
     };
@@ -201,7 +201,7 @@ export class FirestoreTenantStore implements TenantStore {
   async staffPage(
     tenantId: string,
     subject: string,
-    resource: "projects" | "sources" | "history",
+    resource: "projects" | "sources" | "history" | "audits",
     query: import("../src/api/types").PageQuery,
   ) {
     return readStaffPage(this, tenantId, subject, resource, query);

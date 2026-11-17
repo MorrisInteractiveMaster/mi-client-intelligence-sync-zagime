@@ -14,6 +14,8 @@ import {
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import type { IdentityVerifier } from "./contracts";
+import { MorrisStaffVerifier } from "./morris-staff";
+import { requestIdentity } from "./request-identity";
 export interface FirebaseRuntime {
   app: App;
   auth: Auth;
@@ -75,7 +77,7 @@ export function firebaseRuntime(
 }
 /** Production SDK verifies Google's signature, issuer/audience/expiry and revocation/account state. Emulator acceptance is isolated by runtime guard. */
 export class FirebaseIdentityVerifier implements IdentityVerifier {
-  constructor(private readonly auth: Auth) {}
+  constructor(private readonly auth: Auth, private readonly staff?: MorrisStaffVerifier) {}
   async verify(authorization: string) {
     if (!/^Bearer [^\s]{1,8192}$/.test(authorization))
       throw Error("Unauthenticated");
@@ -83,6 +85,13 @@ export class FirebaseIdentityVerifier implements IdentityVerifier {
       const t = await this.auth.verifyIdToken(authorization.slice(7), true);
       if (t.firebase?.tenant)
         throw Error("Auth multi-tenancy is not configured");
+      let staffTenantId: string | undefined;
+      if (this.staff && t.firebase?.sign_in_provider === "microsoft.com") {
+        const user = await this.auth.getUser(t.uid);
+        const oid = user.providerData.find(p => p.providerId === "microsoft.com")?.uid;
+        if (user.disabled || !oid || !t.firebase.identities?.["microsoft.com"]?.includes(oid)) throw Error();
+        staffTenantId = await this.staff.verify(oid, requestIdentity.getStore()?.proof);
+      }
       return {
         subject: t.uid,
         issuer: t.iss,
@@ -90,6 +99,8 @@ export class FirebaseIdentityVerifier implements IdentityVerifier {
         expiresAt: t.exp * 1000,
         disabled: false,
         revoked: false,
+        ...(this.staff ? { corporatePolicy: true } : {}),
+        ...(staffTenantId ? { staffTenantId } : {}),
       };
     } catch {
       throw Error("Unauthenticated");

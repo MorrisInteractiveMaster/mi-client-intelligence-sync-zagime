@@ -1,4 +1,5 @@
 import { creationKey } from "./idempotency";
+import { rememberIdentity } from "./request-identity";
 import { approvedMember, canAccessProject } from "./authorization";
 import { randomUUID } from "node:crypto";
 import {
@@ -35,6 +36,7 @@ export class ReportingBackend {
       who.expiresAt <= this.policy.now()
     )
       throw Error("Unauthenticated");
+    rememberIdentity(who);
     return who;
   }
   private member(r: TenantRecord, tenantId: string, subject: string) {
@@ -284,7 +286,7 @@ export class ReportingBackend {
   async staffPage(
     authorization: string,
     tenantId: string,
-    resource: "projects" | "sources" | "history",
+    resource: "projects" | "sources" | "history" | "audits",
     query: import("../src/api/types").PageQuery,
   ) {
     safeId(tenantId);

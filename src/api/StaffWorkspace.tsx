@@ -43,6 +43,8 @@ export function StaffWorkspace({
   const [selected, setSelected] = useState<StaffSource>();
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [historyCursor, setHistoryCursor] = useState<string>();
+  const [audits, setAudits] = useState<NonNullable<StaffPage["audits"]>>([]);
+  const [auditCursor, setAuditCursor] = useState<string>();
   const current = useRef(true);
   useEffect(() => {
     current.current = true;
@@ -69,6 +71,8 @@ export function StaffWorkspace({
     setSelected(undefined);
     setEditing(undefined);
     setHistory([]);
+    setAudits([]);
+    setAuditCursor(undefined);
     setLoadedSources(false);
     setProjectCursor(undefined);
     setSourceCursor(undefined);
@@ -191,7 +195,7 @@ export function StaffWorkspace({
         <div>
           <h2>Morris workspace</h2>
           <p>
-            {workspace.role === "administrator" ? "Administrator" : "Editor"} ·
+            {workspace.corporateStaff ? "Morris staff" : workspace.role === "administrator" ? "Administrator" : "Editor"} ·
             Revision {revision}
           </p>
         </div>
@@ -219,6 +223,20 @@ export function StaffWorkspace({
           Time allocation
         </button>
       </nav>
+      <details>
+        <summary>Audit activity</summary>
+        <button disabled={busy} onClick={() => void action(async () => {
+          const page = await client.call<StaffPage>(tenant, "audits?" + query());
+          if (page.revision !== revision) throw Error("The workspace changed. Refresh before loading activity.");
+          setAudits(page.audits ?? []); setAuditCursor(page.nextCursor);
+        }, "Audit activity loaded.", false).catch(() => {})}>Load audit activity</button>
+        <ol>{audits.map(a => <li key={a.id}>{a.at} · {a.action} · {a.entityId} · {a.actor} · Revision {a.revision}</li>)}</ol>
+        {auditCursor && <button disabled={busy} onClick={() => void action(async () => {
+          const page = await client.call<StaffPage>(tenant, "audits?" + query(auditCursor));
+          if (page.revision !== revision) throw Error("The workspace changed. Refresh before loading more activity.");
+          setAudits(v => [...v, ...(page.audits ?? [])]); setAuditCursor(page.nextCursor);
+        }, "Audit activity loaded.", false).catch(() => {})}>More audit activity</button>}
+      </details>
       {error && <p role="alert">{error} No automatic write retry was made.</p>}
       {notice && <p role="status">{notice}</p>}
       {busy && <p role="status">Updating workspace…</p>}

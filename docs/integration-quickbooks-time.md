@@ -1,5 +1,7 @@
 # QuickBooks Time preparation
 
+Current M8 review: [read-only integration handoff](m8-quickbooks-handoff.md) distinguishes classic migration risk from Payroll/Time and unverified Canadian entitlements/test access. Legacy Time is not assumed to be the approved future source.
+
 User reports the Time app is connected; registration, account permissions, entitlement and usable grants are not independently verified. disabledTime throws before network access. No live data or token exchange.
 
 The published QuickBooks Time reference exposes Timesheets, Timesheets Deleted, Users and Jobcodes. Timesheets have integer-second duration, stable IDs, user/jobcode IDs and modification timestamps; regular and manual forms differ. A locked timesheet is not proof of approval. User submitted_to/approved_to fields may support timeframe interpretation, subject to real entitlement and permissions. Current not-yet-approved/ongoing visibility remains unverified for this account. Normalize unknown approval explicitly; do not invent approved=true or equate Accounting TimeActivity with Time timesheets.

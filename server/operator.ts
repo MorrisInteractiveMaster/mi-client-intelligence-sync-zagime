@@ -1,4 +1,5 @@
 import { assertOperatorDatabase, STAGING_DATABASE } from "./database-target";
+import { provisionClient } from "./client-provisioning";
 import { seedSynthetic } from "./synthetic-seed";
 import { readFile } from "node:fs/promises";
 import { bootstrapAdministrator, pruneIdempotency } from "./bootstrap";
@@ -6,7 +7,7 @@ import { firebaseRuntime } from "./firebase";
 // Explicit operator process. No public HTTP bootstrap, user creation or provider configuration.
 const [operation, fileOrTenant, ...flags] = process.argv.slice(2);
 if (
-  !["bootstrap-admin", "prune-idempotency", "seed-synthetic"].includes(
+  !["bootstrap-admin", "bootstrap-client", "prune-idempotency", "seed-synthetic"].includes(
     operation,
   ) ||
   !fileOrTenant ||
@@ -34,7 +35,9 @@ try {
   await runtime.verify();
   assertOperatorDatabase(runtime.db);
   const result =
-    operation === "seed-synthetic"
+    operation === "bootstrap-client"
+      ? await provisionClient(runtime.db, runtime.auth, JSON.parse(await readFile(fileOrTenant,"utf8")), flags.includes("--apply"))
+      : operation === "seed-synthetic"
       ? await seedSynthetic(runtime.db, fileOrTenant, flags.includes("--apply"))
       : operation === "bootstrap-admin"
         ? await bootstrapAdministrator(
