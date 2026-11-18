@@ -1,5 +1,7 @@
 # PR B — Project-only persistence implementation handoff
 
+Update: PR A/#11 subsequently merged at `8c1953b3e6a8b092e9b0884e4bd041c10eaf81b4`; PR B implements project-only code on that baseline. See [actual implementation/costs/tests/gaps](project-only-workspace.md) and [operator runbook](project-only-operator-runbook.md). Preparation below is provenance, not a current NOT IMPLEMENTED label for completed CRUD. Migration apply, source workers/connectors and remote persistence remain unimplemented/unverified.
+
 Controlling requirements: [full owner contract, 18 November 2026](master-implementation-contract.md). Preparation only: **NOT IMPLEMENTED**. PR A is [draft #11](https://github.com/MorrisInteractiveMaster/mi-client-intelligence-sync-zagime/pull/11); it was open/unmerged at preparation. Refreshed main: `1ef561b733bf3cc44925c08ab0cc8f153cab0801`. No second PR, migration, cloud read/write, OAuth or deployment was performed for this handoff. Refresh main/PR state again before implementation; do not assume #11 merged or copy its changes into a second PR.
 
 ## Concrete existing dependencies to replace

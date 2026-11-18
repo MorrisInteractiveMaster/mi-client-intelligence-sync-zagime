@@ -252,6 +252,9 @@ async function observe(context, page) {
     );
     report.apiStatus = r.status();
     assert.equal(r.status(), 503);
+    const projectApi = await api.request.get(base.origin + "/api/v2/tenants/synthetic-zagime-projects/workspace");
+    report.projectApiStatus = projectApi.status();
+    assert.equal(projectApi.status(), 503);
     await api.close();
     if (!live) {
       // Fail an entry module and a real React DOM operation; no production test hook.

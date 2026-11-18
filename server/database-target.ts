@@ -133,4 +133,5 @@ export function assertOperatorDatabase(db: Pick<Firestore, "databaseId">) {
     )
       throw Error("Operator staging mode required");
   }
+  return target;
 }

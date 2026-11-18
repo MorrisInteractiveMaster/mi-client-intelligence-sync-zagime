@@ -1,10 +1,10 @@
-import { StaffWorkspace } from "./StaffWorkspace";
-import type { Workspace } from "./types";
+import { ProjectStaffWorkspace } from "./ProjectWorkspace";
+import type { ProjectWorkspace, ProjectReport } from "../projects/model";
 import "./secure.css";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Auth } from "firebase/auth";
-import { SecuredApiClient, type Report } from "./client";
+import { SecuredApiClient } from "./client";
 import { hours } from "../reporting/model";
 import "../reporting/nordic.css";
 const enabled = import.meta.env.VITE_ENABLE_SECURE_API === "true";
@@ -13,8 +13,8 @@ export function SecureDashboard() {
   const [microsoftProof, setMicrosoftProof] = useState<{ idToken: string; accessToken: string }>();
   const [subject, setSubject] = useState<string | null>(null);
   const signedIn = subject !== null;
-  const [workspace, setWorkspace] = useState<Workspace>();
-  const [view, setView] = useState<Report>();
+  const [workspace, setWorkspace] = useState<ProjectWorkspace>();
+  const [view, setView] = useState<ProjectReport>();
   const [error, setError] = useState("");
   const [month, setMonth] = useState("2026-10");
   const [loading, setLoading] = useState(false);
@@ -86,6 +86,7 @@ export function SecureDashboard() {
         },
         undefined,
         () => microsoftProof,
+        "projects",
       );
     } catch {
       return undefined;
@@ -97,7 +98,7 @@ export function SecureDashboard() {
     let active = true;
     setLoading(true);
     client
-      .call<Workspace>(
+      .call<ProjectWorkspace>(
         import.meta.env.VITE_SECURE_TENANT_ID ?? "",
         "workspace",
         { signal: abort.signal },
@@ -126,7 +127,7 @@ export function SecureDashboard() {
     setLoading(true);
     setView(undefined);
     client
-      .report(import.meta.env.VITE_SECURE_TENANT_ID ?? "", month, abort.signal)
+      .call<ProjectReport>(import.meta.env.VITE_SECURE_TENANT_ID ?? "", "report?month=" + month, { signal: abort.signal })
       .then((v) => {
         if (active) {
           setView(v);
@@ -245,7 +246,7 @@ export function SecureDashboard() {
       {loading && <p role="status">Loading approved reporting…</p>}
       {error && <p role="alert">{error}</p>}
       {workspace && workspace.role !== "client" && client && (
-        <StaffWorkspace
+        <ProjectStaffWorkspace
           key={subject}
           client={client}
           tenant={import.meta.env.VITE_SECURE_TENANT_ID ?? ""}
@@ -264,33 +265,7 @@ export function SecureDashboard() {
           <p>
             {hours(view.totalSeconds)} h delivered in {view.month}
           </p>
-          {view.agreements.map((a) => (
-            <article key={a.id}>
-              <h3>{a.name}</h3>
-              <p>
-                {hours(a.seconds)} h delivered · {a.capMinutes / 60} h monthly
-                cap
-              </p>
-              {a.departments.map((d) => (
-                <details key={d.id} open>
-                  <summary>
-                    {d.name} · {hours(d.seconds)} h delivered
-                  </summary>
-                  {view.projects
-                    .filter(
-                      (p) => p.agreementId === a.id && p.departmentId === d.id,
-                    )
-                    .map((p) => (
-                      <p key={p.id}>
-                        {p.name}: {hours(p.seconds)} h this month ·{" "}
-                        {hours(p.lifetimeSeconds)} h lifetime · {p.progress}%
-                        manager progress
-                      </p>
-                    ))}
-                </details>
-              ))}
-            </article>
-          ))}
+          {view.projects.map(p => <article key={p.id}><h3>{p.name}</h3><p>{p.description}</p><p>{p.status} · {p.progress}% progress</p><p>{hours(p.seconds)} h this month · {hours(p.lifetimeSeconds)} h lifetime</p></article>)}
           {!view.projects.length && (
             <p>No approved projects are available for this period.</p>
           )}

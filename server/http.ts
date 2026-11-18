@@ -6,6 +6,8 @@ import {
 import { ReportingBackend } from "./backend";
 import { requestIdentity } from "./request-identity";
 import { serveFrontend } from "./static-frontend";
+import { projectRequest } from "./project-http";
+import type { ProjectBackend } from "./project-workspace";
 const MAX_BYTES = 16384;
 export class RequestLimit {
   private entries = new Map<string, { count: number; until: number }>();
@@ -70,7 +72,7 @@ const only = (value: Record<string, unknown>, keys: string[]) => {
 };
 export function apiServer(
   backend: ReportingBackend,
-  options: { allowedOrigin?: string; limit?: RequestLimit; frontend?: string; previewOnly?: boolean } = {},
+  options: { allowedOrigin?: string; limit?: RequestLimit; frontend?: string; previewOnly?: boolean; projects?: ProjectBackend } = {},
 ) {
   const limit = options.limit ?? new RequestLimit();
   return createServer((req, res) => requestIdentity.run({}, async () => {
@@ -115,6 +117,10 @@ export function apiServer(
       if (!/^Bearer [^\s]{1,8192}$/.test(authorization))
         return send(res, 401, { error: "unauthenticated" });
       if ((req.url?.length ?? 0) > 2048) throw Error("Invalid URL");
+      if (options.projects) {
+        const result = await projectRequest(options.projects, req, () => body(req));
+        return send(res, result.status, result.body);
+      }
       const url = new URL(req.url!, "http://local");
       const staff =
         /^\/api\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|sources|audits)(?:\/([-a-zA-Z0-9_]{1,128})\/(history))?$/.exec(
@@ -288,12 +294,12 @@ export function apiServer(
           ? [401, "unauthenticated"]
           : msg === "Forbidden" || msg === "Forbidden fields"
             ? [403, "forbidden"]
-            : msg === "Revision conflict" ||
+            : msg === "Migration required" || msg === "Revision conflict" ||
                 msg === "Idempotency conflict" ||
                 msg === "Source conflict"
               ? [
                   409,
-                  msg === "Idempotency conflict"
+                  msg === "Migration required" ? "migration_required" : msg === "Idempotency conflict"
                     ? "idempotency_conflict"
                     : msg === "Source conflict"
                       ? "source_conflict"
