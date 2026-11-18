@@ -476,7 +476,7 @@ export class FirestoreTenantStore implements TenantStore {
         });
         ids.forEach((id, i) => {
           if (!views[i].exists) throw Error("Invalid reporting summary");
-          if (this.expectedSchemaVersion === 2 && views[i].data()!.tenantId !== tenantId) throw Error("Invalid reporting summary");
+          if (this.expectedSchemaVersion === 2 && (views[i].data()!.tenantId !== tenantId || views[i].data()!.id !== id || views[i].data()!.schemaVersion !== 2 || (periods[i].exists && (periods[i].data()!.projectId !== id || periods[i].data()!.month !== month)))) throw Error("Invalid reporting summary");
           const delta =
             portions
               .filter((p) => p.projectId === id)

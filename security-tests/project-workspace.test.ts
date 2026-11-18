@@ -437,6 +437,82 @@ test(
       assert.ok(!JSON.stringify(publicBefore).includes("MUST-NOT-LEAK"));
       assert.ok(!JSON.stringify(publicBefore).includes("PRIVATE-NOTE"));
       assert.ok(!("revision" in publicBefore));
+      const integrityRevision = await revision(),
+        integrityAudits = await auditCount();
+      await root
+        .collection("projectViews")
+        .doc(created.id)
+        .update({ tenantId: "synthetic-other-client" });
+      assert.equal(
+        (
+          await request(
+            "report?month=2026-11",
+            "GET",
+            undefined,
+            client.idToken,
+          )
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await request(`projects/${created.id}/publication`, "PATCH", {
+            expectedRevision: integrityRevision,
+            published: false,
+          })
+        ).status,
+        503,
+      );
+      assert.equal(await revision(), integrityRevision);
+      assert.equal(await auditCount(), integrityAudits);
+      await root
+        .collection("projectViews")
+        .doc(created.id)
+        .update({ tenantId: tenant });
+      const period = root
+        .collection("projectPeriods")
+        .doc(key("2026-11", created.id));
+      await period.update({ month: "2026-10" });
+      assert.equal(
+        (
+          await request(
+            "report?month=2026-11",
+            "GET",
+            undefined,
+            client.idToken,
+          )
+        ).status,
+        503,
+      );
+      assert.equal(
+        (
+          await request("allocations/synthetic-time", "PATCH", {
+            expectedRevision: integrityRevision,
+            portions: [
+              {
+                projectId: created.id,
+                seconds: 7200,
+                description: "corruption must roll back",
+              },
+            ],
+          })
+        ).status,
+        503,
+      );
+      assert.equal(await revision(), integrityRevision);
+      assert.equal(await auditCount(), integrityAudits);
+      await period.update({ month: "2026-11" });
+      assert.deepEqual(
+        await json(
+          await request(
+            "report?month=2026-11",
+            "GET",
+            undefined,
+            client.idToken,
+          ),
+        ),
+        publicBefore,
+      );
       await json(
         await request(`projects/${created.id}/publication`, "PATCH", {
           expectedRevision: await revision(),
@@ -809,12 +885,21 @@ test(
       await runtime.auth.updateUser(staff.localId, { disabled: true });
       assert.equal((await request("workspace")).status, 401);
     } catch (error) {
-      const p = browser?.contexts().flatMap(c => c.pages()).at(-1);
+      const p = browser
+        ?.contexts()
+        .flatMap((c) => c.pages())
+        .at(-1);
       if (p) {
         const evidence = resolve("test-results/project-only-browser");
         await mkdir(evidence, { recursive: true });
-        await p.screenshot({ path: join(evidence, "failure.png"), fullPage: true });
-        await writeFile(join(evidence, "failure.txt"), await p.locator("body").innerText());
+        await p.screenshot({
+          path: join(evidence, "failure.png"),
+          fullPage: true,
+        });
+        await writeFile(
+          join(evidence, "failure.txt"),
+          await p.locator("body").innerText(),
+        );
       }
       throw error;
     } finally {

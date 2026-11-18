@@ -1,4 +1,4 @@
-import { assertOperatorDatabase, STAGING_DATABASE } from "./database-target";
+import { assertOperatorDatabase, STAGING_DATABASE, COMPANY_PROJECT, EXPECTED_STAGING_UID } from "./database-target";
 import { provisionClient } from "./client-provisioning";
 import { seedProjectSynthetic, provisionProjectClient, inspectProjectMigration } from "./project-operator";
 import { seedSynthetic } from "./synthetic-seed";
@@ -26,6 +26,7 @@ if (process.env.FIRESTORE_DATABASE_ID !== STAGING_DATABASE)
   throw Error(
     "Operator requires explicit named staging database configuration",
   );
+if (["seed-project-synthetic", "bootstrap-project-client", "inspect-project-migration"].includes(operation) && mode === "staging" && (process.env.STAGING_FIREBASE_PROJECT_ID !== COMPANY_PROJECT || process.env.STAGING_DATABASE_UID !== EXPECTED_STAGING_UID)) throw Error("Explicit company staging identity required");
 const runtime = firebaseRuntime(
   mode,
   mode === "emulator"

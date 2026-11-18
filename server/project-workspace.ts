@@ -6,7 +6,7 @@ import {
   type Firestore,
   type Transaction,
 } from "firebase-admin/firestore";
-import { assertOperatorDatabase, COMPANY_PROJECT } from "./database-target";
+import { assertProjectDatabase } from "./database-target";
 import {
   type VerifiedIdentity,
   type IdentityVerifier,
@@ -200,7 +200,14 @@ export class ProjectStore {
         if (managed && managed.workOrderReference === undefined)
           delete p.workOrderReference;
         const view = old ? await tx.get(viewRef) : undefined;
-        if (old && !view?.exists) throw Error("Invalid reporting summary");
+        if (
+          old &&
+          (!view?.exists ||
+            view.data()!.tenantId !== tenant ||
+            view.data()!.id !== id ||
+            view.data()!.schemaVersion !== 2)
+        )
+          throw Error("Invalid reporting summary");
         const revision = a.meta.revision + 1;
         if (!Number.isSafeInteger(revision)) throw Error("Invalid revision");
         tx.set(ref, p);
@@ -286,7 +293,7 @@ export class ProjectStore {
           )
         : [];
       const projects = visible.map((v, i) =>
-        publicProject(v.data() as any, periods[i].data()?.seconds ?? 0),
+        publicProject(v.data() as any, periodSeconds(periods[i], v.id, month)),
       );
       const totalSeconds = projects.reduce((n, p) => n + p.seconds, 0);
       if (!Number.isSafeInteger(totalSeconds))
@@ -408,14 +415,19 @@ export class ProjectStore {
         out.projects = docs.map((d, i) => {
           if (d.data().tenantId !== tenant || d.data().id !== d.id)
             throw Error("Forbidden");
-          if (!views[i].exists || views[i].data()!.tenantId !== tenant)
+          if (
+            !views[i].exists ||
+            views[i].data()!.tenantId !== tenant ||
+            views[i].data()!.id !== d.id ||
+            views[i].data()!.schemaVersion !== 2
+          )
             throw Error("Invalid reporting summary");
           return {
             ...projectView(
               d.data() as Project,
               views[i].data()!.lifetimeSeconds,
             ),
-            seconds: periods[i].data()?.seconds ?? 0,
+            seconds: periodSeconds(periods[i], d.id, query.month),
           };
         });
       } else if (resource === "sources") {
@@ -505,14 +517,21 @@ export class ProjectStore {
 export function checkMonth(month: string) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw Error("Invalid month");
 }
-function assertProjectDatabase(db: Firestore) {
-  const target = assertOperatorDatabase(db);
+function periodSeconds(
+  snapshot: FirebaseFirestore.DocumentSnapshot,
+  projectId: string,
+  month: string,
+) {
+  if (!snapshot.exists) return 0;
+  const p = snapshot.data()!;
   if (
-    ![COMPANY_PROJECT, "demo-mi-security"].includes(target.projectId) ||
-    (target.mode === "staging" &&
-      target.uid !== "6d09ea71-f495-44a5-94a6-732ed1c47d88")
+    p.projectId !== projectId ||
+    p.month !== month ||
+    !Number.isSafeInteger(p.seconds) ||
+    p.seconds < 0
   )
-    throw Error("Invalid project database target");
+    throw Error("Invalid reporting summary");
+  return p.seconds as number;
 }
 /** Existing signature/provider/revocation verification is reused, never browser role flags. */
 export class ProjectBackend {

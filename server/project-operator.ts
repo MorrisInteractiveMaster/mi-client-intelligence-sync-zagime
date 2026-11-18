@@ -2,7 +2,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import type { Auth } from "firebase-admin/auth";
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { assertOperatorDatabase } from "./database-target";
+import { assertProjectDatabase } from "./database-target";
 import { safeId } from "./contracts";
 import { key } from "./firestore-store";
 import {
@@ -16,7 +16,7 @@ export async function seedProjectSynthetic(
   tenant: string,
   apply = false,
 ) {
-  assertOperatorDatabase(db);
+  assertProjectDatabase(db);
   safeId(tenant);
   if (!tenant.startsWith("synthetic-"))
     throw Error("Synthetic tenant prefix required");
@@ -104,7 +104,7 @@ export async function provisionProjectClient(
   value: unknown,
   apply = false,
 ) {
-  assertOperatorDatabase(db);
+  assertProjectDatabase(db);
   const p = value as {
     approved: boolean;
     tenantId: string;
@@ -195,7 +195,7 @@ export async function provisionProjectClient(
 
 /** Bounded, read-only migration inventory. No apply switch; never rewrites history. */
 export async function inspectProjectMigration(db: Firestore, tenant: string) {
-  assertOperatorDatabase(db);
+  assertProjectDatabase(db);
   safeId(tenant);
   if (!tenant.startsWith("synthetic-"))
     throw Error("Synthetic tenant prefix required");

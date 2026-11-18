@@ -18,8 +18,17 @@ const managed = {
 };
 test("project-only validation has no hierarchy and refuses source/publication/role injection", () => {
   assert.equal(managedProject(managed).name, "Example");
-  assert.equal(managedProject({ ...managed, workOrderReference: " Synthetic reference " }).workOrderReference, "Synthetic reference");
-  assert.ok(!("workOrderReference" in managedProject({ ...managed, workOrderReference: " " })));
+  assert.equal(
+    managedProject({ ...managed, workOrderReference: " Synthetic reference " })
+      .workOrderReference,
+    "Synthetic reference",
+  );
+  assert.ok(
+    !(
+      "workOrderReference" in
+      managedProject({ ...managed, workOrderReference: " " })
+    ),
+  );
   for (const injected of [
     { agreementId: "x" },
     { departmentId: "x" },
@@ -87,6 +96,7 @@ test("executable refuses production and unnamed emulator startup before database
   for (const mode of ["production", "emulator"]) {
     const env: NodeJS.ProcessEnv = { ...process.env, BACKEND_MODE: mode };
     delete env.FIRESTORE_DATABASE_ID;
+    delete env.STAGING_PREVIEW_ONLY;
     const result = spawnSync(
       process.execPath,
       ["--import", "tsx", "server/start.ts"],
@@ -99,5 +109,30 @@ test("executable refuses production and unnamed emulator startup before database
         ? /production access is blocked/
         : /Explicit named project-workspace database required/,
     );
+  }
+  for (const [project, uid] of [
+    ["unapproved-project", "6d09ea71-f495-44a5-94a6-732ed1c47d88"],
+    ["morris-client-dash-zagime", "00000000-0000-4000-8000-000000000000"],
+  ]) {
+    const env = {
+      ...process.env,
+      BACKEND_MODE: "staging",
+      STAGING_PREVIEW_ONLY: "false",
+      FIRESTORE_DATABASE_ID: "mi-client-staging",
+      STAGING_FIREBASE_PROJECT_ID: project,
+      STAGING_DATABASE_UID: uid,
+    };
+    for (const args of [
+      ["server/start.ts"],
+      ["server/operator.ts", "seed-project-synthetic", "synthetic-guard"],
+    ]) {
+      const result = spawnSync(process.execPath, ["--import", "tsx", ...args], {
+        env,
+        encoding: "utf8",
+        timeout: 10000,
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Explicit company staging identity required/);
+    }
   }
 });

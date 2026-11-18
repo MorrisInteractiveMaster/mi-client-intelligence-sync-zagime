@@ -4,7 +4,7 @@ import { ReportingBackend } from "./backend";
 import { apiServer } from "./http";
 import { MorrisStaffVerifier, staffConfiguration } from "./morris-staff";
 import { ProjectBackend, ProjectStore } from "./project-workspace";
-import { STAGING_DATABASE } from "./database-target";
+import { STAGING_DATABASE, COMPANY_PROJECT, EXPECTED_STAGING_UID } from "./database-target";
 // Invoked explicitly; importing backend modules never connects to Firebase.
 const mode = process.env.BACKEND_MODE;
 if (mode !== "emulator" && mode !== "staging")
@@ -27,6 +27,7 @@ const projectId =
   mode === "emulator"
     ? "demo-mi-security"
     : (process.env.STAGING_FIREBASE_PROJECT_ID ?? "");
+if (mode === "staging" && (projectId !== COMPANY_PROJECT || process.env.STAGING_DATABASE_UID !== EXPECTED_STAGING_UID)) throw Error("Explicit company staging identity required");
 const staff = mode === "staging" ? new MorrisStaffVerifier(staffConfiguration(process.env)) : undefined;
 const runtime = firebaseRuntime(mode, projectId);
 try {

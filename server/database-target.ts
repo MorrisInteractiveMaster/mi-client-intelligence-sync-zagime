@@ -3,6 +3,7 @@ import type { Firestore } from "firebase-admin/firestore";
 export const COMPANY_PROJECT = "morris-client-dash-zagime";
 export const STAGING_DATABASE = "mi-client-staging";
 export const REGION = "northamerica-northeast1";
+export const EXPECTED_STAGING_UID = "6d09ea71-f495-44a5-94a6-732ed1c47d88";
 export type RuntimeMode = "emulator" | "production" | "staging";
 export interface DatabaseTarget {
   mode: RuntimeMode;
@@ -133,5 +134,11 @@ export function assertOperatorDatabase(db: Pick<Firestore, "databaseId">) {
     )
       throw Error("Operator staging mode required");
   }
+  return target;
+}
+/** Current project-only workflow cannot use historical alternate staging projects. */
+export function assertProjectDatabase(db: Pick<Firestore, "databaseId">) {
+  const target = assertOperatorDatabase(db);
+  if (!((target.mode === "emulator" && target.projectId === "demo-mi-security") || (target.mode === "staging" && target.projectId === COMPANY_PROJECT && target.uid === EXPECTED_STAGING_UID))) throw Error("Invalid project database target");
   return target;
 }

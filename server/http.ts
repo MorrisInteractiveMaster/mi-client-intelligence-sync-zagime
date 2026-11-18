@@ -290,7 +290,9 @@ export function apiServer(
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       const [status, error] =
-        msg === "Unauthenticated"
+        options.projects && msg === "Invalid reporting summary"
+          ? [503, "temporarily_unavailable"]
+          : msg === "Unauthenticated"
           ? [401, "unauthenticated"]
           : msg === "Forbidden" || msg === "Forbidden fields"
             ? [403, "forbidden"]
