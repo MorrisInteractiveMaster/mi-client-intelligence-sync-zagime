@@ -43,11 +43,15 @@ case "$phase" in
   gcloud storage buckets list --project="$project" --format=json
   ;;
  build)
+  # Validate and submit the same checkout, even when invoked from another directory.
+  cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
+  # Fail before any Cloud SDK call if YAML or the logging mode regresses.
+  node scripts/validate-m8-build.cjs
   identity_config
   [[ "${IMAGE_TAG:-}" =~ ^northamerica-northeast1-docker\.pkg\.dev/morris-client-dash-zagime/[a-z0-9-]+/mi-client-staging:[a-f0-9]{40}$ ]] || exit 2
   [[ "${FIREBASE_WEB_API_KEY:-}" =~ ^[A-Za-z0-9_-]+$ && "${FIREBASE_WEB_APP_ID:-}" =~ ^[A-Za-z0-9:]+$ && "${FIREBASE_AUTH_DOMAIN:-}" == 'morris-client-dash-zagime.firebaseapp.com' ]] || { echo 'Verified public Firebase web configuration required' >&2; exit 2; }
   [[ "${BUILD_SOURCE_BUCKET:-}" =~ ^gs://[a-z0-9.-]{3,63}$ && "${BUILD_LOG_BUCKET:-}" =~ ^gs://[a-z0-9.-]{3,63}$ ]] || { echo 'Existing approved regional build buckets required' >&2; exit 2; }
-  [[ "${BUILD_SERVICE_ACCOUNT:-}" =~ ^projects/morris-client-dash-zagime/serviceAccounts/[a-z0-9-]+@morris-client-dash-zagime\.iam\.gserviceaccount\.com$ && "$BUILD_SERVICE_ACCOUNT" != "projects/$project/serviceAccounts/$sa" ]] || { echo 'Existing separate approved build identity required' >&2; exit 2; }
+  [[ "${BUILD_SERVICE_ACCOUNT:-}" == 'projects/morris-client-dash-zagime/serviceAccounts/mi-client-build@morris-client-dash-zagime.iam.gserviceaccount.com' ]] || { echo 'Verified existing mi-client-build identity required' >&2; exit 2; }
   apis cloudbuild.googleapis.com artifactregistry.googleapis.com
   # Describe must succeed before submission; do not let CLI create default buckets.
   gcloud storage buckets describe "$BUILD_SOURCE_BUCKET" --project="$project" --format=json

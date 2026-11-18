@@ -33,4 +33,26 @@ bash scripts/m8-staging.sh activate --approved-activate
 grep -q 'FIRESTORE_DATABASE_ID=mi-client-staging' "$COMMAND_LOG"
 grep -q 'ALLOWED_ORIGIN=https://synthetic-test.run.app' "$COMMAND_LOG"
 if grep -qE '\(default\)|add-iam-policy-binding|set-iam-policy|services enable' "$COMMAND_LOG"; then exit 1; fi
+# Prove invalid logging prevents submission, using an isolated config and fake SDK.
+mkdir "$base/scripts" "$base/deployment"
+cp scripts/m8-staging.sh scripts/validate-m8-build.cjs "$base/scripts/"
+ln -s "$PWD/node_modules" "$base/node_modules"
+printf 'options:\n  logging: LEGACY\n' >"$base/deployment/cloudbuild-m8.yaml"
+before="$(wc -l <"$COMMAND_LOG")"
+if bash "$base/scripts/m8-staging.sh" build --approved-build >"$base/logging-denial.log" 2>&1; then exit 1; fi
+[[ "$(wc -l <"$COMMAND_LOG")" -eq "$before" ]]
+grep -q 'STOP: M8 build config' "$base/logging-denial.log"
+cp deployment/cloudbuild-m8.yaml "$base/deployment/cloudbuild-m8.yaml"
+export IMAGE_TAG="northamerica-northeast1-docker.pkg.dev/morris-client-dash-zagime/synthetic-repo/mi-client-staging:$(printf 'b%.0s' {1..40})"
+export FIREBASE_WEB_API_KEY='synthetic-public-key' FIREBASE_WEB_APP_ID='1:123:web:abc' FIREBASE_AUTH_DOMAIN='morris-client-dash-zagime.firebaseapp.com'
+export BUILD_SOURCE_BUCKET='gs://synthetic-existing-source' BUILD_LOG_BUCKET='gs://synthetic-existing-logs'
+export BUILD_SERVICE_ACCOUNT='projects/morris-client-dash-zagime/serviceAccounts/mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com'
+if bash "$base/scripts/m8-staging.sh" build --approved-build >"$base/identity-denial.log" 2>&1; then exit 1; fi
+[[ "$(wc -l <"$COMMAND_LOG")" -eq "$before" ]]
+export BUILD_SERVICE_ACCOUNT='projects/morris-client-dash-zagime/serviceAccounts/mi-client-build@morris-client-dash-zagime.iam.gserviceaccount.com'
+bash "$base/scripts/m8-staging.sh" build --approved-build
+grep -q -- "--service-account=$BUILD_SERVICE_ACCOUNT" "$COMMAND_LOG"
+grep -q -- "--gcs-source-staging-dir=$BUILD_SOURCE_BUCKET/m8-source" "$COMMAND_LOG"
+grep -q -- "--gcs-log-dir=$BUILD_LOG_BUCKET/m8-logs" "$COMMAND_LOG"
+grep -q -- "_IMAGE=$IMAGE_TAG" "$COMMAND_LOG"
 echo 'Offline M8 phase guards passed; no deployment or live cloud verification.'

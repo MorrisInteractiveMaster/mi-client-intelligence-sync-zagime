@@ -40,10 +40,12 @@ export MORRIS_ENTRA_CLIENT_ID='OWNER_VERIFIED_MICROSOFT_CLIENT_UUID'
 export FIREBASE_WEB_API_KEY='OWNER_VERIFIED_PUBLIC_WEB_API_KEY'
 export FIREBASE_WEB_APP_ID='OWNER_VERIFIED_WEB_APP_ID'
 export FIREBASE_AUTH_DOMAIN='morris-client-dash-zagime.firebaseapp.com' # confirm against existing app
-export BUILD_SERVICE_ACCOUNT='projects/morris-client-dash-zagime/serviceAccounts/OWNER_APPROVED_EXISTING_BUILD_IDENTITY'
+export BUILD_SERVICE_ACCOUNT='projects/morris-client-dash-zagime/serviceAccounts/mi-client-build@morris-client-dash-zagime.iam.gserviceaccount.com'
 export BUILD_SOURCE_BUCKET='gs://OWNER_APPROVED_EXISTING_CANADIAN_BUILD_SOURCE_BUCKET'
 export BUILD_LOG_BUCKET='gs://OWNER_APPROVED_EXISTING_CANADIAN_BUILD_LOG_BUCKET'
 export IMAGE_TAG="northamerica-northeast1-docker.pkg.dev/morris-client-dash-zagime/OWNER_APPROVED_EXISTING_REPOSITORY/mi-client-staging:$(git rev-parse HEAD)"
+npm ci --ignore-scripts
+node scripts/validate-m8-build.cjs # offline YAML/GCS_ONLY guard; no submission
 bash scripts/m8-staging.sh build --approved-build
 # Inspect the returned registry metadata/build provenance. Paste its verified immutable digest:
 export IMAGE_DIGEST='northamerica-northeast1-docker.pkg.dev/morris-client-dash-zagime/OWNER_APPROVED_EXISTING_REPOSITORY/mi-client-staging@sha256:OWNER_VERIFIED_DIGEST'
