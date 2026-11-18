@@ -82,9 +82,11 @@ export function apiServer(
         res.setHeader("access-control-allow-origin", options.allowedOrigin);
         res.setHeader("vary", "Origin");
       }
+      // Public GET/HEAD assets must work with the browser's module/font Origin
+      // header even while the protected API is inactive or has no allowed origin.
+      if (options.frontend && await serveFrontend(req, res, options.frontend)) return;
       if (req.headers.origin && req.headers.origin !== options.allowedOrigin)
         return send(res, 403, { error: "forbidden" });
-      if (options.frontend && await serveFrontend(req, res, options.frontend)) return;
       // Static assets cannot consume the protected API's budget.
       if (!limit.accept(req.socket.remoteAddress ?? "unknown"))
         return send(res, 429, { error: "rate_limited" });

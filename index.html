@@ -1,1 +1,22 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#102c3b"/><meta name="description" content="Morris Interactive Client Intelligence Portal — Zagimē Anishinabēk prototype"/><title>Zagimē • Client Intelligence | Morris Interactive</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>
+<!doctype html>
+<html lang="en" data-application-state="starting">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#102c3b" />
+    <meta name="description" content="Morris Interactive Client Intelligence Portal — Zagimē Anishinabēk prototype" />
+    <title>Zagimē • Client Intelligence | Morris Interactive</title>
+    <link rel="icon" type="image/png" href="./branding/morris/MI%20Logo.png" />
+    <script src="/startup-status.js" defer></script>
+  </head>
+  <body>
+    <div id="root">
+      <main id="startup-status" role="status">
+        <h1 id="startup-heading">Loading the dashboard…</h1>
+        <p id="startup-message">If the dashboard does not appear, please reload this page or contact Morris Interactive.</p>
+      </main>
+    </div>
+    <noscript>This dashboard requires JavaScript. Please enable it and reload the page.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

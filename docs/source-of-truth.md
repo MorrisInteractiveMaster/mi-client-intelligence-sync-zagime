@@ -1,5 +1,7 @@
 # Source-of-truth boundaries
 
+Current controlling requirements: [owner master contract, 18 November 2026](master-implementation-contract.md). Active project workflows must become independent of agreements/departments; only native verified Zagimē QBO Projects and relevant Time records are permitted. General Customer/subcustomer imports and company-wide discovery are not approved substitutes. The historical sections below describe existing legacy/demo behavior, not the new target or remote verification. [PR B handoff](project-only-persistence-handoff.md) maps the concrete migration and authorization changes; these are not yet implemented. Current secured persistence exists in code/emulators, while remote cross-session persistence and live integrations remain unverified. Verified corporate Morris staff policy supersedes individual staff onboarding; client memberships remain server-controlled and scoped.
+
 | Entity / fields | Owner | Current read/write path | Future audit responsibility |
 | --- | --- | --- | --- |
 | Project.external | External QBO metadata | Synthetic fixture; allowlisted external merge helper | Authorized server sync |
