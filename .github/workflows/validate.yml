@@ -45,25 +45,29 @@ jobs:
           git archive 1ef561b733bf3cc44925c08ab0cc8f153cab0801 | tar -x -C /tmp/mi-preview-baseline
           docker build -f /tmp/mi-preview-baseline/deployment/Dockerfile -t mi-preview-baseline /tmp/mi-preview-baseline
           docker network create --internal mi-preview-baseline-net
-          docker run -d --network mi-preview-baseline-net --name mi-preview-baseline -p 127.0.0.1:8088:8080 -e BACKEND_MODE=staging -e STAGING_PREVIEW_ONLY=true mi-preview-baseline
+          docker run -d --network mi-preview-baseline-net --name mi-preview-baseline -e BACKEND_MODE=staging -e STAGING_PREVIEW_ONLY=true mi-preview-baseline
           trap 'docker rm -f mi-preview-baseline; docker network rm mi-preview-baseline-net' EXIT
+          BASE="http://$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mi-preview-baseline):8080"
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:8088/health > /dev/null; then break; fi
+            if curl --fail --silent --max-time 2 "$BASE/health" > /dev/null; then break; fi
             sleep 1
           done
-          BROWSER_EVIDENCE_DIR=test-results/baseline node scripts/smoke-preview.cjs http://127.0.0.1:8088 --expect-broken
+          curl --fail --silent --max-time 2 "$BASE/health" || { docker logs mi-preview-baseline; exit 1; }
+          BROWSER_CONTAINER_ORIGIN="$BASE" BROWSER_EVIDENCE_DIR=test-results/baseline node scripts/smoke-preview.cjs "$BASE" --expect-broken
       - name: Build staging container and verify actual browser rendering
         run: |
           docker build -f deployment/Dockerfile -t mi-m8-local .
           docker network create --internal mi-preview-fixed-net
-          docker run -d --network mi-preview-fixed-net --name mi-m8-preview -p 127.0.0.1:8089:8080 -e BACKEND_MODE=staging -e STAGING_PREVIEW_ONLY=true -e ENABLE_LIVE_FIREBASE=false -e ENABLE_SYNTHETIC_STAGING=false mi-m8-local
+          docker run -d --network mi-preview-fixed-net --name mi-m8-preview -e BACKEND_MODE=staging -e STAGING_PREVIEW_ONLY=true -e ENABLE_LIVE_FIREBASE=false -e ENABLE_SYNTHETIC_STAGING=false mi-m8-local
           trap 'docker rm -f mi-m8-preview; docker network rm mi-preview-fixed-net' EXIT
+          BASE="http://$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mi-m8-preview):8080"
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:8089/health > /tmp/mi-m8-health.json; then break; fi
+            if curl --fail --silent --max-time 2 "$BASE/health" > /tmp/mi-m8-health.json; then break; fi
             sleep 1
           done
+          curl --fail --silent --max-time 2 "$BASE/health" > /tmp/mi-m8-health.json || { docker logs mi-m8-preview; exit 1; }
           node -e 'const r=require("/tmp/mi-m8-health.json");if(r.status!=="inactive-preview")process.exit(1)'
-          BROWSER_EVIDENCE_DIR=test-results/fixed node scripts/smoke-preview.cjs http://127.0.0.1:8089
+          BROWSER_CONTAINER_ORIGIN="$BASE" BROWSER_EVIDENCE_DIR=test-results/fixed node scripts/smoke-preview.cjs "$BASE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
