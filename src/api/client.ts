@@ -43,6 +43,7 @@ export class SecuredApiClient {
     private readonly request: typeof fetch = (input, init) =>
       fetch(input, init),
     private readonly microsoftProof?: () => { idToken: string; accessToken: string } | undefined,
+    private readonly workflow: "legacy" | "projects" = "legacy",
   ) {
     if (origin === "same-origin" && typeof location !== "undefined") this.origin = origin = location.origin;
     if (enabled) {
@@ -94,7 +95,7 @@ export class SecuredApiClient {
     const token = await this.token();
     const proof = this.microsoftProof?.();
     const r = await this.request(
-      this.origin + "/api/tenants/" + tenant + "/" + path,
+      this.origin + (this.workflow === "projects" ? "/api/v2/tenants/" : "/api/tenants/") + tenant + "/" + path,
       {
         method: options.method ?? "GET",
         headers: {
@@ -119,7 +120,9 @@ export class SecuredApiClient {
         .then((v: { error?: string }) => v.error ?? "")
         .catch(() => "");
       throw new ApiError(
-        r.status === 401
+        code === "migration_required"
+          ? "This workspace needs a reviewed project-data migration. Contact Morris Interactive."
+          : r.status === 401
           ? "Please sign in again."
           : r.status === 403
             ? "This account is not approved for this workspace."

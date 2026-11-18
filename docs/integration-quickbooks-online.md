@@ -1,5 +1,7 @@
 # QuickBooks Online Accounting preparation
 
+Controlling [18 November owner contract](master-implementation-contract.md): **native verified Zagimē Projects only**. The historical Customer/subcustomer candidates below are superseded and must not be implemented or fetched as a fallback. Native API entitlement, exact server-side scope/schema/paging/deletion semantics and existing app permissions require verification in PR C. No native connector/OAuth is implemented by PR B, and no company-wide project discovery or general Customer record import is authorized.
+
 Current M8 review: [read-only integration handoff](m8-quickbooks-handoff.md) covers newer Projects GraphQL, sandbox/entitlement verification and separation from Payroll/Time. Historical connection reports below remain independently unverified.
 
 User reports the Accounting app is connected. Company/realm, grants and live authorization remain independently unverified. No API call or OAuth request occurred. disabledAccounting throws before network access. This product is separate from QuickBooks Time.

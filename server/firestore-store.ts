@@ -44,7 +44,7 @@ const bounded = async (tx: Transaction, q: FirebaseFirestore.Query) => {
 };
 /** All histories are separate documents. Generic mutations load only targeted metadata, never source records or growing history. */
 export class FirestoreTenantStore implements TenantStore {
-  constructor(readonly db: Firestore) {}
+  constructor(readonly db: Firestore, private readonly expectedSchemaVersion?: number) {}
   async base(tx: Transaction, tenantId: string, subject: string) {
     safeId(tenantId);
     const root = this.db.doc(`tenants/${tenantId}`);
@@ -53,6 +53,8 @@ export class FirestoreTenantStore implements TenantStore {
       root, root.collection("memberships").doc(key(subject)));
     if (!tenant.exists || (!staff && !membership?.exists)) throw Error("Forbidden");
     const d = tenant.data()!;
+    if (this.expectedSchemaVersion !== undefined && d.schemaVersion !== this.expectedSchemaVersion)
+      throw Error("Migration required");
     if (!Number.isSafeInteger(d.revision) || d.revision < 1)
       throw Error("Invalid persisted revision");
     const record: TenantRecord = {
@@ -373,6 +375,14 @@ export class FirestoreTenantStore implements TenantStore {
         const headRef = root.collection("allocationHeads").doc(sourceId);
         const [source, headDoc] = await tx.getAll(rawRef, headRef);
         if (!source.exists) throw Error("Forbidden");
+        if (this.expectedSchemaVersion === 2) {
+          const envelope = source.data()!;
+          if (envelope.schemaVersion !== 2) throw Error("Forbidden");
+          if (envelope.deleted === true) throw Error("Source conflict");
+          if (envelope.record?.id !== sourceId || typeof envelope.record?.revision !== "string" || !envelope.record.revision || !/^\d{4}-\d{2}-\d{2}$/.test(envelope.record.date) || new Date(envelope.record.date).toISOString().slice(0, 10) !== envelope.record.date) throw Error("Invalid source");
+          const scoped = await tx.get(root.collection("projects").doc(safeId(envelope.scopeProjectId)));
+          if (!scoped.exists || scoped.data()!.schemaVersion !== 2 || scoped.data()!.tenantId !== tenantId) throw Error("Forbidden");
+        }
         const raw = source.data()!.record;
         if (
           raw.tenantId !== tenantId ||
@@ -426,6 +436,7 @@ export class FirestoreTenantStore implements TenantStore {
         }
         if (ps.some((d) => !d.exists || !canAccessProject(m, d.data() as any)))
           throw Error("Forbidden");
+        if (this.expectedSchemaVersion === 2 && ps.some(d => d.data()!.schemaVersion !== 2 || d.data()!.tenantId !== tenantId || d.data()!.id !== d.id)) throw Error("Forbidden");
         if (
           JSON.stringify(head.portions) === JSON.stringify(portions) &&
           JSON.stringify(previous) === JSON.stringify(portions)
@@ -465,6 +476,7 @@ export class FirestoreTenantStore implements TenantStore {
         });
         ids.forEach((id, i) => {
           if (!views[i].exists) throw Error("Invalid reporting summary");
+          if (this.expectedSchemaVersion === 2 && (views[i].data()!.tenantId !== tenantId || views[i].data()!.id !== id || views[i].data()!.schemaVersion !== 2 || (periods[i].exists && (periods[i].data()!.projectId !== id || periods[i].data()!.month !== month)))) throw Error("Invalid reporting summary");
           const delta =
             portions
               .filter((p) => p.projectId === id)

@@ -21,6 +21,7 @@ export interface StaffProject
   lifetimeSeconds: number;
 }
 export interface StaffSource {
+  approval?: "unknown" | "pending" | "submitted" | "approved" | "rejected";
   id: string;
   date: string;
   seconds: number;

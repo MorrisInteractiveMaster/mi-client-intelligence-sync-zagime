@@ -3,11 +3,13 @@ import { FirestoreTenantStore } from "./firestore-store";
 import { ReportingBackend } from "./backend";
 import { apiServer } from "./http";
 import { MorrisStaffVerifier, staffConfiguration } from "./morris-staff";
+import { ProjectBackend, ProjectStore } from "./project-workspace";
+import { STAGING_DATABASE, COMPANY_PROJECT, EXPECTED_STAGING_UID } from "./database-target";
 // Invoked explicitly; importing backend modules never connects to Firebase.
 const mode = process.env.BACKEND_MODE;
-if (mode !== "emulator" && mode !== "production" && mode !== "staging")
+if (mode !== "emulator" && mode !== "staging")
   throw Error(
-    "Set BACKEND_MODE explicitly; live access is disabled by default",
+    "Set explicit staging or demo emulator mode; production access is blocked",
   );
 // Explicit inactive preview: no SDK initialization, credentials or database access.
 if (process.env.STAGING_PREVIEW_ONLY === "true") {
@@ -19,12 +21,13 @@ if (process.env.STAGING_PREVIEW_ONLY === "true") {
   await new Promise<void>(resolve => process.on("SIGTERM", () => preview.close(() => resolve())));
   process.exit(0);
 }
+if (process.env.FIRESTORE_DATABASE_ID !== STAGING_DATABASE)
+  throw Error("Explicit named project-workspace database required");
 const projectId =
   mode === "emulator"
     ? "demo-mi-security"
-    : mode === "staging"
-      ? (process.env.STAGING_FIREBASE_PROJECT_ID ?? "")
-      : "morris-client-dash-zagime";
+    : (process.env.STAGING_FIREBASE_PROJECT_ID ?? "");
+if (mode === "staging" && (projectId !== COMPANY_PROJECT || process.env.STAGING_DATABASE_UID !== EXPECTED_STAGING_UID)) throw Error("Explicit company staging identity required");
 const staff = mode === "staging" ? new MorrisStaffVerifier(staffConfiguration(process.env)) : undefined;
 const runtime = firebaseRuntime(mode, projectId);
 try {
@@ -44,6 +47,7 @@ const backend = new ReportingBackend(
 );
 const server = apiServer(backend, {
   allowedOrigin: process.env.ALLOWED_ORIGIN,
+  projects: new ProjectBackend(new ProjectStore(runtime.db), new FirebaseIdentityVerifier(runtime.auth, staff), { issuer: `https://securetoken.google.com/${projectId}`, audience: projectId, now: Date.now }),
   ...(process.env.SERVE_STAGING_FRONTEND === "true" && mode === "staging" ? { frontend: "dist" } : {}),
 });
 server.requestTimeout = 10000;

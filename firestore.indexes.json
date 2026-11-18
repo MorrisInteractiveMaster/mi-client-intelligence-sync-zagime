@@ -1,1 +1,14 @@
-{ "indexes": [], "fieldOverrides": [] }
+{
+  "indexes": [
+    { "collectionGroup": "rawTime", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "schemaVersion", "order": "ASCENDING" },
+      { "fieldPath": "record.date", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "allocationRevisions", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "sourceId", "order": "ASCENDING" },
+      { "fieldPath": "revision", "order": "DESCENDING" },
+      { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] }
+  ],
+  "fieldOverrides": []
+}

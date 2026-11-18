@@ -17,6 +17,8 @@
 }
 .secure-staff button,
 .secure-shell > button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   border: 1px solid #ccd8d4;
   border-radius: 8px;
   background: #fff;
@@ -72,7 +74,8 @@
   min-width: 0;
 }
 .secure-form input,
-.secure-form select {
+.secure-form select,
+.secure-form textarea {
   box-sizing: border-box;
   min-width: 0;
   width: 100%;

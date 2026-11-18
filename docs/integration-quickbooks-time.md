@@ -1,5 +1,7 @@
 # QuickBooks Time preparation
 
+Current [owner contract](master-implementation-contract.md): only time reliably associated with verified Zagimē project/jobcode IDs is permitted. No payroll/compensation/rates or unrelated time. Product entitlement/current operational-state coverage requires independent PR D verification; Accounting OAuth/TimeActivity is not equivalent. PR B adds no Time API, OAuth, import, source writer or credentials.
+
 Current M8 review: [read-only integration handoff](m8-quickbooks-handoff.md) distinguishes classic migration risk from Payroll/Time and unverified Canadian entitlements/test access. Legacy Time is not assumed to be the approved future source.
 
 User reports the Time app is connected; registration, account permissions, entitlement and usable grants are not independently verified. disabledTime throws before network access. No live data or token exchange.
