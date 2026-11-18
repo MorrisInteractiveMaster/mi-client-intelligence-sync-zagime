@@ -8,6 +8,7 @@ import { requestIdentity } from "./request-identity";
 import { serveFrontend } from "./static-frontend";
 import { projectRequest } from "./project-http";
 import type { ProjectBackend } from "./project-workspace";
+import type { TimeSync } from "./time-sync";
 const MAX_BYTES = 16384;
 export class RequestLimit {
   private entries = new Map<string, { count: number; until: number }>();
@@ -72,7 +73,7 @@ const only = (value: Record<string, unknown>, keys: string[]) => {
 };
 export function apiServer(
   backend: ReportingBackend,
-  options: { allowedOrigin?: string; limit?: RequestLimit; frontend?: string; previewOnly?: boolean; projects?: ProjectBackend } = {},
+  options: { allowedOrigin?: string; limit?: RequestLimit; frontend?: string; previewOnly?: boolean; projects?: ProjectBackend; time?: TimeSync } = {},
 ) {
   const limit = options.limit ?? new RequestLimit();
   return createServer((req, res) => requestIdentity.run({}, async () => {
@@ -118,7 +119,7 @@ export function apiServer(
         return send(res, 401, { error: "unauthenticated" });
       if ((req.url?.length ?? 0) > 2048) throw Error("Invalid URL");
       if (options.projects) {
-        const result = await projectRequest(options.projects, req, () => body(req));
+        const result = await projectRequest(options.projects, req, () => body(req), options.time);
         return send(res, result.status, result.body);
       }
       const url = new URL(req.url!, "http://local");
@@ -290,7 +291,9 @@ export function apiServer(
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       const [status, error] =
-        options.projects && msg === "Invalid reporting summary"
+        msg === "Time sync busy" || msg === "Time mapping conflict"
+          ? [409, "time_conflict"]
+          : options.projects && msg === "Invalid reporting summary"
           ? [503, "temporarily_unavailable"]
           : msg === "Unauthenticated"
           ? [401, "unauthenticated"]

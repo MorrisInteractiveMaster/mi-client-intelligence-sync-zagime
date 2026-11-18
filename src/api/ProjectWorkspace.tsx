@@ -9,6 +9,7 @@ import type {
 import type { StaffSource, HistoryRow } from "./types";
 import type { Allocation } from "../reporting/model";
 import { hoursToSeconds } from "../projects/duration";
+import { TimeConnectionPanel } from "./TimeConnectionPanel";
 const h = (s: number) => String(s / 3600);
 export function ProjectStaffWorkspace({
   client,
@@ -138,10 +139,7 @@ export function ProjectStaffWorkspace({
   return (
     <section className="secure-staff" aria-label="Project administration">
       <h2>Projects</h2>
-      <p>
-        Project plans and publication are managed by Morris. QuickBooks
-        connections are disabled.
-      </p>
+      <p>Project plans and publication are managed by Morris.</p>
       <button
         disabled={busy}
         onClick={() => {
@@ -349,6 +347,16 @@ export function ProjectStaffWorkspace({
         </form>
       )}
       <h2>Recorded time</h2>
+      <TimeConnectionPanel
+        client={client}
+        tenant={tenant}
+        month={month}
+        refreshVersion={epoch}
+        projects={page.projects ?? []}
+        busy={busy}
+        run={perform}
+        onChanged={() => setEpoch((x) => x + 1)}
+      />
       {!sources && (
         <button
           disabled={busy || page.revision === 0}
@@ -365,6 +373,18 @@ export function ProjectStaffWorkspace({
           </h3>
           <p>{s.description}</p>
           <p>Approval: {s.approval ?? "unknown"}</p>
+          {s.modifiedAt && (
+            <p>
+              Source updated {s.modifiedAt}
+              {s.deleted ? " · Deleted in QuickBooks Time" : ""}
+            </p>
+          )}
+          {s.needsReview && !s.deleted && (
+            <p role="status">
+              Source changed. Review the prior split before saving a new
+              allocation.
+            </p>
+          )}
           <p>
             {h(s.unallocatedSeconds)} h unallocated
             {s.conflict

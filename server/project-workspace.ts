@@ -474,6 +474,7 @@ export class ProjectStore {
               ? d.data().approval
               : "unknown",
             allocationRevision: h?.revision ?? 0,
+            ...(d.data().source === "quickbooks-time" ? { provider: "quickbooks-time" as const, modifiedAt: d.data().modifiedAt as string, deleted: d.data().deleted === true, needsReview: h?.needsReview === true } : {}),
             portions,
             unallocatedSeconds:
               d.data().deleted === true

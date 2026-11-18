@@ -8,6 +8,7 @@ import { build } from "esbuild";
 import { chromium } from "playwright";
 import { firebaseRuntime, FirebaseIdentityVerifier } from "../server/firebase";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
+import { TimeSync } from "../server/time-sync";
 import {
   seedProjectSynthetic,
   provisionProjectClient,
@@ -122,6 +123,7 @@ test(
       '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js" defer></script></body></html>',
     );
     const options = {
+      time: new TimeSync(new ProjectStore(runtime.db)),
       frontend: directory,
       allowedOrigin: "",
       limit: new RequestLimit(10000),

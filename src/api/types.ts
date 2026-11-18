@@ -21,6 +21,10 @@ export interface StaffProject
   lifetimeSeconds: number;
 }
 export interface StaffSource {
+  provider?: "quickbooks-time";
+  modifiedAt?: string;
+  deleted?: boolean;
+  needsReview?: boolean;
   approval?: "unknown" | "pending" | "submitted" | "approved" | "rejected";
   id: string;
   date: string;
