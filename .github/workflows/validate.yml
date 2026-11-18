@@ -23,6 +23,8 @@ jobs:
           distribution: temurin
           java-version: "21"
       - run: npm ci --ignore-scripts
+      - run: node scripts/validate-m8-build.cjs
+      - run: node --test scripts/validate-m8-build.test.cjs
       - run: bash -n scripts/verify-staging-iam.sh scripts/test-staging-iam-collector.sh
       - run: bash scripts/test-staging-iam-collector.sh
       - run: bash -n scripts/m8-staging.sh scripts/test-m8-staging.sh

@@ -17,4 +17,6 @@ steps:
       - 'VITE_MORRIS_ENTRA_TENANT_ID=${_ENTRA_TENANT}'
       - .
 images: ['${_IMAGE}']
+options:
+  logging: GCS_ONLY
 timeout: 900s

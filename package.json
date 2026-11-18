@@ -39,7 +39,8 @@
     "firebase-tools": "15.36.0",
     "tsx": "^4.19.4",
     "typescript": "~5.8.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "yaml": "2.9.1"
   },
   "overrides": {
     "@grpc/grpc-js": "1.14.7"
