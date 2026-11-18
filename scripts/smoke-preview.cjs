@@ -38,6 +38,7 @@ const report = {
   faultStates: [],
 };
 let browser;
+let closeForwarder;
 const failures = [];
 async function observe(context, page) {
   await context.route("**/*", (route) => {
@@ -112,6 +113,13 @@ async function observe(context, page) {
 }
 (async () => {
   await mkdir(output, { recursive: true });
+  if (process.env.CONTAINER_HOST) {
+    assert.equal(base.hostname, "127.0.0.1");
+    closeForwarder = await require("./forward-preview.cjs").forwardPreview(
+      process.env.CONTAINER_HOST,
+      Number(base.port),
+    );
+  }
   browser = await chromium.launch({
     headless: true,
     ...(process.env.BROWSER_EXECUTABLE
@@ -313,4 +321,5 @@ async function observe(context, page) {
       }),
     );
     await browser?.close();
+    await closeForwarder?.();
   });
