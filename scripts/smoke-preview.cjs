@@ -3,26 +3,16 @@ const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
 const { mkdir, writeFile } = require("node:fs/promises");
 const { resolve } = require("node:path");
-const { isIP } = require("node:net");
 const base = new URL(process.argv[2] ?? "http://127.0.0.1:8089");
 const broken = process.argv.includes("--expect-broken");
 const live = process.argv.includes("--live-read-only");
 const liveHost = "mi-client-staging-dashboard-u3xjh6xfkq-nn.a.run.app";
-// CI passes the exact Docker-inspected private address on its internal bridge.
-// No external egress or published port is needed for host-to-container access.
-const containerTarget =
-  process.env.CI === "true" &&
-  process.env.BROWSER_CONTAINER_ORIGIN === base.origin &&
-  base.protocol === "http:" &&
-  isIP(base.hostname) === 4 &&
-  /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(base.hostname);
 if (
   base.origin !== base.href.replace(/\/$/, "") ||
   base.username ||
   base.password ||
   !(
     base.hostname === "127.0.0.1" ||
-    containerTarget ||
     (live &&
       base.protocol === "https:" &&
       (base.hostname === liveHost ||
