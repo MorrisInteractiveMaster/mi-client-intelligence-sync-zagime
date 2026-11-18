@@ -5,6 +5,8 @@ export default defineConfig({
   base: "./",
   server: { allowedHosts: ["terminal.local"] },
   build: {
+    // Emit fonts as same-origin files; preserve font-src 'self' without data:.
+    assetsInlineLimit: 0,
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {

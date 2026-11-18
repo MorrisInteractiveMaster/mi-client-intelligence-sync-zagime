@@ -1,12 +1,16 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { ApplicationBoundary, ApplicationReady } from "./ApplicationBoundary";
 import "@fontsource-variable/dm-sans/index.css";
 import "@fontsource-variable/manrope/index.css";
 import "./styles.css";
 import "./premium.css";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <ApplicationBoundary>
+      <App />
+      <ApplicationReady />
+    </ApplicationBoundary>
   </React.StrictMode>,
 );

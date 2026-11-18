@@ -28,12 +28,28 @@ export async function serveFrontend(
     ".js": "text/javascript",
     ".css": "text/css",
     ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
     ".svg": "image/svg+xml",
     ".woff2": "font/woff2",
     ".ico": "image/x-icon",
   };
   const type = types[extname(path)];
-  if (!type) return false;
+  const notFound = () => {
+    res.writeHead(404, {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    });
+    res.end(req.method === "HEAD" ? undefined : "Not found");
+    return true;
+  };
+  if (!type) {
+    const assets = resolve(root, "assets");
+    return path === assets || path.startsWith(assets + sep)
+      ? notFound()
+      : false;
+  }
   try {
     const bytes = await readFile(path);
     res.writeHead(200, {
@@ -49,6 +65,7 @@ export async function serveFrontend(
     res.end(req.method === "HEAD" ? undefined : bytes);
     return true;
   } catch {
-    return false;
+    // A missing public asset is not an inactive API response (JSON/503).
+    return notFound();
   }
 }
