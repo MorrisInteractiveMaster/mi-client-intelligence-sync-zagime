@@ -9,6 +9,7 @@ export interface TimeStatus {
   month?: string;
   recordedSeconds?: number;
   unallocatedSeconds?: number;
+  lifetimeRecordedSeconds?: number;
   state: "disconnected" | "unmapped" | "configured";
   canManage: boolean;
   mappings: TimeMapping[];

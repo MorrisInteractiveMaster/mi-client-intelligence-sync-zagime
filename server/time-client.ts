@@ -45,6 +45,11 @@ function object(value: unknown): JsonObject {
     throw Error("Invalid Time response");
   return value as JsonObject;
 }
+function rows(reply: JsonObject, collection: string): [string, unknown][] {
+  const value = object(reply.results)[collection];
+  if (Array.isArray(value) && value.length === 0) return [];
+  return Object.entries(object(value));
+}
 async function readJson(response: Response) {
   const reader = response.body?.getReader();
   if (!reader) throw Error("Invalid Time response");
@@ -147,9 +152,7 @@ export class TimeClient {
     throw Error("Time temporarily unavailable");
   }
   async verifyActor(clientUrl: string, userId: string) {
-    const users = Object.entries(
-      object(object((await this.get("current_user", {})).results).users),
-    );
+    const users = rows(await this.get("current_user", {}), "users");
     const [id, value] = users[0] ?? [];
     if (
       users.length !== 1 ||
@@ -167,7 +170,7 @@ export class TimeClient {
       supplemental_data: "no",
       limit: "1",
     });
-    const jobs = Object.entries(object(object(r.results).jobcodes));
+    const jobs = rows(r, "jobcodes");
     if (
       r.more !== false ||
       jobs.length !== 1 ||
@@ -183,10 +186,7 @@ export class TimeClient {
       supplemental_data: "no",
       limit: "1",
     });
-    if (
-      children.more !== false ||
-      Object.keys(object(object(children.results).jobcodes)).length
-    )
+    if (children.more !== false || rows(children, "jobcodes").length)
       throw Error("Time jobcode must be a verified leaf");
   }
   async read(
@@ -209,10 +209,10 @@ export class TimeClient {
       });
       if (typeof reply.more !== "boolean")
         throw Error("Invalid Time pagination");
-      const rows = Object.entries(object(object(reply.results)[path]));
-      if (rows.length > 50 || (reply.more && !rows.length))
+      const batch = rows(reply, path);
+      if (batch.length > 50 || (reply.more && !batch.length))
         throw Error("Invalid Time pagination");
-      for (const [key, value] of rows) {
+      for (const [key, value] of batch) {
         const row = object(value);
         const id = timeId(row.id);
         if (id !== key || timeId(row.jobcode_id) !== jobcodeId)

@@ -457,7 +457,7 @@ export class FirestoreTenantStore implements TenantStore {
             )
           : [];
         const writeTimeTotals = source.data()!.source === "quickbooks-time"
-          ? await timeTotalsWrite(tx, root, [{ month, recorded: 0, allocated: portions.reduce((n, p) => n + p.seconds, 0) - previous.reduce((n: number, p: { seconds: number }) => n + p.seconds, 0) }])
+          ? await timeTotalsWrite(tx, root, [{ project: safeId(source.data()!.scopeProjectId), month, recorded: 0, allocated: portions.reduce((n, p) => n + p.seconds, 0) - previous.reduce((n: number, p: { seconds: number }) => n + p.seconds, 0) }])
           : undefined;
         writeTimeTotals?.();
         const revision = head.revision + 1;

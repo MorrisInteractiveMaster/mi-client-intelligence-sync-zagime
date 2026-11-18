@@ -313,6 +313,12 @@ export class ProjectStore {
     query: PageQuery,
   ): Promise<ProjectPage> {
     checkMonth(query.month);
+    if (
+      query.search !== undefined &&
+      (resource !== "projects" || query.search.length > 120)
+    )
+      throw Error("Invalid project search");
+    const search = query.search?.trim().normalize("NFKC").toLowerCase() ?? "";
     if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > 25)
       throw Error("Invalid page limit");
     return this.db.runTransaction(async (tx) => {
@@ -324,6 +330,7 @@ export class ProjectStore {
         resource,
         query.month,
         query.sourceId ?? "",
+        search,
         String(a.meta.revision),
       );
       let after: string | undefined;
@@ -379,8 +386,18 @@ export class ProjectStore {
           position === undefined
             ? q.startAfter(after)
             : q.startAfter(position, after);
-      const snapshot = await tx.get(q.limit(query.limit + 1)),
-        docs = snapshot.docs.slice(0, query.limit);
+      const snapshot = await tx.get(q.limit(query.limit + 1));
+      const scanned = snapshot.docs.slice(0, query.limit);
+      const docs = search
+        ? scanned.filter((d) => {
+            const p = d.data();
+            return [d.id, p.name, p.workOrderReference].some(
+              (field) =>
+                typeof field === "string" &&
+                field.normalize("NFKC").toLowerCase().includes(search),
+            );
+          })
+        : scanned;
       const out: ProjectPage = {
         revision: a.meta.revision,
         ...(snapshot.size > query.limit
@@ -388,7 +405,7 @@ export class ProjectStore {
               nextCursor: Buffer.from(
                 JSON.stringify({
                   context,
-                  after: docs.at(-1)!.id,
+                  after: scanned.at(-1)!.id,
                   ...(["history", "audits"].includes(resource)
                     ? { position: docs.at(-1)!.data().revision }
                     : resource === "sources"
@@ -474,7 +491,14 @@ export class ProjectStore {
               ? d.data().approval
               : "unknown",
             allocationRevision: h?.revision ?? 0,
-            ...(d.data().source === "quickbooks-time" ? { provider: "quickbooks-time" as const, modifiedAt: d.data().modifiedAt as string, deleted: d.data().deleted === true, needsReview: h?.needsReview === true } : {}),
+            ...(d.data().source === "quickbooks-time"
+              ? {
+                  provider: "quickbooks-time" as const,
+                  modifiedAt: d.data().modifiedAt as string,
+                  deleted: d.data().deleted === true,
+                  needsReview: h?.needsReview === true,
+                }
+              : {}),
             portions,
             unallocatedSeconds:
               d.data().deleted === true

@@ -41,13 +41,20 @@ export function ProjectStaffWorkspace({
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [epoch, setEpoch] = useState(0);
+  const [search, setSearch] = useState("");
+  const [selectedProject, setSelectedProject] = useState<{
+    id: string;
+    name: string;
+  }>();
   const lock = useRef(false);
-  const scope = tenant + "|" + month;
+  const scope = tenant + "|" + month + "|" + search;
   const latestScope = useRef(scope);
   latestScope.current = scope;
   const creation = useRef<string | undefined>(undefined);
   const query = (cursor?: string) =>
     `month=${month}&limit=25${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
+  const projectQuery = (cursor?: string) =>
+    query(cursor) + (search ? "&search=" + encodeURIComponent(search) : "");
   const failed = (e: unknown) => {
     if (e instanceof ApiError && [401, 403].includes(e.status)) onDenied();
     setError(
@@ -66,7 +73,7 @@ export function ProjectStaffWorkspace({
     setAuditCursor(undefined);
     setHistoryCursor(undefined);
     client
-      .call<ProjectPage>(tenant, "projects?" + query(), {
+      .call<ProjectPage>(tenant, "projects?" + projectQuery(), {
         signal: abort.signal,
       })
       .then((p) => {
@@ -79,7 +86,7 @@ export function ProjectStaffWorkspace({
         if (!abort.signal.aborted) failed(e);
       });
     return () => abort.abort();
-  }, [client, tenant, month, epoch]);
+  }, [client, tenant, month, epoch, search]);
   async function perform(work: () => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
@@ -107,7 +114,7 @@ export function ProjectStaffWorkspace({
   async function moreProjects() {
     const p = await client.call<ProjectPage>(
       tenant,
-      "projects?" + query(page.nextCursor),
+      "projects?" + projectQuery(page.nextCursor),
     );
     consistent(p);
     setPage((old) => ({ ...p, projects: [...old.projects!, ...p.projects!] }));
@@ -139,6 +146,36 @@ export function ProjectStaffWorkspace({
   return (
     <section className="secure-staff" aria-label="Project administration">
       <h2>Projects</h2>
+      <form
+        className="secure-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setSearch(
+            String(
+              new FormData(event.currentTarget).get("projectSearch"),
+            ).trim(),
+          );
+          setSelectedProject(undefined);
+        }}
+      >
+        <label>
+          Search projects
+          <input
+            name="projectSearch"
+            type="search"
+            maxLength={120}
+            placeholder="Project name or reference"
+          />
+        </label>
+        <button type="submit" disabled={busy}>
+          Search
+        </button>
+        {search && (
+          <button type="reset" disabled={busy} onClick={() => setSearch("")}>
+            Clear search
+          </button>
+        )}
+      </form>
       <p>Project plans and publication are managed by Morris.</p>
       <button
         disabled={busy}
@@ -156,7 +193,13 @@ export function ProjectStaffWorkspace({
       {notice && <p role="status">{notice}</p>}
       {page.revision === 0 && <p role="status">Loading projects…</p>}
       {page.revision > 0 && !page.projects?.length && (
-        <p>No projects yet. Create one without a work order.</p>
+        <p>
+          {search
+            ? page.nextCursor
+              ? "No matches on this page. Continue searching to check more projects."
+              : "No matching projects."
+            : "No projects yet. Create one without a work order."}
+        </p>
       )}
       {page.projects?.map((p) => (
         <article className="secure-card" key={p.id}>
@@ -169,6 +212,16 @@ export function ProjectStaffWorkspace({
             {h(p.seconds)} h in {month} · {h(p.lifetimeSeconds)} h lifetime ·{" "}
             {h(p.plan.targetSeconds)} h {p.plan.basis} plan
           </p>
+          <a
+            href="#project-time-hours"
+            onClick={(event) => {
+              event.preventDefault();
+              setSelectedProject({ id: p.id, name: p.name });
+              document.getElementById("project-time-hours")?.focus();
+            }}
+          >
+            View hours for {p.name}
+          </a>
           <button
             disabled={busy}
             onClick={() =>
@@ -206,7 +259,7 @@ export function ProjectStaffWorkspace({
       ))}
       {page.nextCursor && (
         <button disabled={busy} onClick={() => void perform(moreProjects)}>
-          More projects
+          {search ? "Continue searching" : "More projects"}
         </button>
       )}
       {editing && (
@@ -346,17 +399,26 @@ export function ProjectStaffWorkspace({
           </button>
         </form>
       )}
-      <h2>Recorded time</h2>
+      <h2 id="project-time-hours" tabIndex={-1}>
+        Project hours{selectedProject ? " · " + selectedProject.name : ""}
+      </h2>
+      {selectedProject && (
+        <button onClick={() => setSelectedProject(undefined)}>
+          Show hours for all projects
+        </button>
+      )}
       <TimeConnectionPanel
         client={client}
         tenant={tenant}
         month={month}
+        projectId={selectedProject?.id}
         refreshVersion={epoch}
         projects={page.projects ?? []}
         busy={busy}
         run={perform}
         onChanged={() => setEpoch((x) => x + 1)}
       />
+      <h3>Recorded time available for allocation</h3>
       {!sources && (
         <button
           disabled={busy || page.revision === 0}

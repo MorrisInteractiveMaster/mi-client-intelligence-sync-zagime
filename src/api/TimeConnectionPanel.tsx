@@ -6,6 +6,7 @@ export function TimeConnectionPanel({
   client,
   tenant,
   month,
+  projectId,
   refreshVersion,
   projects,
   busy,
@@ -15,6 +16,7 @@ export function TimeConnectionPanel({
   client: SecuredApiClient;
   tenant: string;
   month: string;
+  projectId?: string;
   refreshVersion: number;
   projects: { id: string; name: string }[];
   busy: boolean;
@@ -26,8 +28,17 @@ export function TimeConnectionPanel({
   useEffect(() => {
     const abort = new AbortController();
     setUnavailable(false);
+    setStatus(undefined);
     client
-      .call<TimeStatus>(tenant, "time?month=" + month, { signal: abort.signal })
+      .call<TimeStatus>(
+        tenant,
+        "time?" +
+          new URLSearchParams({
+            month,
+            ...(projectId ? { project: projectId } : {}),
+          }),
+        { signal: abort.signal },
+      )
       .then((value) => {
         if (!abort.signal.aborted) setStatus(value);
       })
@@ -35,7 +46,7 @@ export function TimeConnectionPanel({
         if (!abort.signal.aborted) setUnavailable(true);
       });
     return () => abort.abort();
-  }, [client, tenant, month, refreshVersion]);
+  }, [client, tenant, month, projectId, refreshVersion]);
   if (unavailable)
     return <p>QuickBooks Time connection status is unavailable.</p>;
   if (!status) return <p role="status">Checking QuickBooks Time connection…</p>;
@@ -56,8 +67,21 @@ export function TimeConnectionPanel({
         </p>
       )}
       {status.state === "unmapped" && (
-        <p>No QuickBooks Time jobcodes are mapped.</p>
+        <p>
+          {projectId
+            ? "No QuickBooks Time jobcodes are mapped to this project."
+            : "No QuickBooks Time jobcodes are mapped."}
+        </p>
       )}
+      {status.state === "configured" &&
+        status.lifetimeRecordedSeconds !== undefined && (
+          <p>
+            {new Intl.NumberFormat(undefined, {
+              maximumFractionDigits: 3,
+            }).format(status.lifetimeRecordedSeconds / 3600)}{" "}
+            h recorded across all imported months.
+          </p>
+        )}
       {status.mappings.map((mapping) => (
         <article className="secure-card" key={mapping.jobcodeId}>
           <h3>
@@ -99,7 +123,7 @@ export function TimeConnectionPanel({
           )}
         </article>
       ))}
-      {status.canManage && (
+      {status.canManage && !projectId && (
         <form
           className="secure-form"
           onSubmit={(event) => {

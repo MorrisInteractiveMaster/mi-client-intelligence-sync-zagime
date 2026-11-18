@@ -4,7 +4,11 @@ import type { VerifiedIdentity } from "./contracts";
 import { safeId, sourceRecordId } from "./contracts";
 import { key } from "./firestore-store";
 import type { ProjectStore } from "./project-workspace";
-import { timeTotalsWrite, type TimeTotals } from "./time-totals";
+import {
+  timeProjectTotal,
+  timeTotalsWrite,
+  type TimeTotals,
+} from "./time-totals";
 import type { TimeStatus } from "../src/projects/time";
 import { type TimeClient, type TimeRow, timeId, workDate } from "./time-client";
 
@@ -50,12 +54,20 @@ export class TimeSync {
     tenant: string,
     who: VerifiedIdentity,
     month?: string,
+    project?: string,
   ): Promise<TimeStatus> {
     return this.store.db.runTransaction(async (tx) => {
       const { root, staff } = await this.store.access(tx, tenant, who);
       if (!staff) throw Error("Forbidden");
       if (!this.connection || !this.client || this.connection.tenant !== tenant)
         return { state: "disconnected", canManage: false, mappings: [] };
+      if (project) {
+        const p = (
+          await tx.get(root.collection("projects").doc(safeId(project)))
+        ).data();
+        if (p?.tenantId !== tenant || p.schemaVersion !== 2 || p.id !== project)
+          throw Error("Forbidden");
+      }
       const ids = this.connection.jobcodes;
       const mappings = await tx.getAll(
         ...ids.map((job) => this.mapping(root, job)),
@@ -65,11 +77,21 @@ export class TimeSync {
       );
       const totals = month
         ? ((
-            await tx.get(root.collection("timeMonthlyTotals").doc(month))
+            await tx.get(
+              project
+                ? timeProjectTotal(root, project, month)
+                : root.collection("timeMonthlyTotals").doc(month),
+            )
+          ).data() as TimeTotals | undefined)
+        : undefined;
+      const lifetime = project
+        ? ((
+            await tx.get(timeProjectTotal(root, project, "lifetime"))
           ).data() as TimeTotals | undefined)
         : undefined;
       const rows = mappings.flatMap((m, i) => {
-        if (!m.exists) return [];
+        if (!m.exists || (project && m.data()!.projectId !== project))
+          return [];
         const s = states[i].data();
         return [
           {
@@ -86,6 +108,9 @@ export class TimeSync {
         state: rows.length ? "configured" : "unmapped",
         canManage: this.allowed(tenant, who),
         mappings: rows,
+        ...(project
+          ? { lifetimeRecordedSeconds: lifetime?.recorded ?? 0 }
+          : {}),
         ...(month
           ? {
               month,
@@ -349,6 +374,7 @@ export class TimeSync {
         ...(old && !old.deleted
           ? [
               {
+                project: safeId(old.scopeProjectId),
                 month: old.record.date.slice(0, 7),
                 recorded: -old.record.seconds,
                 allocated: material
@@ -360,6 +386,7 @@ export class TimeSync {
         ...(!row.deleted
           ? [
               {
+                project: mapping.projectId,
                 month: row.date.slice(0, 7),
                 recorded: row.seconds,
                 allocated: 0,

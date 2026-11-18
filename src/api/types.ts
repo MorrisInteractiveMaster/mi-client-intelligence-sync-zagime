@@ -9,6 +9,7 @@ export interface Workspace {
   departments: { id: string; name: string; agreementId: string }[];
 }
 export interface PageQuery {
+  search?: string;
   month: string;
   limit: number;
   cursor?: string;

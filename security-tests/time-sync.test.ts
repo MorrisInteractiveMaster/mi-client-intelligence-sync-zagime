@@ -69,7 +69,7 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
         return Response.json({
           results: {
             jobcodes: url.searchParams.has("parent_ids")
-              ? {}
+              ? []
               : { 42: { id: 42, type: "regular", has_children: false } },
           },
           more: false,
@@ -222,6 +222,28 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
       0,
     );
     assert.equal((await raw.collection("versions").get()).size, 1);
+    const projectStatus = await data(
+      await req("time?month=2026-11&project=synthetic-planning"),
+    );
+    assert.equal(projectStatus.recordedSeconds, 1800);
+    assert.equal(projectStatus.lifetimeRecordedSeconds, 1800);
+    assert.deepEqual(
+      projectStatus.mappings.map((m: { jobcodeId: string }) => m.jobcodeId),
+      ["42"],
+    );
+    const unrelated = await data(
+      await req("time?month=2026-11&project=synthetic-delivery"),
+    );
+    assert.equal(unrelated.state, "unmapped");
+    assert.equal(unrelated.recordedSeconds, 0);
+    await data(
+      await req(
+        "time?month=2026-11&project=synthetic-planning",
+        undefined,
+        buyer,
+      ),
+      403,
+    );
     phase = "partial";
     now += 150_000;
     const priorWatermark = (await checkpoint.get()).data()!.through;
@@ -249,6 +271,11 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
       0,
     );
     assert.equal((await head.get()).data()!.needsReview, true);
+    const moved = await data(
+      await req("time?month=2026-10&project=synthetic-planning"),
+    );
+    assert.equal(moved.recordedSeconds, 900);
+    assert.equal(moved.lifetimeRecordedSeconds, 900);
     assert.equal(
       (await data(await req("time?month=2026-11"))).recordedSeconds,
       0,

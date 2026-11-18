@@ -16,11 +16,17 @@ export async function projectRequest(
   if (timeRoute && time) {
     const [, tenant, action] = timeRoute;
     const month = url.searchParams.get("month");
+    const project = url.searchParams.get("project");
     if (
       url.search &&
       (action ||
         req.method !== "GET" ||
-        [...url.searchParams.keys()].length !== 1 ||
+        [...url.searchParams.keys()].some(
+          (k) =>
+            !["month", "project"].includes(k) ||
+            url.searchParams.getAll(k).length !== 1,
+        ) ||
+        (project !== null && !/^[-a-zA-Z0-9_]{1,128}$/.test(project)) ||
         !month ||
         !/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
     )
@@ -29,7 +35,12 @@ export async function projectRequest(
     if (!action && req.method === "GET")
       return {
         status: 200,
-        body: await time.status(tenant, who, month ?? undefined),
+        body: await time.status(
+          tenant,
+          who,
+          month ?? undefined,
+          project ?? undefined,
+        ),
       };
     if (action && req.method === "POST") {
       const body = await readBody();
@@ -70,14 +81,22 @@ export async function projectRequest(
   if (
     queryKeys.some(
       (k) =>
-        !["month", "limit", "cursor"].includes(k) ||
-        url.searchParams.getAll(k).length !== 1,
+        !(
+          (k === "search" &&
+            req.method === "GET" &&
+            resource === "projects" &&
+            !id) ||
+          ["month", "limit", "cursor"].includes(k)
+        ) || url.searchParams.getAll(k).length !== 1,
     )
   )
     throw Error("Invalid query");
   const page = {
     month: url.searchParams.get("month") ?? "",
     limit: Number(url.searchParams.get("limit") ?? 25),
+    ...(url.searchParams.has("search")
+      ? { search: url.searchParams.get("search")! }
+      : {}),
     ...(url.searchParams.has("cursor")
       ? { cursor: url.searchParams.get("cursor")! }
       : {}),

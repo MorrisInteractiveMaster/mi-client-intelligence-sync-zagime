@@ -686,6 +686,37 @@ test(
       };
       const first = await session(1440);
       await first.page
+        .getByRole("searchbox", { name: "Search projects" })
+        .fill("SYNTHETIC planning");
+      await first.page
+        .getByRole("button", { name: "Search", exact: true })
+        .click();
+      await first.page
+        .getByRole("heading", { name: "HIDDEN-PROJECT", exact: true })
+        .waitFor({ state: "hidden" });
+      await first.page
+        .getByRole("heading", {
+          name: "Synthetic planning project",
+          exact: true,
+        })
+        .waitFor();
+      await first.page
+        .getByRole("link", {
+          name: "View hours for Synthetic planning project",
+        })
+        .click();
+      await first.page
+        .getByRole("heading", {
+          name: "Project hours · Synthetic planning project",
+        })
+        .waitFor();
+      await first.page
+        .getByRole("button", { name: "Clear search", exact: true })
+        .click();
+      await first.page
+        .getByRole("heading", { name: "HIDDEN-PROJECT", exact: true })
+        .waitFor();
+      await first.page
         .getByRole("button", { name: "Create project", exact: true })
         .click();
       await first.page

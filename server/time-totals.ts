@@ -4,28 +4,53 @@ export interface TimeTotals {
   recorded: number;
   allocated: number;
 }
+export function timeProjectTotal(
+  root: DocumentReference,
+  project: string,
+  period: string,
+) {
+  return root
+    .collection("timeProjectTotals")
+    .doc(project)
+    .collection("periods")
+    .doc(period);
+}
 export async function timeTotalsWrite(
   tx: Transaction,
   root: DocumentReference,
-  changes: { month: string; recorded: number; allocated: number }[],
+  changes: {
+    project: string;
+    month: string;
+    recorded: number;
+    allocated: number;
+  }[],
 ) {
-  const months = [...new Set(changes.map((c) => c.month))];
-  if (!months.length) return () => {};
-  const refs = months.map((month) =>
-    root.collection("timeMonthlyTotals").doc(month),
-  );
+  const deltas = new Map<
+    string,
+    { ref: DocumentReference; recorded: number; allocated: number }
+  >();
+  for (const c of changes) {
+    for (const ref of [
+      root.collection("timeMonthlyTotals").doc(c.month),
+      timeProjectTotal(root, c.project, c.month),
+      timeProjectTotal(root, c.project, "lifetime"),
+    ]) {
+      const delta = deltas.get(ref.path) ?? { ref, recorded: 0, allocated: 0 };
+      delta.recorded += c.recorded;
+      delta.allocated += c.allocated;
+      deltas.set(ref.path, delta);
+    }
+  }
+  const entries = [...deltas.values()].filter((d) => d.recorded || d.allocated);
+  if (!entries.length) return () => {};
+  const refs = entries.map((d) => d.ref);
   const snapshots = await tx.getAll(...refs);
-  const totals = months.map((month, i) => {
+  const totals = entries.map((delta, i) => {
     const old = snapshots[i].data();
     const result = {
-      recorded: old?.recorded ?? 0,
-      allocated: old?.allocated ?? 0,
+      recorded: (old?.recorded ?? 0) + delta.recorded,
+      allocated: (old?.allocated ?? 0) + delta.allocated,
     } as TimeTotals;
-    for (const c of changes)
-      if (c.month === month) {
-        result.recorded += c.recorded;
-        result.allocated += c.allocated;
-      }
     if (
       ![result.recorded, result.allocated].every(
         (n) => Number.isSafeInteger(n) && n >= 0,
