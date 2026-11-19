@@ -1,3 +1,4 @@
+import { PRODUCTION_DATABASE, assertProjectDatabase, assertProductionTenant } from "./database-target";
 import { Timestamp } from "firebase-admin/firestore";
 import { timeTotalsWrite } from "./time-totals";
 import { corporateMembership } from "./request-identity";
@@ -48,12 +49,18 @@ export class FirestoreTenantStore implements TenantStore {
   constructor(readonly db: Firestore, private readonly expectedSchemaVersion?: number) {}
   async base(tx: Transaction, tenantId: string, subject: string) {
     safeId(tenantId);
+    const target = this.db.databaseId === PRODUCTION_DATABASE ? assertProjectDatabase(this.db) : undefined;
+    if (target) {
+      if (this.expectedSchemaVersion !== 2) throw Error("Forbidden");
+      assertProductionTenant(target, tenantId);
+    }
     const root = this.db.doc(`tenants/${tenantId}`);
     const staff = corporateMembership(tenantId, subject);
     const [tenant, membership] = staff ? [await tx.get(root), undefined] : await tx.getAll(
       root, root.collection("memberships").doc(key(subject)));
     if (!tenant.exists || (!staff && !membership?.exists)) throw Error("Forbidden");
     const d = tenant.data()!;
+    if (target) assertProductionTenant(target, tenantId, d);
     if (this.expectedSchemaVersion !== undefined && d.schemaVersion !== this.expectedSchemaVersion)
       throw Error("Migration required");
     if (!Number.isSafeInteger(d.revision) || d.revision < 1)

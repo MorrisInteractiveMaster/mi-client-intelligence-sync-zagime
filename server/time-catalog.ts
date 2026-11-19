@@ -1,3 +1,4 @@
+import { assertProjectDatabase, assertProductionTenant } from "./database-target";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type {
@@ -48,6 +49,8 @@ export async function timeTenantRevision(
   tx: Transaction,
   root: DocumentReference,
 ) {
+  const target = assertProjectDatabase(root.firestore);
+  assertProductionTenant(target, root.id);
   const meta = (await tx.get(root)).data();
   if (
     meta?.schemaVersion !== 2 ||
@@ -55,6 +58,7 @@ export async function timeTenantRevision(
     meta.revision < 1
   )
     throw Error("Invalid Time tenant");
+  assertProductionTenant(target, root.id, meta);
   return meta.revision as number;
 }
 

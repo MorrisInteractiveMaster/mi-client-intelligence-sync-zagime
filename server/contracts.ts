@@ -27,6 +27,7 @@ export interface Membership {
 }
 /** Identity verifier must verify signature, issuer/audience, expiry and current revocation before returning. */
 export interface VerifiedIdentity {
+  googleSubject?: string;
   /** Populated only by the server verifier; never copied from token custom claims. */
   corporatePolicy?: boolean;
   staffTenantId?: string;

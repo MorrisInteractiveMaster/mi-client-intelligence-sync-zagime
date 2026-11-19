@@ -1,0 +1,8 @@
+{
+  "title": "Morris production Firebase user verification",
+  "description": "Read current Firebase user status, revocation and linked provider identity.",
+  "stage": "GA",
+  "includedPermissions": [
+    "firebaseauth.users.get"
+  ]
+}

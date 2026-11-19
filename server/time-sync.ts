@@ -529,7 +529,7 @@ export class TimeSync {
       verifiedProjects,
     };
   }
-  // Invocation is authorized by Cloud Run Jobs IAM and the verified named staging runtime.
+  // Invocation is authorized by Cloud Run Jobs IAM and the verified named runtime.
   async daily(tenant: string) {
     const { root, account, parent, catalog } = this.customer(tenant);
     const ref = timeRun(root, catalog);

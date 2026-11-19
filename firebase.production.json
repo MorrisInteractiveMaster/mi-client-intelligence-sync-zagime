@@ -1,0 +1,9 @@
+{
+  "firestore": [
+    {
+      "database": "mi-client-production",
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
+    }
+  ]
+}

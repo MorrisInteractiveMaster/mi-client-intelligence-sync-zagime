@@ -10,6 +10,7 @@ import { ProjectClientReport } from "./ProjectClientReport";
 import { today } from "./dashboard-format";
 import "../reporting/nordic.css";
 const enabled = import.meta.env.VITE_ENABLE_SECURE_API === "true";
+const production = import.meta.env.VITE_DASHBOARD_DEPLOYMENT === "production";
 export function SecureDashboard() {
   const [auth, setAuth] = useState<Auth>();
   const [microsoftProof, setMicrosoftProof] = useState<{
@@ -132,7 +133,7 @@ export function SecureDashboard() {
     return (
       <section>
         <h1>Protected workspace unavailable</h1>
-        <Link to="/">Return to demonstration</Link>
+        {!production && <Link to="/">Return to demonstration</Link>}
       </section>
     );
   async function signIn(provider: "google" | "microsoft") {
@@ -190,7 +191,7 @@ export function SecureDashboard() {
               ? "Client intelligence dashboard"
               : "Morris protected workspace"}
           </h1>
-          {!signedIn && <Link to="/">Synthetic demonstration</Link>}
+          {!signedIn && !production && <Link to="/">Synthetic demonstration</Link>}
         </div>
         {signedIn && (
           <button

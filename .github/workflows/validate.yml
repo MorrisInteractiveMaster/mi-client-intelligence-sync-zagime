@@ -30,6 +30,8 @@ jobs:
       - run: bash scripts/test-staging-iam-collector.sh
       - run: bash -n scripts/m8-staging.sh scripts/test-m8-staging.sh
       - run: bash scripts/test-m8-staging.sh
+      - name: Check production runbook Bash syntax without executing commands
+        run: awk '/^```bash$/ { in_bash=1; next } /^```$/ { in_bash=0 } in_bash' docs/production-launch-runbook.md | bash -n
       - run: npm test
       - run: npm run typecheck
       - run: npm run build

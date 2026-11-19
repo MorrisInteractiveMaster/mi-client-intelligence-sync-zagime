@@ -107,7 +107,7 @@ test("executable refuses production and unnamed emulator startup before database
     assert.match(
       result.stderr,
       mode === "production"
-        ? /production access is blocked/
+        ? /Unintended production access refused|Live Firebase is disabled or unsafe/
         : /Explicit named project-workspace database required/,
     );
   }

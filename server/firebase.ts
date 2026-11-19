@@ -33,10 +33,10 @@ export function firebaseRuntime(
   const app = initializeApp({ projectId }, `mi-${mode}-${crypto.randomUUID()}`);
   const auth = getAuth(app);
   let db: Firestore | undefined;
-  let verified = mode !== "staging";
+  let verified = mode === "emulator";
   let verification: Promise<void> | undefined;
   const database = () => {
-    if (!verified) throw Error("Verify named staging database before access");
+    if (!verified) throw Error(`Verify named ${mode} database before access`);
     if (!db) {
       db = getFirestore(app, target.databaseId);
       if (mode !== "emulator")
@@ -77,7 +77,11 @@ export function firebaseRuntime(
 }
 /** Production SDK verifies Google's signature, issuer/audience/expiry and revocation/account state. Emulator acceptance is isolated by runtime guard. */
 export class FirebaseIdentityVerifier implements IdentityVerifier {
-  constructor(private readonly auth: Auth, private readonly staff?: MorrisStaffVerifier) {}
+  constructor(
+    private readonly auth: Auth,
+    private readonly staff?: MorrisStaffVerifier,
+    private readonly production = false,
+  ) {}
   async verify(authorization: string) {
     if (!/^Bearer [^\s]{1,8192}$/.test(authorization))
       throw Error("Unauthenticated");
@@ -86,12 +90,25 @@ export class FirebaseIdentityVerifier implements IdentityVerifier {
       if (t.firebase?.tenant)
         throw Error("Auth multi-tenancy is not configured");
       let staffTenantId: string | undefined;
+      let googleSubject: string | undefined;
+      if (
+        this.production && t.firebase?.sign_in_provider !== "microsoft.com" &&
+        (t.firebase?.sign_in_provider !== "google.com" || t.email_verified !== true)
+      )
+        throw Error("Unapproved production sign-in provider");
+      if (this.production && t.firebase?.sign_in_provider === "google.com") {
+        const ids = t.firebase.identities?.["google.com"];
+        if (ids?.length !== 1 || typeof ids[0] !== "string" || !ids[0]) throw Error();
+        googleSubject = ids[0];
+      }
       if (this.staff && t.firebase?.sign_in_provider === "microsoft.com") {
         const user = await this.auth.getUser(t.uid);
         const oid = user.providerData.find(p => p.providerId === "microsoft.com")?.uid;
         if (user.disabled || !oid || !t.firebase.identities?.["microsoft.com"]?.includes(oid)) throw Error();
         staffTenantId = await this.staff.verify(oid, requestIdentity.getStore()?.proof);
       }
+      if (this.production && t.firebase?.sign_in_provider === "microsoft.com" && !staffTenantId)
+        throw Error("Unapproved production staff identity");
       return {
         subject: t.uid,
         issuer: t.iss,
@@ -101,6 +118,7 @@ export class FirebaseIdentityVerifier implements IdentityVerifier {
         revoked: false,
         ...(this.staff ? { corporatePolicy: true } : {}),
         ...(staffTenantId ? { staffTenantId } : {}),
+        ...(googleSubject ? { googleSubject } : {}),
       };
     } catch {
       throw Error("Unauthenticated");

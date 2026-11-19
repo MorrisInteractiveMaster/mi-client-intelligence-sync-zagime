@@ -1,16 +1,22 @@
 import {
   assertOperatorDatabase,
+  assertProjectDatabase,
+  PRODUCTION_OPERATOR,
+  PRODUCTION_TIME_JOB,
   STAGING_DATABASE,
   COMPANY_PROJECT,
   EXPECTED_STAGING_UID,
 } from "./database-target";
 import { provisionClient } from "./client-provisioning";
 import {
+  initializeProductionTenant,
   seedProjectSynthetic,
   provisionProjectClient,
   inspectProjectMigration,
 } from "./project-operator";
 import { seedSynthetic } from "./synthetic-seed";
+import { createHash } from "node:crypto";
+import { regionalSecret } from "./regional-secret";
 import { readFile } from "node:fs/promises";
 import { bootstrapAdministrator, pruneIdempotency } from "./bootstrap";
 import { firebaseRuntime } from "./firebase";
@@ -18,10 +24,11 @@ import { configureTime } from "./time-config";
 import { ProjectStore } from "./project-workspace";
 // Explicit operator process. No public HTTP bootstrap, user creation or provider configuration.
 const [operation, fileOrTenant, ...flags] = process.argv.slice(2);
+const productionOperation = operation === "initialize-production" || operation === "provision-production-client";
 const timeOperation =
   operation === "verify-time-customer" || operation === "sync-time-customer";
 if (
-  (!timeOperation &&
+  (!timeOperation && !productionOperation &&
     ![
       "bootstrap-admin",
       "bootstrap-client",
@@ -38,24 +45,34 @@ if (
     "Use bootstrap-admin APPROVAL_FILE [--apply] or prune-idempotency TENANT [--apply]",
   );
 const mode = process.env.BACKEND_MODE;
-if (mode !== "emulator" && mode !== "staging")
+if (mode !== "emulator" && mode !== "staging" && mode !== "production")
   throw Error(
-    "Operator tool is limited to demo emulator or approved named synthetic staging; production is blocked",
+    "Operator requires an explicit environment",
   );
+if ([PRODUCTION_OPERATOR, PRODUCTION_TIME_JOB].some(job => job === process.env.CLOUD_RUN_JOB) && mode !== "production")
+  throw Error("Production job requires production mode");
+if (productionOperation || (mode === "production" && !timeOperation)) {
+  if (!productionOperation || mode !== "production" ||
+      process.env.CLOUD_RUN_JOB !== PRODUCTION_OPERATOR ||
+      process.env.CLOUD_RUN_TASK_COUNT !== "1" ||
+      fileOrTenant !== process.env.MORRIS_DASHBOARD_TENANT_ID)
+    throw Error("Approved production operator job required");
+}
 if (
   timeOperation &&
-  (mode !== "staging" ||
-    process.env.CLOUD_RUN_JOB !== "mi-client-time-sync" ||
+  ((mode !== "staging" && mode !== "production") ||
+    process.env.CLOUD_RUN_JOB !== (mode === "production" ? PRODUCTION_TIME_JOB : "mi-client-time-sync") ||
     process.env.CLOUD_RUN_TASK_COUNT !== "1" ||
     process.env.STAGING_PREVIEW_ONLY === "true" ||
     process.env.ENABLE_QUICKBOOKS_TIME !== "true" ||
-    process.env.STAGING_FIREBASE_PROJECT_ID !== COMPANY_PROJECT ||
-    process.env.STAGING_DATABASE_UID !== EXPECTED_STAGING_UID ||
+    (mode === "staging" && (process.env.STAGING_FIREBASE_PROJECT_ID !== COMPANY_PROJECT ||
+    process.env.STAGING_DATABASE_UID !== EXPECTED_STAGING_UID)) ||
+    (mode === "production" && process.env.PRODUCTION_TIME_APPROVED !== "true") ||
     fileOrTenant !== process.env.MORRIS_DASHBOARD_TENANT_ID ||
     (operation === "sync-time-customer" && flags.length))
 )
   throw Error("Approved named Time job configuration required");
-if (process.env.FIRESTORE_DATABASE_ID !== STAGING_DATABASE)
+if (mode !== "production" && process.env.FIRESTORE_DATABASE_ID !== STAGING_DATABASE)
   throw Error(
     "Operator requires explicit named staging database configuration",
   );
@@ -74,12 +91,15 @@ const runtime = firebaseRuntime(
   mode,
   mode === "emulator"
     ? "demo-mi-security"
-    : (process.env.STAGING_FIREBASE_PROJECT_ID ?? ""),
+    : ((mode === "production" ? process.env.PRODUCTION_FIREBASE_PROJECT_ID : process.env.STAGING_FIREBASE_PROJECT_ID) ?? ""),
 );
 try {
   await runtime.verify();
-  assertOperatorDatabase(runtime.db);
-  const result = timeOperation
+  if (mode === "production") assertProjectDatabase(runtime.db);
+  else assertOperatorDatabase(runtime.db);
+  const result = productionOperation
+    ? await runProductionOperation(runtime)
+    : timeOperation
     ? await runTimeOperation(new ProjectStore(runtime.db))
     : operation === "inspect-project-migration"
       ? flags.length
@@ -142,5 +162,26 @@ async function runTimeOperation(store: ProjectStore) {
     throw Error(
       "Time customer job did not complete. Check the approved configuration and job status.",
     );
+  }
+}
+
+async function runProductionOperation(runtime: ReturnType<typeof firebaseRuntime>) {
+  const apply = flags.includes("--apply");
+  if (operation === "initialize-production")
+    return initializeProductionTenant(runtime.db, fileOrTenant, apply);
+  const { PRODUCTION_CLIENT_APPROVAL_SECRET_ID: secret = "",
+    PRODUCTION_CLIENT_APPROVAL_SECRET_VERSION: version = "",
+    PRODUCTION_CLIENT_APPROVAL_SHA256: digest = "" } = process.env;
+  if (!/^mi-client-prod-client-approval-[a-z0-9-]+$/.test(secret) || !/^[a-f0-9]{64}$/.test(digest))
+    throw Error("Approved production client secret required");
+  let bytes: Buffer | undefined;
+  try {
+    bytes = await regionalSecret(secret, version)(AbortSignal.timeout(15000));
+    if (createHash("sha256").update(bytes).digest("hex") !== digest) throw Error();
+    return await provisionProjectClient(runtime.db, runtime.auth, JSON.parse(bytes.toString("utf8")), apply);
+  } catch {
+    throw Error("Production client approval could not be applied");
+  } finally {
+    bytes?.fill(0);
   }
 }

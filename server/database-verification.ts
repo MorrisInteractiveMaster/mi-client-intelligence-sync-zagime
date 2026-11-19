@@ -1,6 +1,7 @@
 import type { Credential } from "firebase-admin/app";
 import {
-  assertStagingMetadata,
+  assertDatabaseMetadata,
+  isNamedLiveTarget,
   REGION,
   type DatabaseTarget,
 } from "./database-target";
@@ -10,8 +11,8 @@ export async function verifyDatabase(
   credential: Credential,
   request: typeof fetch = (input, init) => fetch(input, init),
 ) {
-  if (target.mode !== "staging" || target.databaseId !== "mi-client-staging")
-    throw Error("Staging database verification failed");
+  const failure = target.mode === "production" ? "Production database verification failed" : "Staging database verification failed";
+  if (!isNamedLiveTarget(target)) throw Error(failure);
   try {
     const token = await credential.getAccessToken();
     const response = await request(
@@ -24,8 +25,8 @@ export async function verifyDatabase(
       },
     );
     if (!response.ok) throw Error();
-    assertStagingMetadata(target, await response.json());
+    assertDatabaseMetadata(target, await response.json());
   } catch {
-    throw Error("Staging database verification failed");
+    throw Error(failure);
   }
 }
