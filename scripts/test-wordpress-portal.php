@@ -50,7 +50,8 @@ if (($argv[1] ?? '') === '--render') {
 }
 
 check($shortcode(array('view' => 'history')) === $block(array('view' => 'history')), 'Shortcode and block diverged.');
-check(strpos($block(array('view' => 'area:finance')), $origin . '/secure?view=area%3Afinance') !== false, 'Area route is missing.');
+check(strpos($block(array('view' => 'area:finance')), $origin . '/?view=area%3Afinance#/secure') !== false, 'Area route is missing.');
+check(strpos($block(), $origin . '/#/secure') !== false, 'The launcher must use the same-origin static entry point.');
 check(strpos($shortcode(array('view' => 'https://invalid.example')), 'invalid.example') === false, 'The launcher reflected an arbitrary route.');
 foreach (array('http://example.com', $origin . '.evil.test', $origin . '@evil.test', $origin . '/secure', $origin . '?hop=x', array()) as $invalid) {
     check(mici_portal_origin($invalid) === '', 'The allowlist accepted an unauthorized origin.');

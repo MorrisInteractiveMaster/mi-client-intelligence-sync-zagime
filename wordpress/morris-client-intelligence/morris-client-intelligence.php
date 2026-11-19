@@ -82,10 +82,11 @@ function mici_portal_render($attrs = array()) {
     if (!$origin) {
         return '<p role="status">' . esc_html__('The secure dashboard address is unavailable.', 'morris-client-intelligence') . '</p>';
     }
-    $url = $origin . '/secure';
+    $url = $origin . '/';
     if ($view !== 'overview') {
         $url = add_query_arg('view', $view, $url);
     }
+    $url .= '#/secure';
     wp_enqueue_style('mici-portal');
     wp_enqueue_script('mici-launch');
     $theme = $settings['theme'] === 'paper' ? 'paper' : 'navy';
