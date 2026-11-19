@@ -1,6 +1,18 @@
 # MORRIS INTERACTIVE — ZAGIMĒ CLIENT INTELLIGENCE PLATFORM
 ## Master Implementation Contract: Project-Centric Data, Live Staging and QuickBooks Integrations
 
+## Controlling owner decision — 2026-11-19
+
+- **QuickBooks Time is the only approved external source for this deployment.** The prior QuickBooks Online Accounting Projects, Accounting OAuth and financial-data requirements are superseded. WordPress and the Morris-internal team directory are later scope.
+- The exact Time customer label is **Zagimē Anishinabēk Nation**. Enroll the independently verified numeric Time account and customer parent jobcode IDs with the approved tenant and credential. The label is a setup cross-check. Use the verified hierarchy to discover current and future child work orders. Newly discovered work orders become unpublished Morris projects.
+- Morris owns mapping, allocations, plans, project edits, progress, updates and publication. Clients see only their authorized published projects and permitted allocated-hour aggregates. Keep unallocated, source-recorded and on-clock metrics separate from client reporting.
+- The owner’s Cloud Shell inventory on 2026-11-19 recorded the active Microsoft/Firebase dashboard `mi-client-staging-dashboard`, with revision `mi-client-staging-dashboard-00007-vez` at 100%. The named database is `mi-client-staging`, UID `6d09ea71-f495-44a5-94a6-732ed1c47d88`, in `morris-client-dash-zagime / northamerica-northeast1`. The existing jobs are `mi-client-project-init` and `mi-client-staging-identity-check`. The Time job is absent, and Cloud Scheduler is enabled with zero jobs. Recheck serving state before a separately approved rollout. Preserve active auth, persistence, origin and runtime identity. Keep Time disabled for the dashboard candidate.
+- PRs #13–#15 are merged. The customer-scoped worker in PR #15 is present in code. Live credential, parent scope, import and Scheduler execution require separate verification and approval. After an approved Time pilot and reconciliation, the schedule is **06:00 America/Regina**. Use the [active rollout runbook](project-only-operator-runbook.md#dashboard-experience-rollout) and the [Time activation runbook](integration-quickbooks-time.md#approved-staging-rollout).
+
+## Historical contract — 2026-11-18
+
+The original contract below is retained for context. Its dated rollout observations, queue of PRs and Accounting requirements are historical. The 2026-11-19 decision governs the active deployment.
+
 Owner instruction received 18 November 2026. Full business/execution contract below, normalized from chat Markdown. This supersedes conflicting historical agreement-centric requirements and customer/subcustomer integration proposals. Recording a requirement does not establish that it is implemented, deployed or verified. Phase status and concrete PR B preparation: [project-only persistence handoff](project-only-persistence-handoff.md). PR A implementation/evidence/operator steps: [staging render repair](staging-render-repair.md).
 
 **ROLE:** You are the senior full-stack implementation engineer, database architect, integration engineer, security engineer and testing lead.

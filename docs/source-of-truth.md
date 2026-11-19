@@ -1,5 +1,22 @@
 # Source-of-truth boundaries
 
+## Current boundaries — 2026-11-19
+
+The [2026-11-19 owner decision](master-implementation-contract.md#controlling-owner-decision--2026-11-19) supersedes the historical Accounting Projects, Accounting OAuth and financial-data scope. QuickBooks Time is the only approved external source. The exact setup label is **Zagimē Anishinabēk Nation**. The independently verified numeric Time account and parent jobcode IDs establish scope. The label is a cross-check. WordPress and the Morris-internal team directory remain later work.
+
+| Data | Authority and visibility |
+| --- | --- |
+| Customer catalog, work-order source labels, raw time and revisions | Scoped Time worker. Discover current and future children, register unpublished Morris projects, and preserve history during source reconciliation. |
+| Internal project fields, mappings, plans, progress, updates, milestones, allocations and publication | Morris. Retain existing edits and allocation history through sync. |
+| Recorded, allocated, unallocated and optional on-clock values | Derived reporting. Keep the measures separate. Only verified evidence establishes source approval. |
+| Client report | Server-authorized published projects and permitted Morris allocation aggregates. Raw entries, unallocated source time and integration status stay with staff. |
+
+PR #15 implements customer discovery and the daily worker. Owner inventory confirms the existing dashboard’s active named-staging baseline. Live Time enrollment and import require a separately approved pilot. Enable the **06:00 America/Regina** schedule only after reconciliation. See the [Time runbook](integration-quickbooks-time.md) for status and operator gates.
+
+## Historical source boundaries
+
+The sections below retain the prior implementation context. The table and status descriptions refer to earlier phases.
+
 PR B: [implemented project-only paths/costs/tests/gaps](project-only-workspace.md). Active CRUD/publication/allocation operates without agreements/departments. Managed field allowlists preserve source identity; client projections enforce explicit project grants and exclude private fields/global revision. Only local synthetic persistence is verified. Ingestion/correction workers, native Projects/Time/OAuth and remote persistence remain future gates. Historical preparation/status paragraphs below do not override this implementation update.
 
 Current controlling requirements: [owner master contract, 18 November 2026](master-implementation-contract.md). Active project workflows must become independent of agreements/departments; only native verified Zagimē QBO Projects and relevant Time records are permitted. General Customer/subcustomer imports and company-wide discovery are not approved substitutes. The historical sections below describe existing legacy/demo behavior, not the new target or remote verification. [PR B handoff](project-only-persistence-handoff.md) maps the concrete migration and authorization changes; these are not yet implemented. Current secured persistence exists in code/emulators, while remote cross-session persistence and live integrations remain unverified. Verified corporate Morris staff policy supersedes individual staff onboarding; client memberships remain server-controlled and scoped.
