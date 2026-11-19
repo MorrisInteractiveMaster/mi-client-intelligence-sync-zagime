@@ -206,6 +206,8 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
     assert.equal((await root.collection("timeMappings").get()).size, 0);
     phase = "initial";
     await data(await req("time/mapping", { jobcodeId: "42", projectId }));
+    const mapping = root.collection("timeMappings").doc(key("99", "42"));
+    const mappingRevision = (await mapping.get()).updateTime!.toMillis();
     phase = "changed-project";
     const beforeMismatch = calls;
     await data(await req("time/sync", { jobcodeId: "42" }), 503);
@@ -249,6 +251,7 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
       (await data(await req("time/sync", { jobcodeId: "42" }))).changed,
       1,
     );
+    assert.equal((await mapping.get()).updateTime!.toMillis(), mappingRevision);
     const first = (await raw.get()).data()!;
     assert.equal(first.approval, "unknown");
     assert.ok(!JSON.stringify(first).includes("private notes"));

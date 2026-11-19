@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { DocumentReference, Transaction } from "firebase-admin/firestore";
 import type { VerifiedIdentity } from "./contracts";
 import { safeId, sourceRecordId } from "./contracts";
@@ -295,7 +296,7 @@ export class TimeSync {
         if (sourceProject) {
           signal.throwIfAborted();
           if (state.expires <= this.now()) throw Error("Time sync busy");
-          if (JSON.stringify(mapping.sourceProject) !== JSON.stringify(sourceProject))
+          if (!isDeepStrictEqual(mapping.sourceProject, sourceProject))
             tx.update(this.mapping(root, job), {
               sourceProject,
               ...(sourceProject.state === "verified"
