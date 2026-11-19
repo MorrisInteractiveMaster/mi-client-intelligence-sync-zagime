@@ -127,6 +127,18 @@ class ActivationTests(unittest.TestCase):
         with self.assertRaisesRegex(activation.Stop, "checkpoint"):
             activation.reconciliation(s, totals, report)
 
+    def test_private_comparison_windows_never_mark_partial_coverage_complete(self):
+        s = fixture()
+        audit = Mock()
+        audit.doc.return_value = {"failed": False, "through": s["cutoff"]}
+        rows = activation.comparison_windows(s, audit)
+        self.assertEqual(rows, [{"jobcode_id": "71", "modified_since": "2026-01-01T00:00:00.000Z",
+                                "checked_through": s["cutoff"], "complete": True}])
+        audit.doc.return_value["failed"] = True
+        self.assertFalse(activation.comparison_windows(s, audit)[0]["complete"])
+        audit.doc.return_value = None
+        self.assertFalse(activation.comparison_windows(s, audit)[0]["complete"])
+
     def test_candidate_rejects_unreviewed_runtime_drift_and_normal_traffic(self):
         s = fixture()
         candidate = activation.SERVICE + "-00002-test"

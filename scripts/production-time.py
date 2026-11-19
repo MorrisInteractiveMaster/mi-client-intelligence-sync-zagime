@@ -314,17 +314,32 @@ def reconciliation(s, values, audit):
     return {"work_orders": len(mappings), "report_rows": len(values), "checkpoint_coverage": "passed"}
 
 
+def validate_candidate_revision(s, name):
+    image, env, timeout, profile = revision(name)
+    _, old, old_timeout, old_profile = revision(s["baseline"])
+    require(image == s["image"] and env == {**old, **time_env(s)} and profile == old_profile
+            and timeout >= max(210, old_timeout), "Candidate image, environment or timeout differs from the reviewed settings.")
+
+
+def comparison_windows(s, audit):
+    start = s["floor"] + "T00:00:00.000Z"
+    require(s.get("cutoff"), "The initial pilot has no recorded cutoff.")
+    rows = []
+    for job in sorted(s["work_orders"]):
+        cp = audit.doc("syncCheckpoints/" + key("quickbooks-time", s["company"], job), missing=True)
+        through = cp.get("through") if cp else None
+        rows.append({"jobcode_id": job, "modified_since": start, "checked_through": through,
+                     "complete": bool(cp and cp.get("failed") is False and through and through >= s["cutoff"])})
+    return rows
+
+
 def candidate(s):
     service = baseline(s)
     targets = [x for x in service["status"]["traffic"] if x.get("tag") == TAG]
     require(len(targets) == 1 and not targets[0].get("percent", 0), "Expected one candidate tag at zero normal traffic.")
     name = targets[0]["revisionName"]
     require(name != s["baseline"] and (not s.get("candidate") or s["candidate"] == name), "Candidate revision changed.")
-    image, env, timeout, hardware = revision(name)
-    _, old, old_timeout, old_hardware = revision(s["baseline"])
-    require(image == s["image"] and env == {**old, **time_env(s)} and hardware == old_hardware
-            and timeout >= max(210, old_timeout),
-            "Candidate image, environment or timeout differs from the reviewed settings.")
+    validate_candidate_revision(s, name)
     url = targets[0]["url"]
     require(url.startswith("https://" + TAG + "---") and url.endswith(".run.app"), "Unexpected candidate URL.")
     return name, url
@@ -490,7 +505,11 @@ def execute(s, args, save):
         return
     if phase == "monitor":
         require(s.get("enrolled"), "No enrolled customer is recorded.")
-        run_status = ReadOnly().doc("timeRuns/" + key("quickbooks-time-customer", s["company"], s["parent"])) or {}
+        audit = ReadOnly()
+        if args.comparison_windows:
+            print(json.dumps(comparison_windows(s, audit), indent=2))
+            return
+        run_status = audit.doc("timeRuns/" + key("quickbooks-time-customer", s["company"], s["parent"])) or {}
         status = run_status.get("status")
         if status == "running" and run_status.get("expires", 0) <= now().timestamp() * 1000:
             status = "expired lease"
@@ -515,6 +534,8 @@ def execute(s, args, save):
         run("services", "update-traffic", SERVICE, "--to-revisions=" + s["baseline"] + "=100",
             "--remove-tags=" + TAG, output=None)
         baseline(s)
+        if s.get("candidate"):
+            s["rolled_back_candidate"] = s["candidate"]
         for field in ("candidate", "scheduled", "cutover", "reconciliation"):
             s.pop(field, None)
         print("Production baseline restored. Inspect in-flight executions separately.")
@@ -557,13 +578,17 @@ def execute(s, args, save):
         print(json.dumps(s["reconciliation"]))
         return
     require(s.get("reconciliation"), "Reconcile the first import before enabling the dashboard or schedule.")
-    if phase in ("candidate", "cutover") and exists(scheduler("list"), SCHEDULE):
-        require(s.get("invoker") and schedule(s) == "PAUSED", "The existing schedule must be reviewed and paused during dashboard rollout.")
+    if phase in ("candidate", "cutover"):
+        idle()
+        if exists(scheduler("list"), SCHEDULE):
+            require(s.get("invoker") and schedule(s) == "PAUSED", "The existing schedule must be reviewed and paused during dashboard rollout.")
     if phase == "candidate":
         service = baseline(s)
         if not any(t.get("tag") == TAG for t in service["status"]["traffic"]):
-            require(service["status"].get("latestCreatedRevisionName") == s["baseline"],
-                    "The service template differs from the baseline. Review the current template before updating.")
+            latest = service["status"].get("latestCreatedRevisionName")
+            if latest != s["baseline"]:
+                require(latest and latest == s.get("rolled_back_candidate"), "Service template changed. Review it before updating.")
+                validate_candidate_revision(s, latest)
             _, _, timeout, _ = revision(s["baseline"])
             approve(phase)
             updates = ",".join(k + "=" + v for k, v in time_env(s).items())
@@ -590,7 +615,7 @@ def main():
     for option in ("company", "actor", "parent", "slug", "operator", "identity-evidence", "iam-evidence", "floor", "expires", "totals", "invoker"):
         parser.add_argument("--" + option)
     parser.add_argument("--work-order", action="append")
-    for gate in ("accept-verify", "accept-candidate", "accept-browser", "replace-reviewed-job"):
+    for gate in ("accept-verify", "accept-candidate", "accept-browser", "replace-reviewed-job", "comparison-windows"):
         parser.add_argument("--" + gate, action="store_true")
     args = parser.parse_args()
     os.umask(0o077)
