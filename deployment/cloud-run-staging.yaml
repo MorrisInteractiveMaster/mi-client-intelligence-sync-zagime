@@ -19,7 +19,7 @@ spec:
     spec:
       serviceAccountName: mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com
       containerConcurrency: 20
-      timeoutSeconds: 10
+      timeoutSeconds: 210
       containers:
         - image: OWNER_APPROVED_REGIONAL_IMAGE_AT_SHA256_DIGEST
           ports:

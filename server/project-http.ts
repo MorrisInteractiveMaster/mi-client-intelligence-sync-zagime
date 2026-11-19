@@ -1,12 +1,72 @@
 import type { IncomingMessage } from "node:http";
 import type { ProjectBackend } from "./project-workspace";
+import type { TimeSync } from "./time-sync";
 /** Called only after common origin, rate, identity-header and preview gates. */
 export async function projectRequest(
   backend: ProjectBackend,
   req: IncomingMessage,
   readBody: () => Promise<Record<string, any>>,
+  time?: TimeSync,
+  disconnected?: AbortSignal,
 ) {
   const url = new URL(req.url!, "http://local");
+  const timeRoute =
+    /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/time(?:\/(mapping|sync))?$/.exec(
+      url.pathname,
+    );
+  if (timeRoute && time) {
+    const [, tenant, action] = timeRoute;
+    const month = url.searchParams.get("month");
+    const project = url.searchParams.get("project");
+    if (
+      url.search &&
+      (action ||
+        req.method !== "GET" ||
+        [...url.searchParams.keys()].some(
+          (k) =>
+            !["month", "project"].includes(k) ||
+            url.searchParams.getAll(k).length !== 1,
+        ) ||
+        (project !== null && !/^[-a-zA-Z0-9_]{1,128}$/.test(project)) ||
+        !month ||
+        !/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
+    )
+      throw Error("Invalid query");
+    const who = await backend.identity(req.headers.authorization ?? "");
+    if (!action && req.method === "GET")
+      return {
+        status: 200,
+        body: await time.status(
+          tenant,
+          who,
+          month ?? undefined,
+          project ?? undefined,
+        ),
+      };
+    if (action && req.method === "POST") {
+      const body = await readBody();
+      if (
+        typeof body.jobcodeId !== "string" ||
+        Object.keys(body).some(
+          (k) =>
+            !(
+              action === "mapping" ? ["jobcodeId", "projectId"] : ["jobcodeId"]
+            ).includes(k),
+        )
+      )
+        throw Error("Invalid Time request");
+      if (action === "mapping" && typeof body.projectId !== "string")
+        throw Error("Invalid project ID");
+      return {
+        status: 200,
+        body:
+          action === "mapping"
+            ? await time.approve(tenant, who, body.jobcodeId, body.projectId, disconnected)
+            : await time.sync(tenant, who, body.jobcodeId, disconnected),
+      };
+    }
+    return { status: 405, body: { error: "method_not_allowed" } };
+  }
   const m =
     /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|report|projects|sources|allocations|audits)(?:\/([-a-zA-Z0-9_]{1,128}))?(?:\/(publication|history))?$/.exec(
       url.pathname,
@@ -22,14 +82,22 @@ export async function projectRequest(
   if (
     queryKeys.some(
       (k) =>
-        !["month", "limit", "cursor"].includes(k) ||
-        url.searchParams.getAll(k).length !== 1,
+        !(
+          (k === "search" &&
+            req.method === "GET" &&
+            resource === "projects" &&
+            !id) ||
+          ["month", "limit", "cursor"].includes(k)
+        ) || url.searchParams.getAll(k).length !== 1,
     )
   )
     throw Error("Invalid query");
   const page = {
     month: url.searchParams.get("month") ?? "",
     limit: Number(url.searchParams.get("limit") ?? 25),
+    ...(url.searchParams.has("search")
+      ? { search: url.searchParams.get("search")! }
+      : {}),
     ...(url.searchParams.has("cursor")
       ? { cursor: url.searchParams.get("cursor")! }
       : {}),

@@ -4,6 +4,7 @@ import { ReportingBackend } from "./backend";
 import { apiServer } from "./http";
 import { MorrisStaffVerifier, staffConfiguration } from "./morris-staff";
 import { ProjectBackend, ProjectStore } from "./project-workspace";
+import { configureTime } from "./time-config";
 import { STAGING_DATABASE, COMPANY_PROJECT, EXPECTED_STAGING_UID } from "./database-target";
 // Invoked explicitly; importing backend modules never connects to Firebase.
 const mode = process.env.BACKEND_MODE;
@@ -45,11 +46,14 @@ const backend = new ReportingBackend(
     now: Date.now,
   },
 );
+const projectStore = new ProjectStore(runtime.db);
 const server = apiServer(backend, {
   allowedOrigin: process.env.ALLOWED_ORIGIN,
-  projects: new ProjectBackend(new ProjectStore(runtime.db), new FirebaseIdentityVerifier(runtime.auth, staff), { issuer: `https://securetoken.google.com/${projectId}`, audience: projectId, now: Date.now }),
+  projects: new ProjectBackend(projectStore, new FirebaseIdentityVerifier(runtime.auth, staff), { issuer: `https://securetoken.google.com/${projectId}`, audience: projectId, now: Date.now }),
+  time: configureTime(projectStore, mode, process.env),
   ...(process.env.SERVE_STAGING_FRONTEND === "true" && mode === "staging" ? { frontend: "dist" } : {}),
 });
+// Header/body receipt only. QuickBooks Time processing uses its own budget.
 server.requestTimeout = 10000;
 server.headersTimeout = 10000;
 server.listen(

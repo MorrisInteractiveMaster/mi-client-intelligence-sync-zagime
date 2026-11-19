@@ -9,6 +9,7 @@ export interface Workspace {
   departments: { id: string; name: string; agreementId: string }[];
 }
 export interface PageQuery {
+  search?: string;
   month: string;
   limit: number;
   cursor?: string;
@@ -21,6 +22,10 @@ export interface StaffProject
   lifetimeSeconds: number;
 }
 export interface StaffSource {
+  provider?: "quickbooks-time";
+  modifiedAt?: string;
+  deleted?: boolean;
+  needsReview?: boolean;
   approval?: "unknown" | "pending" | "submitted" | "approved" | "rejected";
   id: string;
   date: string;

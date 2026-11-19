@@ -89,7 +89,7 @@ export class SecuredApiClient {
     if (!this.enabled) throw Error("Protected workspace is disabled");
     if (
       !/^[-a-zA-Z0-9_]{1,128}$/.test(tenant) ||
-      !/^(report|workspace|projects|sources|allocations|audits)([/?].*)?$/.test(path)
+      !/^(report|workspace|projects|sources|allocations|audits|time)([/?].*)?$/.test(path)
     )
       throw Error("Invalid reporting scope");
     const token = await this.token();

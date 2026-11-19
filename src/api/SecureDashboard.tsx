@@ -10,11 +10,15 @@ import "../reporting/nordic.css";
 const enabled = import.meta.env.VITE_ENABLE_SECURE_API === "true";
 export function SecureDashboard() {
   const [auth, setAuth] = useState<Auth>();
-  const [microsoftProof, setMicrosoftProof] = useState<{ idToken: string; accessToken: string }>();
+  const [microsoftProof, setMicrosoftProof] = useState<{
+    idToken: string;
+    accessToken: string;
+  }>();
   const [subject, setSubject] = useState<string | null>(null);
   const signedIn = subject !== null;
   const [workspace, setWorkspace] = useState<ProjectWorkspace>();
   const [view, setView] = useState<ProjectReport>();
+  const [publishedSearch, setPublishedSearch] = useState("");
   const [error, setError] = useState("");
   const [month, setMonth] = useState("2026-10");
   const [loading, setLoading] = useState(false);
@@ -127,7 +131,11 @@ export function SecureDashboard() {
     setLoading(true);
     setView(undefined);
     client
-      .call<ProjectReport>(import.meta.env.VITE_SECURE_TENANT_ID ?? "", "report?month=" + month, { signal: abort.signal })
+      .call<ProjectReport>(
+        import.meta.env.VITE_SECURE_TENANT_ID ?? "",
+        "report?month=" + month,
+        { signal: abort.signal },
+      )
       .then((v) => {
         if (active) {
           setView(v);
@@ -157,23 +165,40 @@ export function SecureDashboard() {
     try {
       const sdk = await import("firebase/auth");
       setMicrosoftProof(undefined);
-      const p = provider === "google" ? new sdk.GoogleAuthProvider() : new sdk.OAuthProvider("microsoft.com");
+      const p =
+        provider === "google"
+          ? new sdk.GoogleAuthProvider()
+          : new sdk.OAuthProvider("microsoft.com");
       if (provider === "microsoft") {
         const tenant = import.meta.env.VITE_MORRIS_ENTRA_TENANT_ID;
-        if (!/^[0-9a-f-]{36}$/i.test(tenant ?? "")) throw Error("Microsoft sign-in is not configured");
+        if (!/^[0-9a-f-]{36}$/i.test(tenant ?? ""))
+          throw Error("Microsoft sign-in is not configured");
         p.setCustomParameters({ tenant, prompt: "select_account" });
         p.addScope("User.Read.All");
       }
       const result = await sdk.signInWithPopup(auth, p);
       if (provider === "microsoft") {
         const credential = sdk.OAuthProvider.credentialFromResult(result);
-        if (!credential?.idToken || !credential.accessToken) { await sdk.signOut(auth); throw Error(); }
-        setMicrosoftProof({ idToken: credential.idToken, accessToken: credential.accessToken });
+        if (!credential?.idToken || !credential.accessToken) {
+          await sdk.signOut(auth);
+          throw Error();
+        }
+        setMicrosoftProof({
+          idToken: credential.idToken,
+          accessToken: credential.accessToken,
+        });
       }
     } catch {
       setError("Sign-in was not completed.");
     }
   }
+  const matchingProjects =
+    view?.projects.filter((p) =>
+      p.name
+        .normalize("NFKC")
+        .toLowerCase()
+        .includes(publishedSearch.trim().normalize("NFKC").toLowerCase()),
+    ) ?? [];
   return (
     <section className="nordic secure-shell">
       <h1>Morris protected workspace</h1>
@@ -214,7 +239,10 @@ export function SecureDashboard() {
               <button disabled={!auth}>Sign in to local emulator</button>
             </form>
           )}
-          <p>Morris staff use their Microsoft work account. Client accounts have read-only access to approved publications.</p>
+          <p>
+            Morris staff use their Microsoft work account. Client accounts have
+            read-only access to approved publications.
+          </p>
         </>
       ) : (
         <>
@@ -265,7 +293,33 @@ export function SecureDashboard() {
           <p>
             {hours(view.totalSeconds)} h delivered in {view.month}
           </p>
-          {view.projects.map(p => <article key={p.id}><h3>{p.name}</h3><p>{p.description}</p><p>{p.status} · {p.progress}% progress</p><p>{hours(p.seconds)} h this month · {hours(p.lifetimeSeconds)} h lifetime</p></article>)}
+          {view.projects.length > 0 && (
+            <label>
+              Search published projects
+              <input
+                type="search"
+                maxLength={120}
+                value={publishedSearch}
+                onChange={(event) => setPublishedSearch(event.target.value)}
+              />
+            </label>
+          )}
+          {matchingProjects.map((p) => (
+            <article key={p.id}>
+              <h3>{p.name}</h3>
+              <p>{p.description}</p>
+              <p>
+                {p.status} · {p.progress}% progress
+              </p>
+              <p>
+                {hours(p.seconds)} h this month · {hours(p.lifetimeSeconds)} h
+                lifetime
+              </p>
+            </article>
+          ))}
+          {view.projects.length > 0 && !matchingProjects.length && (
+            <p>No published projects match.</p>
+          )}
           {!view.projects.length && (
             <p>No approved projects are available for this period.</p>
           )}

@@ -8,6 +8,7 @@ import { build } from "esbuild";
 import { chromium } from "playwright";
 import { firebaseRuntime, FirebaseIdentityVerifier } from "../server/firebase";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
+import { TimeSync } from "../server/time-sync";
 import {
   seedProjectSynthetic,
   provisionProjectClient,
@@ -122,6 +123,7 @@ test(
       '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js" defer></script></body></html>',
     );
     const options = {
+      time: new TimeSync(new ProjectStore(runtime.db)),
       frontend: directory,
       allowedOrigin: "",
       limit: new RequestLimit(10000),
@@ -683,6 +685,37 @@ test(
         return { context, page };
       };
       const first = await session(1440);
+      await first.page
+        .getByRole("searchbox", { name: "Search projects" })
+        .fill("SYNTHETIC planning");
+      await first.page
+        .getByRole("button", { name: "Search", exact: true })
+        .click();
+      await first.page
+        .getByRole("heading", { name: "HIDDEN-PROJECT", exact: true })
+        .waitFor({ state: "hidden" });
+      await first.page
+        .getByRole("heading", {
+          name: "Synthetic planning project",
+          exact: true,
+        })
+        .waitFor();
+      await first.page
+        .getByRole("link", {
+          name: "View hours for Synthetic planning project",
+        })
+        .click();
+      await first.page
+        .getByRole("heading", {
+          name: "Project hours · Synthetic planning project",
+        })
+        .waitFor();
+      await first.page
+        .getByRole("button", { name: "Clear search", exact: true })
+        .click();
+      await first.page
+        .getByRole("heading", { name: "HIDDEN-PROJECT", exact: true })
+        .waitFor();
       await first.page
         .getByRole("button", { name: "Create project", exact: true })
         .click();
