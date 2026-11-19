@@ -95,6 +95,8 @@ Wait for named indexes to be ready and independently verify the live named rules
 
 ## 3. Build and initialize, then deploy privately
 
+For an owner-approved Cloud Build, first complete the [production build identity migration](production-build-iam.md). The Docker commands below are the release operator's independent build path. Both paths produce a digest for separate deployment approval.
+
 **STOP for image push and operator job approval.** The Firebase Web API key is public web app configuration. OAuth secrets, approval documents and tokens must stay out of build arguments. Use actual values from the approved Firebase Web App and Entra configuration. The tenant ID is the approved production dashboard tenant identifier. Use a distinct non-synthetic tenant and do not reuse a staging identifier.
 
 ```bash
