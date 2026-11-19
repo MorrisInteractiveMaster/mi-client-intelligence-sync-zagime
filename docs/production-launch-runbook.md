@@ -1,8 +1,12 @@
-# Zagimē production launch
+# Zagimē production launch and QuickBooks Time activation
 
 The November 19, 2026 owner decision calls for a separate production deployment in the existing Google Cloud project. QuickBooks Time is the only source integration. This runbook applies to production. The [active staging runbook](project-only-operator-runbook.md) still applies to the existing staging service. Each **STOP** is an independent approval gate. Do not paste the entire runbook into one shell.
 
-## Inventory and proposed resources
+## Existing production service
+
+The owner reports that the production dashboard, named database, indexes and Microsoft sign-in are operating. **Start at [production Time activation](#4-production-time-activation)**. The initial build/bootstrap instructions in sections 1–3 are retained for recovery history. They are not activation steps for the current service.
+
+## Original inventory and resource proposals
 
 | Resource | Owner-provided inventory or proposal |
 | --- | --- |
@@ -208,150 +212,227 @@ gcloud run jobs execute "$OPERATOR" --project="$PROJECT" --region="$REGION" --wa
   --args="dist-server/operator.mjs,provision-production-client,$TENANT,--apply" --update-env-vars="$APPROVAL_REFS"
 ```
 
-## 4. Approve the QuickBooks Time scope and first import
+## 4. Production Time activation
 
-**STOP for separate Time entitlement, data access and credentials approvals.** Independently verify the numeric Time company, provider user and exact parent jobcode of **Zagimē Anishinabēk Nation**. Check the four work-order references in the authorized account. Names are reference evidence. The numeric company/parent relationship controls scope. Approve the earliest permitted modification date, the existing authorized Morris connector operator’s Firebase UID, and entitlement for archived work, corrections and deletions. Review running timers separately before enabling that optional snapshot. Review [Time scoping and reconciliation](integration-quickbooks-time.md).
+Work in the existing production environment. Run each command from the reviewed checkout in a single owner-controlled Cloud Shell account. The helper records non-secret state under `~/.mi-zagime-time-production` with mode 0700. It never prints the Time token, uploads secret bytes through a pipe, and does not touch the browser's existing Firebase or Microsoft configuration. Every cloud-changing command is a separate invocation with a typed confirmation. Close the terminal only after confirming the last successful phase with `report`. A failed cloud response can follow a successful remote mutation. Check the named resource in the Console before retrying any failed phase.
 
-Store the exact UTF-8 payload in an owner-controlled temporary file with mode 0600. The fields are `environment: "production"`, `databaseUid`, `modifiedFrom`, `tenant`, `companyId`, `userId`, `customerParentId`, `clientUrl`, `expiresAt` (UTC ISO with milliseconds) and `accessToken`. IDs are strings. Enter the token through the owner’s secret handling workflow. Keep it out of terminal commands, plaintext environment variables, GitHub, Codex and logs. Compute a digest of the exact uploaded bytes. Separate account evidence is required if the provider identity response omits the company ID. Store access only for the matching production runtime with the secret-level role.
-
-```bash
-: "${SECRET_PAYLOAD_FILE:?Set the private transient secret payload file path}"
-test -f "$SECRET_PAYLOAD_FILE" && test "$(stat -c '%a' "$SECRET_PAYLOAD_FILE")" = 600
-TIME_SECRET=mi-client-prod-time
-TIME_DIGEST="$(sha256sum "$SECRET_PAYLOAD_FILE" | cut -d ' ' -f1)"
-regional_secrets create "$TIME_SECRET" --project="$PROJECT" --location="$REGION" \
-  --data-file="$SECRET_PAYLOAD_FILE" --format='value(name)'
-# For an existing secret, use versions add instead of create to obtain the new version:
-# regional_secrets versions add "$TIME_SECRET" --project="$PROJECT" --location="$REGION" --data-file="$SECRET_PAYLOAD_FILE" --format='value(name)'
-# Record the numeric version from the secret version output or this metadata-only check.
-regional_secrets versions list "$TIME_SECRET" --project="$PROJECT" --location="$REGION" --format='table(name,state)'
-: "${TIME_VERSION:?Set the approved numeric version matching the uploaded payload}"
-[[ "$TIME_VERSION" =~ ^[1-9][0-9]*$ && "$TIME_DIGEST" =~ ^[a-f0-9]{64}$ ]]
-regional_secrets add-iam-policy-binding "$TIME_SECRET" --project="$PROJECT" --location="$REGION" \
-  --member="serviceAccount:$PROD_SA" --role=roles/secretmanager.secretAccessor
-```
-
-Remove the temporary credential file promptly by the approved secret handling procedure. For rotation, upload a new numeric version, pin the new digest, verify approved scope and update the job and dashboard through separate rollout before disabling the previous one. No automatic token refresh is implemented. Expired credentials fail closed. [Regional endpoint configuration](https://cloud.google.com/secret-manager/regional-secrets/config-sm-rs) · [Regional secrets and versions](https://cloud.google.com/secret-manager/regional-secrets/add-secret-version-rs)
-
-**STOP for job creation approval.** The job starts without an open browser and creation does not execute it. The dashboard remains Time-disabled during the pilot. Build the Time environment by overlaying only the reviewed non-secret settings. Use the same immutable production image. The maximum execution deadline covers the bounded daily sync and the lower request timeout covers the designated manual retry. Review alerting, log retention and cost before activation.
+### 4.1 Read-only preflight
 
 ```bash
-: "${TIME_ACCOUNT_ID:?Set the approved Time company ID}"
-: "${TIME_USER_ID:?Set the approved provider user ID}"
-: "${TIME_PARENT_ID:?Set the approved customer jobcode ID}"
-: "${TIME_ACCOUNT_SLUG:?Set the approved account slug}"
-: "${TIME_MODIFIED_FROM:?Set the approved UTC modification floor}"
-: "${TIME_ADMIN_UID:?Set the designated Morris operator Firebase UID}"
-for id in "$TIME_ACCOUNT_ID" "$TIME_USER_ID" "$TIME_PARENT_ID"; do [[ "$id" =~ ^[1-9][0-9]*$ ]]; done
-[[ "$TIME_ACCOUNT_SLUG" =~ ^[a-zA-Z0-9_-]{1,100}$ && "$TIME_MODIFIED_FROM" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ &&
-   "$TIME_ADMIN_UID" =~ ^[-a-zA-Z0-9_]{1,128}$ ]]
-TIME_ENV="$(mktemp)"
-grep -Ev '^(ENABLE_QUICKBOOKS_TIME|PRODUCTION_TIME_APPROVED):' "$PROD_ENV" >"$TIME_ENV"
-cat >>"$TIME_ENV" <<EOF
-ENABLE_QUICKBOOKS_TIME: "true"
-PRODUCTION_TIME_APPROVED: "true"
-QUICKBOOKS_TIME_ACCOUNT_ID: "$TIME_ACCOUNT_ID"
-QUICKBOOKS_TIME_CREDENTIAL_USER_ID: "$TIME_USER_ID"
-QUICKBOOKS_TIME_CUSTOMER_PARENT_ID: "$TIME_PARENT_ID"
-QUICKBOOKS_TIME_CLIENT_URL: "$TIME_ACCOUNT_SLUG"
-QUICKBOOKS_TIME_MODIFIED_FROM: "$TIME_MODIFIED_FROM"
-QUICKBOOKS_TIME_ADMIN_UID: "$TIME_ADMIN_UID"
-QUICKBOOKS_TIME_SECRET_ID: "$TIME_SECRET"
-QUICKBOOKS_TIME_SECRET_VERSION: "$TIME_VERSION"
-QUICKBOOKS_TIME_CREDENTIAL_SHA256: "$TIME_DIGEST"
-QUICKBOOKS_TIME_ON_CLOCK_SNAPSHOT: "false"
-EOF
+set +x
+set -euo pipefail
+umask 077
+: "${REVIEWED_SHA:?Set the approved activation source commit}"
+[[ "$REVIEWED_SHA" =~ ^[a-f0-9]{40}$ ]]
+test -z "$(git status --porcelain)"
+git fetch origin main
+git merge-base --is-ancestor "$REVIEWED_SHA" origin/main
+git switch --detach "$REVIEWED_SHA"
+for executable in gcloud python3 curl jq; do command -v "$executable" >/dev/null; done
 
-gcloud run jobs create "$JOB" --project="$PROJECT" --region="$REGION" \
-  --image="$IMAGE" --service-account="$PROD_SA" --env-vars-file="$TIME_ENV" \
-  --command=node --args="dist-server/operator.mjs,sync-time-customer,$TENANT" \
-  --tasks=1 --parallelism=1 --max-retries=1 --task-timeout=1800s
-gcloud run jobs describe "$JOB" --project="$PROJECT" --region="$REGION" \
-  --format='value(spec.template.spec.template.spec.serviceAccountName,spec.template.spec.template.spec.containers[0].image)'
-
+TIME_ACTIVATION='scripts/production-time.py'
+PROJECT='morris-client-dash-zagime'
+REGION='northamerica-northeast1'
+ORIGIN='https://mi-client-prod-dashboard-u3xjh6xfkq-nn.a.run.app'
+RUNTIME_SA="mi-client-production-api@$PROJECT.iam.gserviceaccount.com"
+python3 "$TIME_ACTIVATION" preflight
+curl --fail --silent --show-error "$ORIGIN/health" | jq -e '.status == "ready"'
+status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+  "$ORIGIN/api/v2/tenants/zagime-production/workspace")"
+test "$status" = 401
 ```
 
-**STOP for read-only customer verification approval.**
+Expect one serving revision at 100 percent, an immutable Montréal registry digest, named database UID `b2cc12b3-7284-4a7f-a779-e20e5e4c5cbd`, two required ready composite indexes and verified deny-all rules for that named database. Record the existing job and schedule inventory. If the named rules, image, origin, attached identity or tenant differ, stop and reconcile the inventory. If preflight cannot read the named Firebase rules release, obtain read access or have the authorized owner run it. Keep the baseline revision and image available for rollback. The running dashboard should continue to show Time disconnected.
+
+**STOP for independent IAM review.** Have a reviewer with the necessary ancestor and group visibility confirm the effective permissions of the production runtime and intended scheduler invoker. Use the following read-only evidence, privately. Select the highest actual ancestor reported by `get-ancestors`. Use `--project` only if the project has no parent, otherwise use the highest organization or folder scope. Confirm group expansion and analysis completeness. Review custom role definitions, conditions, deny policies and principal access boundaries, inherited grants, and impersonation paths. The database allow must use exact equality to `projects/morris-client-dash-zagime/databases/mi-client-production`, permit only the reviewed create/update/read permissions, and have no broader grant. Firebase Auth lookup and the eventual access to the single regional Time secret must be independently scoped. Check that the Scheduler identity has no data or secret role. An inconclusive report is a stop. The actual attached runtime will reverify its email and read the named database in the dry-run worker. Do not probe either other database. [Google Cloud allow-policy analysis](https://cloud.google.com/policy-intelligence/docs/analyze-iam-policies)
 
 ```bash
-gcloud run jobs execute "$JOB" --project="$PROJECT" --region="$REGION" --wait \
-  --args="dist-server/operator.mjs,verify-time-customer,$TENANT"
+gcloud projects get-ancestors "$PROJECT" --format='table(type,id)'
+gcloud iam service-accounts get-iam-policy "$RUNTIME_SA" --project="$PROJECT" --format=json > "$HOME/.mi-zagime-time-production/runtime-sa-policy.json"
+gcloud iam roles describe miClientProductionData --project="$PROJECT" --format=json > "$HOME/.mi-zagime-time-production/data-role.json"
+gcloud iam roles describe miClientProductionAuthRead --project="$PROJECT" --format=json > "$HOME/.mi-zagime-time-production/auth-role.json"
+: "${IAM_SCOPE_FLAG:?Set --organization=ID or --folder=ID or the verified parentless --project=PROJECT}"
+[[ "$IAM_SCOPE_FLAG" =~ ^--(organization|folder)=[0-9]+$ || "$IAM_SCOPE_FLAG" == "--project=$PROJECT" ]]
+gcloud asset analyze-iam-policy "$IAM_SCOPE_FLAG" --identity="serviceAccount:$RUNTIME_SA" \
+  --expand-groups --expand-roles --show-response --format=json > "$HOME/.mi-zagime-time-production/runtime-allow-analysis.json"
 ```
 
-**STOP for production enrollment approval.** This commits a customer binding and audit only.
+If the analyzer or ancestor visibility is unavailable, use an authorized IAM administrator's signed review of the complete policy chain and group effective membership. Do not enable APIs just to collect evidence. If the reviewer cannot establish isolation without probing other databases, keep activation stopped. No rollback is needed for these checks. Retain or remove the private review files per company policy.
+
+### 4.2 Approve company identity and enroll a pinned credential
+
+Intuit documents `company_id`, `user_id` and `client_url` in the Time OAuth grant response. Its documented `current_user` response includes the active user ID and account slug and can omit `company_id`. The Time website's Company Details identifier is a candidate. Accept it only if the account owner can match it to existing grant metadata for the **same Time Add-on credential/account**, or receives written confirmation from Intuit that the website value is this Add-on account's API `company_id`. In a private ticket record only the tuple, evidence type and date. Never share the grant payload, token, refresh token, client secret, or a screenshot that contains them. If neither evidence source is available, stop before uploading or using the credential. The current application rejects a conflicting company ID whenever the provider supplies one, and always checks the slug and active user. No new OAuth app, callback, or refresh implementation is required. [Intuit QuickBooks Time API reference](https://tsheetsteam.github.io/api_docs/)
+
+Use the four previously approved jobcode and Time Project ID pairs for this first pilot. Pair IDs come from the verified child inventory and scoped QuickBooks Time project metadata. The similarly named top-level customer is excluded. Do not publish any discovered draft during reconciliation. Have the data owner approve the exact UTC **modification** floor, as distinct from work date. Older work can qualify if it was modified after that floor. Use the existing credential's grant issue time plus `expires_in`, an explicit expiration shown for the token, or an earlier owner-imposed cutoff grounded in independently confirmed provider validity. Record the earliest applicable expiry as `YYYY-MM-DDTHH:MM:SS.sssZ`. Never assume the token is perpetual. Use the approved connector operator's existing Firebase UID from Authentication → Users for the same Microsoft user who already has Morris staff access. A UID by itself does not grant staff permissions.
+
+Set the following approved values privately. The company ID, provider user, slug, parent and approved jobcode/project pairs are non-secret operational identifiers. Keep them in the owner's private checkout or shell session and out of public issues or PRs. Obtain any missing confirmed scope value from the existing account evidence. Do not reuse a similarly named jobcode or an Accounting identifier.
 
 ```bash
-gcloud run jobs execute "$JOB" --project="$PROJECT" --region="$REGION" --wait \
-  --args="dist-server/operator.mjs,verify-time-customer,$TENANT,--apply"
+: "${TIME_COMPANY_ID:?Set the independently confirmed numeric Time API company_id}"
+: "${TIME_USER_ID:?Set the verified active Time user ID}"
+: "${TIME_SLUG:?Set the verified Time account slug}"
+: "${TIME_PARENT_ID:?Set the independently verified numeric customer parent jobcode}"
+: "${TIME_WORK_ORDER_1:?Set first verified jobcode ID:Time Project ID pair}"
+: "${TIME_WORK_ORDER_2:?Set second verified jobcode ID:Time Project ID pair}"
+: "${TIME_WORK_ORDER_3:?Set third verified jobcode ID:Time Project ID pair}"
+: "${TIME_WORK_ORDER_4:?Set fourth verified jobcode ID:Time Project ID pair}"
+: "${TIME_MODIFIED_FROM:?Set the owner-approved UTC modification floor}"
+: "${TIME_EXPIRES_AT:?Set approved exact UTC token expiry with milliseconds}"
+: "${MORRIS_OPERATOR_UID:?Set the approved connector operator Firebase UID}"
+: "${COMPANY_EVIDENCE_REF:?Set the private identifier for the verified company evidence}"
+: "${IAM_EVIDENCE_REF:?Set the private effective IAM review reference}"
+python3 "$TIME_ACTIVATION" configure \
+  --company "$TIME_COMPANY_ID" --actor "$TIME_USER_ID" --slug "$TIME_SLUG" --parent "$TIME_PARENT_ID" \
+  --work-order "$TIME_WORK_ORDER_1" --work-order "$TIME_WORK_ORDER_2" \
+  --work-order "$TIME_WORK_ORDER_3" --work-order "$TIME_WORK_ORDER_4" \
+  --floor "$TIME_MODIFIED_FROM" --expires "$TIME_EXPIRES_AT" --operator "$MORRIS_OPERATOR_UID" \
+  --identity-evidence "$COMPANY_EVIDENCE_REF" --iam-evidence "$IAM_EVIDENCE_REF"
 ```
 
-**STOP for first import approval.** This synchronizes the scoped work orders up to existing bounded limits.
+**STOP for secret creation or version upload approval.** Ensure the terminal is private, shell tracing is disabled, and only approved owner and runtime principals can read the target regional secret. The helper accepts the existing token through hidden terminal input. Paste only when prompted. It constructs the exact production binding (environment, database UID, tenant, account, user, slug, customer, modification floor, UTC expiry and token) in process memory, hashes the exact UTF-8 bytes and passes those bytes via stdin to Montréal Secret Manager. It pins the returned numeric version in private state. No plaintext credential file, environment variable, shell argument or terminal output is created. Close the private terminal and clear the clipboard under your local credential handling procedure. The helper creates `mi-client-prod-time` only if absent and reuses it when present. Each approved enrollment adds a new version.
 
 ```bash
-gcloud run jobs execute "$JOB" --project="$PROJECT" --region="$REGION" --wait
+python3 "$TIME_ACTIVATION" credential
 ```
 
-Compare the registered work orders with the independently verified child work orders. Confirm new projects are unpublished, repeated syncs do not duplicate projects or hours, corrected/deleted time reconciles, recorded totals are distinct from allocated and unallocated time, and unverifiable approval remains unknown. Review any incomplete checkpoints before retrying. Only browser-authorized Morris connector operators can invoke the existing scoped manual sync endpoint after the dashboard is enabled.
-
-**STOP for dashboard connector cutover.** Record the current production revision and pin its image for rollback. Stage the candidate with the full verified production settings and the same origin and identity. The candidate must receive zero normal traffic. Use its tagged URL for unauthenticated asset smoke only. After review, separately authorize traffic and repeat main-origin sign-in, project persistence, audit, Time status and client privacy checks. The baseline runbook below assumes a single production revision at 100 percent. If production has split traffic, record and restore the complete map.
+**STOP for secret-level runtime IAM approval.** Confirm the private policy of the single regional secret has the expected principals, including inherited access review. Expect a numeric enabled version of the named Montréal secret. Never run `gcloud secrets versions access` to display the credential. The actual digest match is tested by the attached production worker before the first provider read.
 
 ```bash
-BASELINE="$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" --format=json |
-  jq -er '[.status.traffic[] | select((.percent // 0)>0)] | select(length==1 and .[0].percent==100) | .[0].revisionName')"
-gcloud run deploy "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --image="$IMAGE" --service-account="$PROD_SA" --env-vars-file="$TIME_ENV" \
-  --no-traffic --tag=time-candidate --timeout=210s
-gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --format='yaml(status.latestReadyRevisionName,status.traffic)'
-CANDIDATE="$(gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --format='value(status.latestReadyRevisionName)')"
-test "$CANDIDATE" != "$BASELINE"
-gcloud run revisions describe "$CANDIDATE" --project="$PROJECT" --region="$REGION" \
-  --format='value(status.imageDigest)'
+python3 "$TIME_ACTIVATION" secret-iam
 ```
 
-**STOP for traffic cutover approval.** Compare the candidate image and main-origin settings with the reviewed values. Confirm that the baseline still receives 100 percent of normal traffic.
+For a failed or canceled enrollment inspect regional version metadata without reading contents. If a version was uploaded but was never pinned, disable the orphan version after checking that no revision or job references it. Revoke the exact secret-level grant if the rollout is abandoned and no approved worker uses it. Never delete a credential needed by a known-good revision. [Regional Secret Manager setup](https://cloud.google.com/secret-manager/regional-secrets/config-sm-rs)
+
+### 4.3 Approve the production worker and first import
+
+Each command below has a separate authorization and keeps the dashboard Time-disabled. The worker uses the approved immutable image of the known-good dashboard and the same restricted production service account. It uses one task, 30 minutes maximum with a 25-minute application budget, zero automatic task retries during the pilot, and on-clock collection off. An existing matching job is reused. A differing dormant job requires inspection, no schedule, no active executions and a separate `job --replace-reviewed-job` approval. The helper does not overwrite an enrolled or unrelated job.
+
+**STOP for job configuration approval.** Expect `mi-client-prod-time-sync` with the exact named database scope and pinned regional credential, without a job execution.
 
 ```bash
-gcloud run services update-traffic "$SERVICE" --project="$PROJECT" --region="$REGION" --to-revisions="$CANDIDATE=100"
+python3 "$TIME_ACTIVATION" job
 ```
 
-## 5. Approve 6 AM Saskatchewan scheduling
-
-**STOP for Scheduler and invoker approval.** Verify the provider pilot and the main-origin dashboard checks before creating the schedule. Use a dedicated, approved same-project service identity restricted to invoking this job. A newly created schedule is active. Check the next due time before creating it. Scheduler success confirms dispatch. Check actual Cloud Run execution and persisted synchronization state separately.
+**STOP for read-only QuickBooks Time verification approval.** Expect `verified:true`, `applied:false`, and four reviewed descendants with four verified Time projects in the sanitized job result. Compare the exact approved parent and ID pairs with your independently scoped source inventory. The worker currently returns counts here, and the next reconciliation check confirms exact IDs after import. If the count differs or metadata is unavailable, stop. Recheck scope from the authorized provider account before any enrollment. Account mismatch, stale or incorrect credentials, inaccessible database and digest mismatch fail before import.
 
 ```bash
-: "${SCHEDULER_INVOKER_EMAIL:?Set the approved dedicated Scheduler invocation identity}"
-[[ "$SCHEDULER_INVOKER_EMAIL" == *"@$PROJECT.iam.gserviceaccount.com" &&
-   "$SCHEDULER_INVOKER_EMAIL" != "$PROD_SA" ]]
-gcloud run jobs add-iam-policy-binding "$JOB" --project="$PROJECT" --region="$REGION" \
-  --member="serviceAccount:$SCHEDULER_INVOKER_EMAIL" --role=roles/run.invoker
-gcloud scheduler jobs create http "$SCHEDULE" --project="$PROJECT" --location="$REGION" \
-  --schedule='0 6 * * *' --time-zone=America/Regina \
-  --uri="https://run.googleapis.com/v2/projects/$PROJECT/locations/$REGION/jobs/$JOB:run" \
-  --http-method=POST --oauth-service-account-email="$SCHEDULER_INVOKER_EMAIL" \
-  --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform \
-  --attempt-deadline=30s --max-retry-attempts=1 --min-backoff=60s --max-backoff=60s
-gcloud scheduler jobs describe "$SCHEDULE" --project="$PROJECT" --location="$REGION" \
-  --format='yaml(state,schedule,timeZone,httpTarget.uri)'
+python3 "$TIME_ACTIVATION" verify
 ```
 
-[Cloud Run scheduled execution](https://cloud.google.com/run/docs/execute/jobs-on-schedule) · [Schedule definition](../deployment/production-time-scheduler.example.json)
-
-## Rollback
-
-Use the approved incident procedure. Pause the schedule if created and block any additional manual imports. The pause does not cancel in-flight work. Inspect executions and cancel the affected execution when authorized. Wait for the bounded job lease before retrying. For the Time rollout, restore the recorded Time-disabled production revision and remove the candidate tag. For the first production release, withdraw public service invocation if no previous production revision exists. Keep the production database, audit history, mappings, allocation revisions and checkpoints intact. Escalate any data correction separately.
+**STOP for customer enrollment approval.** This records the customer binding and its audit event. It does not import hours.
 
 ```bash
-gcloud scheduler jobs pause "$SCHEDULE" --project="$PROJECT" --location="$REGION"
-gcloud run jobs executions list --job="$JOB" --project="$PROJECT" --region="$REGION"
-# After approval, for an active execution only.
-# gcloud run jobs executions cancel "$EXECUTION" --project="$PROJECT" --region="$REGION"
-# For a Time rollout with a recorded production baseline.
-gcloud run services update-traffic "$SERVICE" --project="$PROJECT" --region="$REGION" --to-revisions="$BASELINE=100" --remove-tags=time-candidate
-# For an initial launch with no previous production revision, withdraw browser transport access.
-gcloud run services remove-iam-policy-binding "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --member=allUsers --role=roles/run.invoker
+python3 "$TIME_ACTIVATION" enroll --accept-verify
 ```
 
-Repeat the relevant production health, authentication, client privacy and stored-project checks after rollback. Never route production browsers to staging or switch databases.
+**STOP for the first bounded production write.** Expect `failed:0` and four registered unpublished drafts on a clean baseline. Initial history can require more than one bounded execution if the date range or volume is large. A nonzero failure may follow successful incremental commits. Keep the dashboard disconnected, inspect the diagnostic stage and checkpoints, wait for the active execution and lease, and approve each retry. A completed Regina day is a no-op for a repeated daily job. Never delete completed checkpoints to force a replay.
+
+```bash
+python3 "$TIME_ACTIVATION" sync
+```
+
+If stopped after enrollment, leave the Time job uninvoked and the dashboard disconnected. If an import partially completed, preserve the stored checkpoints, audits, assignments and projects. Investigate discrepancies privately. The connector can retry a failed run without erasing successful prior slices.
+
+
+### 4.4 Reconcile before enabling Time in the dashboard
+
+Use a private provider report or an approved owner-only aggregate from the scoped Time report. Include completed entries for the exact jobcodes, excluding customer-root entries, over the approved modification range. Group by the source work date's month, use integer seconds, and include a zero row for each work order that has no time. If hours were rounded, edited after the export, revised, or deleted, refresh or adjust the report under the approved comparison procedure. Stop if the source report and database use different windows. The helper checks both monthly totals and the resulting lifetime totals. Reconciliation reads only named production rollups, scoped mapping metadata, private draft state and checkpoints. It prints counts and a coverage verdict without row-level data or totals.
+
+```bash
+: "${TIME_TOTALS_CSV:?Set the private Time aggregate CSV path}"
+chmod 600 -- "$TIME_TOTALS_CSV"
+# Required header: jobcode_id,month,recorded_seconds
+python3 "$TIME_ACTIVATION" reconcile --totals "$TIME_TOTALS_CSV"
+python3 "$TIME_ACTIVATION" monitor
+```
+
+Accept only a complete run with all four exact jobcode/project pairs, the expected source relationships, no customer-root or lookalike records, four unpublished imported drafts, and every per-job checkpoint through the pilot cutoff. Recorded, allocated and unallocated totals must remain distinct. For a fresh import, each allocated total is zero until Morris explicitly allocates it. Compare any corrected/deleted source entries against the corresponding provider report changes. Leave future discovery on the same approved parent. The existing worker automatically discovers nested and new descendants and marks missing/moved orders for review. The first-run acceptance tool deliberately expects the reviewed four direct work orders. An unexpected initial inventory requires a new scope review before rollout.
+
+A failed reconciliation leaves live traffic unchanged. Fix the source report comparison or separately authorize the bounded retry, as appropriate. Keep the private CSV under the approved retention policy.
+
+### 4.5 Stage and cut over the existing dashboard
+
+**STOP for a zero-traffic candidate.** Record the baseline revision and immutable digest from preflight. A candidate uses the same image, serving origin, tenant, database UID, attached account, Microsoft configuration, and existing runtime environment. The helper overlays only the Time variables, retains a larger existing timeout, and enforces at least 210 seconds for the authorized manual sync endpoint. The worker's separate task deadline is 30 minutes. The Node ten-second request timeout covers receiving the HTTP request, while sync processing has its own 150-second budget. The protected Time routes are under `/api/v2/tenants/:tenant/time`. The legacy API is deliberately unavailable.
+
+```bash
+python3 "$TIME_ACTIVATION" candidate
+```
+
+The command prints the candidate tag URL after verifying readiness, immutable image, zero normal traffic and unchanged environment outside the Time overlay. Set the printed URL as `CANDIDATE_URL` to confirm the candidate can start and serves its app while preserving anonymous denial. The named database metadata and attached identity are checked at process startup before the candidate accepts traffic.
+
+```bash
+: "${CANDIDATE_URL:?Set the exact verified zero-traffic candidate URL}"
+[[ "$CANDIDATE_URL" =~ ^https://time-candidate---[a-z0-9-]+\.run\.app$ ]]
+curl --fail --silent --show-error "$CANDIDATE_URL/health" | jq -e '.status == "ready"'
+curl --fail --silent --show-error --output /dev/null "$CANDIDATE_URL/"
+status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+  "$CANDIDATE_URL/api/v2/tenants/zagime-production/time")"
+test "$status" = 401
+```
+
+The tagged hostname has a different origin. Keep it out of Firebase authorized domains and leave the configured production origin unchanged. Run the full authenticated provider and privacy smoke on the main origin in the approved cutover window. A failed tag smoke leaves the baseline serving. Use the rollback command to remove the tag and preserve the records.
+
+**STOP for traffic cutover.** Approve only after the candidate passes and you have the baseline available. Keep the schedule absent or paused.
+
+```bash
+python3 "$TIME_ACTIVATION" cutover --accept-candidate
+```
+
+Immediately confirm `$ORIGIN/health`, Microsoft staff sign-in from the known main origin, real production draft projects and source metadata, recorded/allocated/unallocated totals for at least two months, the confirmed last-success and checkpoint status, and persisted Morris edits. Verify only the designated operator sees the manual Time retry control. Test an approved client account against both an already published authorized project and the new unpublished work orders. Confirm clients cannot query Time state, raw records, or unrelated project IDs. Do not publish pilot work orders for testing. If any check fails, restore the production baseline before enabling the schedule.
+
+### 4.6 Approve daily synchronization and monitor it
+
+An authorized owner must supply a dedicated same-project Scheduler invoker identity with no data/secret access. If it does not exist, obtain separate IAM approval to create it. Only the role grant on the exact production job occurs in the next helper command. The Cloud Scheduler service agent must already have its normal service-agent role. The human Scheduler operator needs permission to use the invocation identity. The schedule invokes the Cloud Run Jobs API with OAuth. A new schedule starts enabled. Check next due time before approving creation.
+
+**STOP for job-only invocation IAM approval.**
+
+```bash
+: "${SCHEDULER_INVOKER_EMAIL:?Set the independently reviewed dedicated Scheduler invoker}"
+python3 "$TIME_ACTIVATION" scheduler-iam --invoker "$SCHEDULER_INVOKER_EMAIL" --accept-browser
+```
+
+**STOP for live scheduling approval.** Expect job `mi-client-prod-time-daily`, cron `0 6 * * *`, `America/Regina`, OAuth, and only `mi-client-prod-time-sync:run` as target. The worker prevents overlapping imports and treats a repeated successful Regina day as a no-op. Scheduler retries dispatch once. Dispatch success does not establish job or checkpoint success.
+
+```bash
+python3 "$TIME_ACTIVATION" scheduler --accept-browser
+python3 "$TIME_ACTIVATION" report
+```
+
+After the first 6 AM run, check Scheduler dispatch and Cloud Run execution separately. Have the designated Morris operator review `monitor` after 6 AM daily during rollout and escalate any stale result (over 26 hours), incomplete/failed status, expired lease or unexpected absence of a schedule. Review the expiry warning at least weekly and renew before the remaining seven-day window. An expiry warning is an operational reminder, not evidence that the provider still accepts the token. Leave application logs and credential details private.
+
+```bash
+python3 "$TIME_ACTIVATION" monitor
+gcloud scheduler jobs describe mi-client-prod-time-daily --location="$REGION" --project="$PROJECT" \
+  --format='yaml(state,schedule,timeZone,lastAttemptTime,scheduleTime)'
+gcloud run jobs executions list --job=mi-client-prod-time-sync --region="$REGION" --project="$PROJECT" \
+  --format='table(metadata.name,status.completionTime,status.succeededCount,status.failedCount)'
+```
+
+### 4.7 Recovery, renewal and final acceptance
+
+Use each mutating recovery command only after its own approval. Pausing blocks future dispatches and leaves active executions alone. If needed, an authorized owner can cancel a confirmed active execution from the exact job and wait for the bounded lease to expire. Rollback restores the recorded Time-disabled production revision and removes the tag. It preserves all production data and leaves production sign-in available.
+
+```bash
+# Review and approve each operation separately.
+python3 "$TIME_ACTIVATION" pause
+# For a confirmed active execution only, fill the exact name from the named job inventory.
+# gcloud run jobs executions cancel "$APPROVED_EXECUTION" --region="$REGION" --project="$PROJECT"
+python3 "$TIME_ACTIVATION" sync
+python3 "$TIME_ACTIVATION" resume --accept-browser
+# On a failed launch, use this instead of resuming.
+python3 "$TIME_ACTIVATION" rollback
+```
+
+After rollback verify the production origin, Microsoft sign-in and Time disconnected. If abandoning the schedule configuration, an IAM owner can separately revoke the approved invoker's `roles/run.invoker` binding from the exact job. Retain completed checkpoints, imported projects, allocations and publication history. If the latest service template still points at a rolled-back candidate, the helper stops before another service update. Have the authorized operator restore the recorded baseline template as a zero-traffic revision and reconcile the activation record before restaging. Restore the same company ID, user and parent on any retry. Never move the modification floor or change the namespace on an existing customer without a reviewed data plan.
+
+For renewal, obtain a replacement grant for the same Time account and independently verify the same binding and the new exact expiry. Pause the schedule and approve rotation separately. Use the same hidden-input and Montréal upload procedure to add a pinned version with the new exact digest. Stage the version/digest changes on the worker and dashboard, run read-only `verify-time-customer` for the new credential, and resume only after the main-origin checks succeed. Retain the prior enabled version until both workloads have switched. Then disable it by its numeric version if no rollback revision needs it. The initial activation helper intentionally refuses replacement of a pinned credential. A dedicated reviewed rotation is required so the owner can keep the existing activation record, job state and rollback revision aligned. No automatic token refresh is enabled.
+
+The rollout is complete only when all of the following are observed and recorded privately.
+
+- The established production service still serves the same primary URL. The attached identity, UID, named rules, indexes and effective IAM boundary have passed review.
+- The approved company identity, numeric scope, regional credential version and exact expiry are confirmed. The initial dry run and enrolled worker runs succeeded.
+- All four approved work orders are reconciled in seconds and unpublished. Source corrections/deletions, checkpoint coverage, recorded/allocated/unallocated totals, and zero duplicate records have been checked.
+- Main-origin staff sign-in, persistence, manual operator controls, client privacy and project publication boundaries passed.
+- A scheduled 6 AM Regina dispatch successfully ran the expected job and advanced its persisted success/coverage state. The operational monitor and rollback owner are assigned.
+
+Use `python3 "$TIME_ACTIVATION" report` for a redacted record of locally accepted phases and `monitor` for the current persisted worker state. Keep the signed approval and reconciliation evidence in Morris's approved private location.
