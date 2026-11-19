@@ -104,6 +104,15 @@ export class TimeSync {
       .collection("syncCheckpoints")
       .doc(key("quickbooks-time", this.connection!.account, timeId(job)));
   }
+  /** A successful customer-wide run timestamp. Call only for an authorized report. */
+  async reportFreshness(tenant: string): Promise<string | undefined> {
+    if (this.connection?.tenant !== tenant || !this.connection.customerParentId) return;
+    const root = this.store.db.collection("tenants").doc(tenant);
+    const run = (await timeRun(root, this.catalogKey()).get()).data();
+    const at = run?.lastSuccess;
+    if (run?.customerBound === true && typeof at === "string" && Number.isFinite(Date.parse(at)))
+      return new Date(at).toISOString();
+  }
   async status(
     tenant: string,
     who: VerifiedIdentity,

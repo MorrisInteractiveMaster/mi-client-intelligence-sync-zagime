@@ -1,3 +1,5 @@
+import { previousReportingMonth, type PortfolioSection, type PortfolioTotals } from "../src/projects/portfolio";
+import { publishedPortfolio, readPortfolio, savePortfolioRecord } from "./portfolio";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -251,6 +253,42 @@ export class ProjectStore {
       { maxAttempts: 3 },
     );
   }
+  async portfolio(tenant: string, who: VerifiedIdentity, change?: {
+    section: PortfolioSection; record: unknown; expectedRevision: number; now: number;
+  }, month?: string) {
+    if (month !== undefined) checkMonth(month);
+    return this.db.runTransaction(async tx => {
+      const a = await this.access(tx, tenant, who);
+      if (!a.staff) throw Error("Forbidden");
+      if (change)
+        return savePortfolioRecord(tx, { root: a.root, staff: a.staff, meta: { revision: a.meta.revision } },
+          change.section, change.record, change.expectedRevision, who.subject, change.now);
+      const portfolio = await readPortfolio(tx, a.root);
+      const totals = new Map<string, PortfolioTotals>();
+      if (month && portfolio.placements.length) {
+        const rows = portfolio.placements;
+        const [views, periods] = await Promise.all([
+          tx.getAll(...rows.map(p => a.root.collection("projectViews").doc(p.id))),
+          tx.getAll(...rows.map(p => a.root.collection("projectPeriods").doc(key(month, p.id)))),
+        ]);
+        rows.forEach((p, i) => {
+          const v = views[i].data();
+          if (v?.tenantId !== tenant || v?.id !== p.id || v?.schemaVersion !== 2)
+            throw Error("Invalid reporting summary");
+          const k = key(p.engagementId, p.areaId);
+          const row = totals.get(k) ?? { engagementId: p.engagementId, areaId: p.areaId, projects: 0, monthlyPlanSeconds: 0, lifetimePlanSeconds: 0, allocatedSeconds: 0 };
+          row.projects++;
+          row.allocatedSeconds += periodSeconds(periods[i], p.id, month);
+          if (v.plan?.basis === "monthly") row.monthlyPlanSeconds += v.plan.targetSeconds;
+          else if (v.plan?.basis === "fixed") row.lifetimePlanSeconds += v.plan.targetSeconds;
+          if (![row.allocatedSeconds, row.monthlyPlanSeconds, row.lifetimePlanSeconds].every(Number.isSafeInteger))
+            throw Error("Invalid reporting summary");
+          totals.set(k, row);
+        });
+      }
+      return { revision: a.meta.revision, portfolio, totals: [...totals.values()] };
+    });
+  }
   async detail(tenant: string, who: VerifiedIdentity, id: string) {
     return this.db.runTransaction(async (tx) => {
       const a = await this.access(tx, tenant, who);
@@ -304,6 +342,17 @@ export class ProjectStore {
       const projects = visible.map((v, i) =>
         publicProject(v.data() as any, periodSeconds(periods[i], v.id, month)),
       );
+      const historicalMonths = [];
+      for (let prior = previousReportingMonth(month); prior && historicalMonths.length < 5; prior = previousReportingMonth(prior))
+        historicalMonths.unshift(prior);
+      const history = await Promise.all(historicalMonths.map(async prior => {
+        const periods = visible.length ? await tx.getAll(...visible.map(v =>
+          a.root.collection("projectPeriods").doc(key(prior, v.id)))) : [];
+        const seconds = periods.reduce((n, period, i) => n + periodSeconds(period, visible[i].id, prior), 0);
+        if (!Number.isSafeInteger(seconds)) throw Error("Invalid reporting summary");
+        return { month: prior, seconds };
+      }));
+      const portfolio = publishedPortfolio(await readPortfolio(tx, a.root), projects, month, history);
       const totalSeconds = projects.reduce((n, p) => n + p.seconds, 0);
       if (!Number.isSafeInteger(totalSeconds))
         throw Error("Invalid reporting summary");
@@ -312,6 +361,7 @@ export class ProjectStore {
         month,
         totalSeconds,
         projects,
+        portfolio,
       };
     });
   }
@@ -438,7 +488,7 @@ export class ProjectStore {
               ),
             )
           : [];
-        out.projects = docs.map((d, i) => {
+        const summaries = docs.map((d, i) => {
           if (d.data().tenantId !== tenant || d.data().id !== d.id)
             throw Error("Forbidden");
           if (
@@ -457,6 +507,18 @@ export class ProjectStore {
             ...(d.data().workOrderReference ? { workOrderReference: String(d.data().workOrderReference) } : {}),
           };
         });
+        if (summaries.length) {
+          const preview = publishedPortfolio(await readPortfolio(tx, a.root), summaries, query.month, []);
+          out.projects = summaries.map(project => ({
+            ...project,
+            reportPreview: {
+              placement: preview.placements.find(p => p.id === project.id),
+              team: preview.directory.filter(person => person.projectIds.includes(project.id)).map(person => ({
+                ...person, projectIds: [project.id],
+              })),
+            },
+          }));
+        } else out.projects = [];
       } else if (resource === "sources") {
         const heads = docs.length
           ? await tx.getAll(
@@ -605,6 +667,11 @@ export class ProjectBackend {
     query: PageQuery,
   ) {
     return this.store.page(tenant, await this.identity(token), resource, query);
+  }
+  async portfolio(token: string, tenant: string, change?: {
+    section: PortfolioSection; record: unknown; expectedRevision: number;
+  }, month?: string) {
+    return this.store.portfolio(tenant, await this.identity(token), change && { ...change, now: this.policy.now() }, month);
   }
   async detail(token: string, tenant: string, id: string) {
     return this.store.detail(tenant, await this.identity(token), id);

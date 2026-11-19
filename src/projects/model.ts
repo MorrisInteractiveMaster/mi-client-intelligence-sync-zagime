@@ -1,3 +1,5 @@
+import type { PublishedPortfolio } from "./portfolio";
+
 export const MAX_PROJECT_TIMELINE_ITEMS = 8;
 export const MAX_PROJECT_UPDATE_TEXT = 500;
 
@@ -76,6 +78,10 @@ export type ProjectView = Pick<
 export type StaffProjectSummary = ProjectView & {
   seconds: number;
   workOrderReference?: string;
+  reportPreview?: {
+    placement?: PublishedPortfolio["placements"][number];
+    team: PublishedPortfolio["directory"];
+  };
 };
 export interface ProjectWorkspace {
   role: "staff" | "client";
@@ -87,6 +93,8 @@ export interface ProjectReport {
   month: string;
   tenant: { id: string; name: string };
   totalSeconds: number;
+  sourceUpdatedAt?: string;
+  portfolio?: PublishedPortfolio;
   projects: (Omit<
     ProjectView,
     "published" | "tenantId" | "updates" | "milestones"

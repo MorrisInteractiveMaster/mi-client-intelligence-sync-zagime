@@ -1,12 +1,16 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { ProjectReport } from "../projects/model";
 import { ApiError, type SecuredApiClient } from "./client";
 import {
-  projectStatus,
-  reportDay,
   reportHours,
   reportMonth,
 } from "./dashboard-format";
+
+import { BookOpen, ChevronLeft, ChevronRight, FolderKanban, LayoutGrid, PanelLeftClose, UsersRound } from "lucide-react";
+import { ProjectReportingCard } from "./ProjectReportingCard";
+import { ExecutiveOverview } from "./ExecutiveOverview";
+import "./executive.css";
+const Presentation = lazy(() => import("./ExecutivePresentation"));
 
 const searchText = (value: string) =>
   value.trim().normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -34,6 +38,18 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
   }>();
   const [epoch, setEpoch] = useState(0);
   const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [view, setView] = useState("overview");
+  const [collapsed, setCollapsed] = useState(false);
+  const [presenting, setPresenting] = useState(false);
+  const presentationTrigger = useRef<HTMLButtonElement>(null);
+  const page = useRef<HTMLDivElement>(null);
+  const choose = (next: string) => {
+    setSearch("");
+    setStatus("all");
+    setView(next);
+    requestAnimationFrame(() => page.current?.focus({ preventScroll: true }));
+  };
   const current = result?.client === client ? result : undefined;
   useEffect(() => {
     const abort = new AbortController();
@@ -84,33 +100,46 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
   const visible = [...report.projects].sort((a, b) =>
     a.name.localeCompare(b.name, "en-CA"),
   );
-  const matching = visible.filter((project) =>
-    searchText(project.name).includes(searchText(search)),
-  );
+  const portfolio = report.portfolio;
+  const selectedArea = portfolio?.areas.find(a => "area:" + a.id === view);
+  const placements = new Map(portfolio?.placements.map(p => [p.id, p]));
+  const scoped = selectedArea ? visible.filter(p => placements.get(p.id)?.areaId === selectedArea.id) : visible;
+  const displayStatus = (project: ProjectReport["projects"][number]) => placements.get(project.id)?.archived ? "archived" : project.status;
+  const matching = scoped.filter(project => searchText(project.name).includes(searchText(search)) && (status === "all" || displayStatus(project) === status));
+  const groupName = (id: string) => portfolio?.engagements.find(e => e.id === id)?.name ?? "Independent delivery projects";
+  const groups = (view === "projects" || selectedArea) ? [...new Set(matching.map(p => placements.get(p.id)?.engagementId ?? ""))] : [""];
+  const Group = view === "projects" || selectedArea ? "details" : "div";
+  const directory = (portfolio?.directory ?? []).filter(p =>
+    view === "directory" ? searchText(p.name + " " + p.role).includes(searchText(search)) :
+      !selectedArea || p.areaId === selectedArea.id || p.projectIds.some(id => scoped.some(project => project.id === id)));
   const period = reportMonth(report.month);
   return (
-    <>
-      <section className="secure-hero" aria-labelledby="published-tenant">
-        <div>
-          <p className="secure-eyebrow">Project intelligence · {period}</p>
-          <h2 id="published-tenant">{report.tenant.name}</h2>
-          <p>Published project progress, milestones and reporting hours.</p>
+    <div className="exec-frame" data-collapsed={collapsed}>
+      <aside className="exec-sidebar">
+        <div className="exec-sidebar-title"><span>Client workspace</span>
+          <button className="exec-icon exec-collapse" type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => setCollapsed(!collapsed)}><PanelLeftClose size={18} /></button>
         </div>
-      </section>
-      <dl className="secure-metrics" aria-label="Published portfolio summary">
-        <div>
-          <dt>Published projects</dt>
-          <dd>{visible.length}</dd>
-        </div>
-        <div>
-          <dt>Completed projects</dt>
-          <dd>{visible.filter((p) => p.status === "completed").length}</dd>
-        </div>
-        <div>
-          <dt>Allocated hours · {period}</dt>
-          <dd>{reportHours(report.totalSeconds)} h</dd>
-        </div>
-      </dl>
+        <nav aria-label="Client workspace">
+          <button type="button" aria-label="Leadership summary" aria-current={view === "overview" ? "page" : undefined} onClick={() => choose("overview")}><LayoutGrid size={18} /><span>Leadership summary</span></button>
+          <button type="button" aria-label="Projects" aria-current={view === "projects" ? "page" : undefined} onClick={() => choose("projects")}><FolderKanban size={18} /><span>Projects</span></button>
+          {portfolio?.areas.map(area => <button type="button" key={area.id} aria-label={area.name} aria-current={view === "area:" + area.id ? "page" : undefined} onClick={() => choose("area:" + area.id)}><span className="exec-nav-dot" aria-hidden="true" /><span>{area.name}</span></button>)}
+          <button type="button" aria-label="MI Directory" aria-current={view === "directory" ? "page" : undefined} onClick={() => choose("directory")}><UsersRound size={18} /><span>MI Directory</span></button>
+        </nav>
+      </aside>
+      <div className="exec-content" tabIndex={-1} ref={page}>
+        {view === "overview" && <ExecutiveOverview report={report} onArea={id => choose("area:" + id)}
+          onPresentation={() => { presentationTrigger.current = document.activeElement as HTMLButtonElement; setPresenting(true); }} />}
+        {view !== "overview" && <div className="exec-breadcrumb">
+          <button type="button" className="exec-text-button" onClick={() => choose("overview")}><ChevronLeft size={16} /> Leadership summary</button>
+          <ChevronRight size={14} aria-hidden="true" />
+          <span>{selectedArea?.name ?? (view === "directory" ? "MI Directory" : "Projects")}</span>
+        </div>}
+        {selectedArea && <section className="exec-panel exec-area-head"><BookOpen size={21} aria-hidden="true" />
+          <h2>{selectedArea.name}</h2>
+          {selectedArea.description && <p>{selectedArea.description}</p>}
+          <strong>{reportHours(scoped.reduce((total, p) => total + p.seconds, 0))} h allocated in {period}</strong>
+        </section>}
+        {view !== "directory" && (
       <section aria-labelledby="published-projects">
         <div className="secure-section-heading">
           <div>
@@ -120,7 +149,7 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
               month.
             </p>
           </div>
-          {visible.length > 0 && (
+          {scoped.length > 0 && (
             <label className="secure-search-label">
               Search published projects
               <input
@@ -131,113 +160,49 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
               />
             </label>
           )}
+          {(view === "projects" || selectedArea) && <label>Status<select value={status} onChange={e => setStatus(e.target.value)}>
+            <option value="all">All statuses</option><option value="active">Active</option><option value="planned">Upcoming</option><option value="paused">Paused</option><option value="completed">Completed</option><option value="archived">Archived</option>
+          </select></label>}
         </div>
-        {!visible.length && (
+        {!scoped.length && (
           <p className="secure-empty">
             No approved projects are available for this period.
           </p>
         )}
-        {visible.length > 0 && !matching.length && (
+        {scoped.length > 0 && !matching.length && (
           <div className="secure-empty">
             <p role="status">No published projects match.</p>
-            <button onClick={() => setSearch("")}>Clear search</button>
+            <button onClick={() => { setSearch(""); setStatus("all"); }}>Clear search</button>
           </div>
         )}
-        <div className="secure-project-grid">
-          {matching.map((project) => (
-            <article
-              className="secure-card secure-published-project"
-              key={project.id}
-            >
-              <p className="secure-badge" data-status={project.status}>
-                {projectStatus[project.status]}
-              </p>
-              <h3>{project.name}</h3>
-              {project.description && (
-                <p className="secure-project-description">
-                  {project.description}
-                </p>
-              )}
-              <div className="secure-progress">
-                <span>{project.progress}% progress</span>
-                <progress
-                  aria-label={project.name + " progress"}
-                  max={100}
-                  value={project.progress}
-                />
-              </div>
-              <dl className="secure-project-hours">
-                <div>
-                  <dt>{period} allocated</dt>
-                  <dd>{reportHours(project.seconds)} h</dd>
-                </div>
-                <div>
-                  <dt>Lifetime allocated</dt>
-                  <dd>{reportHours(project.lifetimeSeconds)} h</dd>
-                </div>
-                {project.plan.targetSeconds > 0 && (
-                  <div>
-                    <dt>
-                      {project.plan.basis === "monthly"
-                        ? "Monthly"
-                        : "Lifetime"}{" "}
-                      target
-                    </dt>
-                    <dd>{reportHours(project.plan.targetSeconds)} h</dd>
-                  </div>
-                )}
-              </dl>
-              {Boolean(
-                project.milestones?.length || project.updates?.length,
-              ) && (
-                <details>
-                  <summary>Updates and milestones</summary>
-                  {!!project.milestones?.length && (
-                    <div>
-                      <h4>Milestones</h4>
-                      <ul className="secure-timeline">
-                        {[...project.milestones]
-                          .sort((a, b) => a.date.localeCompare(b.date))
-                          .map((item) => (
-                            <li key={item.id}>
-                              <b>{item.title}</b>
-                              <p>
-                                <time dateTime={item.date}>
-                                  {reportDay(item.date)}
-                                </time>{" "}
-                                · {item.completed ? "Complete" : "Upcoming"}
-                              </p>
-                            </li>
-                          ))}
-                      </ul>
-                    </div>
-                  )}
-                  {!!project.updates?.length && (
-                    <div>
-                      <h4>Project updates</h4>
-                      <ul className="secure-timeline">
-                        {[...project.updates]
-                          .sort((a, b) => b.date.localeCompare(a.date))
-                          .map((item) => (
-                            <li key={item.id}>
-                              <time dateTime={item.date}>
-                                {reportDay(item.date)}
-                              </time>
-                              <b>{item.title}</b>
-                              <p className="secure-project-description">
-                                {item.body}
-                              </p>
-                            </li>
-                          ))}
-                      </ul>
-                    </div>
-                  )}
-                </details>
-              )}
-            </article>
+        {groups.map(group => (
+          <Group className="exec-project-group" key={group} open={Group === "details" ? true : undefined}>
+            {(view === "projects" || selectedArea) && <summary>{groupName(group)}</summary>}
+            <div className="secure-project-grid">
+          {matching.filter(p => !(view === "projects" || selectedArea) || (placements.get(p.id)?.engagementId ?? "") === group).map((project) => (
+            <ProjectReportingCard key={project.id} project={project} period={period}
+              placement={placements.get(project.id)}
+              team={(portfolio?.directory ?? []).filter(member => member.projectIds.includes(project.id))} />
           ))}
+            </div>
+          </Group>
+        ))}
+      </section>)}
+      {(view === "directory" || selectedArea) && <section aria-labelledby="directory-heading">
+        <div className="secure-section-heading"><h2 id="directory-heading">MI Directory</h2>
+          {view === "directory" && (portfolio?.directory.length ?? 0) > 0 && <label className="secure-search-label">Search approved contacts<input type="search" value={search} maxLength={120} onChange={event => setSearch(event.target.value)} /></label>}
         </div>
-      </section>
-    </>
+        {directory.length ? <div className="exec-directory-grid">{directory.map(contact => <article className="exec-panel" key={contact.id}>
+          <h3>{contact.name}</h3><p>{contact.role}</p>
+          {contact.responsibility && <p className="exec-copy">{contact.responsibility}</p>}
+          {contact.publicContact && <p className="exec-copy">{contact.publicContact}</p>}
+          <ul>{contact.projectIds.map(id => visible.find(project => project.id === id)).filter(Boolean).map(project => <li key={project!.id}>{project!.name}</li>)}</ul>
+        </article>)}</div> : <p className="secure-empty">{search && view === "directory" ? "No approved contacts match." : "No approved contacts are available for these projects."}</p>}
+      </section>}
+      </div>
+      {presenting && <Suspense fallback={<p role="status">Opening presentation…</p>}>
+        <Presentation report={report} onClose={() => { setPresenting(false); requestAnimationFrame(() => presentationTrigger.current?.focus()); }} />
+      </Suspense>}
+    </div>
   );
 }
