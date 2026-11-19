@@ -8,6 +8,8 @@ type Props = {
   period: string;
   placement?: PublishedPortfolio["placements"][number];
   team: PublishedPortfolio["directory"];
+  onLink?: (destination: string) => void;
+  detail?: boolean;
 };
 
 export function ProjectReportPreview({ project, period }: { project: StaffProjectSummary; period: string }) {
@@ -22,7 +24,7 @@ export function ProjectReportPreview({ project, period }: { project: StaffProjec
   </details>;
 }
 
-export function ProjectReportingCard({ project, period, placement, team }: Props) {
+export function ProjectReportingCard({ project, period, placement, team, onLink, detail }: Props) {
   return (
     <article
       className="secure-card secure-published-project"
@@ -69,12 +71,14 @@ export function ProjectReportingCard({ project, period, placement, team }: Props
       </dl>
       {team.length > 0 && <div className="exec-project-team">
         <h4>Project team</h4>
-        <ul>{team.map(member => <li key={member.id}>{member.name}{placement?.leadId === member.id ? " · Lead" : ""}</li>)}</ul>
+        <ul>{team.map(member => <li key={member.id}>
+          {onLink ? <button className="exec-text-button" onClick={() => onLink("contact:" + member.id)}>{member.name}</button> : member.name}
+          {placement?.leadId === member.id ? " · Lead" : ""}</li>)}</ul>
       </div>}
       {Boolean(
         project.milestones?.length || project.updates?.length,
       ) && (
-        <details>
+        <details open={detail || undefined}>
           <summary>Updates and milestones</summary>
           {!!project.milestones?.length && (
             <div>
@@ -84,7 +88,7 @@ export function ProjectReportingCard({ project, period, placement, team }: Props
                   .sort((a, b) => a.date.localeCompare(b.date))
                   .map((item) => (
                     <li key={item.id}>
-                      <b>{item.title}</b>
+                      {onLink ? <button className="exec-text-button" onClick={() => onLink("milestone:" + project.id + ":" + item.id)}>{item.title}</button> : <b>{item.title}</b>}
                       <p>
                         <time dateTime={item.date}>
                           {reportDay(item.date)}
@@ -118,6 +122,9 @@ export function ProjectReportingCard({ project, period, placement, team }: Props
           )}
         </details>
       )}
+      {onLink && !detail && <button type="button" className="exec-text-button intel-open-project" onClick={() => onLink("project:" + project.id)}>
+        Open project
+      </button>}
     </article>
   );
 }

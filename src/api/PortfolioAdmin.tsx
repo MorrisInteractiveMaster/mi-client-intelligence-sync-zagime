@@ -7,6 +7,7 @@ import { ApiError, type SecuredApiClient } from "./client";
 import { reportHours, reportMonth } from "./dashboard-format";
 import { hoursToSeconds } from "../projects/duration";
 import { ContextHelp } from "./ContextHelp";
+import { portalNavigate, usePortalLocation } from "./portal-location";
 
 type Snapshot = { revision: number; portfolio: Portfolio; totals?: PortfolioTotals[] };
 const editorSections = {
@@ -32,7 +33,8 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
   client: SecuredApiClient; tenant: string; month: string; initialProject?: StaffProjectSummary;
   onDenied: () => void; onSaved: () => void; onDirty: (value: boolean) => void;
 }) {
-  const [section, setSection] = useState<PortfolioSection>(initialProject ? "placements" : "areas");
+  const requested = usePortalLocation().get("subsection");
+  const section: PortfolioSection = requested && Object.hasOwn(editorSections, requested) ? requested as PortfolioSection : initialProject ? "placements" : "areas";
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [editing, setEditing] = useState<PortfolioRecord>();
   const [dirty, setDirty] = useState(false);
@@ -67,6 +69,7 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
   }, [client, tenant, month, reload]);
   useEffect(() => { onDirty(dirty); return () => onDirty(false); }, [dirty, onDirty]);
   useEffect(() => { if (editing) heading.current?.focus(); }, [editing]);
+  useEffect(() => { setEditing(undefined); setDirty(false); setError(""); setNotice(""); }, [section]);
   useEffect(() => {
     if (!dirty) return;
     function prevent(event: BeforeUnloadEvent) { event.preventDefault(); }
@@ -84,11 +87,7 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
   }
   function choose(s: PortfolioSection) {
     if (!discard()) return;
-    setSection(s);
-    setEditing(undefined);
-    setDirty(false);
-    setError("");
-    setNotice("");
+    portalNavigate({ staff: "portfolio", subsection: s });
   }
   async function find(event?: FormEvent, next?: string) {
     event?.preventDefault();

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ApiError, type SecuredApiClient } from "./client";
 import type {
   Project,
@@ -8,14 +8,17 @@ import type {
   StaffProjectSummary,
   ProjectWorkspace,
 } from "../projects/model";
+import { publicProject } from "../projects/model";
 import type { StaffSource, HistoryRow } from "./types";
 import type { Allocation } from "../reporting/model";
 import { hoursToSeconds } from "../projects/duration";
-import { Activity, Clock3, FolderKanban, Layers3, Plug } from "lucide-react";
+import { Activity, Clock3, FolderKanban, Layers3, LayoutGrid, Plug } from "lucide-react";
 import { PortfolioAdmin } from "./PortfolioAdmin";
 import { ProjectReportPreview } from "./ProjectReportingCard";
 import { ContextHelp } from "./ContextHelp";
 import "./executive.css";
+import "./intelligence.css";
+import { closePortalOverlay, portalNavigate, usePortalLocation } from "./portal-location";
 import { TimeConnectionPanel } from "./TimeConnectionPanel";
 import { ProjectTimelineFields } from "./ProjectTimelineFields";
 import {
@@ -27,6 +30,7 @@ import {
 } from "./dashboard-format";
 
 const sections = {
+  overview: "Morris Overview",
   projects: "Projects",
   portfolio: "Portfolio management",
   hours: "Hours & allocations",
@@ -34,7 +38,8 @@ const sections = {
   integrations: "Integrations",
 };
 type Area = keyof typeof sections;
-const sectionIcons = { projects: FolderKanban, portfolio: Layers3, hours: Clock3, activity: Activity, integrations: Plug };
+const sectionIcons = { overview: LayoutGrid, projects: FolderKanban, portfolio: Layers3, hours: Clock3, activity: Activity, integrations: Plug };
+const StaffPresentation = lazy(() => import("./ExecutivePresentation"));
 export function ProjectStaffWorkspace({
   client,
   tenant,
@@ -65,7 +70,23 @@ export function ProjectStaffWorkspace({
   const [editing, setEditing] = useState<Project | "new">();
   const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
   const [milestones, setMilestones] = useState<ProjectMilestone[]>([]);
-  const [area, setArea] = useState<Area>("projects");
+  const location = usePortalLocation();
+  const staffRoute = location.get("staff");
+  const area: Area = staffRoute === "time" ? "integrations" : staffRoute && Object.hasOwn(sections, staffRoute) ? staffRoute as Area : "projects";
+  const editorRoute = location.get("editor");
+  const tableView = location.get("staff-layout") === "table";
+  const preview = page.projects?.find(p => p.id === location.get("staff-preview"));
+  const previewButton = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!editorDirty && !portfolioDirty) return;
+    const previous = window.location.href;
+    const guard = () => {
+      if (window.location.href !== previous && !window.confirm("Discard the unsaved changes?"))
+        window.history.replaceState(window.history.state, "", previous);
+    };
+    window.addEventListener("popstate", guard, true);
+    return () => window.removeEventListener("popstate", guard, true);
+  }, [editorDirty, portfolioDirty, location.toString()]);
   const areaHeading = useRef<HTMLHeadingElement>(null);
   const editorHeading = useRef<HTMLHeadingElement>(null);
   const allocationHeading = useRef<HTMLHeadingElement>(null);
@@ -94,8 +115,16 @@ export function ProjectStaffWorkspace({
       setSearch("");
       setDraftSearch("");
     }
-    setArea(next);
+    portalNavigate({ staff: next, editor: null, subsection: next === "portfolio" && organizing ? "placements" : null });
   };
+  useEffect(() => {
+    const original = document.title;
+    document.title = (editorRoute && area === "projects" ? "Project editor" : staffRoute === "time" ? "QuickBooks Time status" : sections[area]) + " · Morris Interactive";
+    return () => { document.title = original; };
+  }, [area, editorRoute, staffRoute]);
+  useEffect(() => {
+    if (!preview && previewButton.current?.isConnected) previewButton.current.focus({ preventScroll: true });
+  }, [preview]);
   useEffect(() => {
     areaHeading.current?.focus();
   }, [area]);
@@ -155,6 +184,26 @@ export function ProjectStaffWorkspace({
       });
     return () => abort.abort();
   }, [client, tenant, month, epoch, search]);
+  useEffect(() => {
+    if (area !== "projects" || !editorRoute) { setEditing(undefined); return; }
+    if (!page.revision) return;
+    if (editorRoute === "new") {
+      creation.current ??= `${Date.now()}-${crypto.randomUUID()}`;
+      setUpdates([]); setMilestones([]); setEditing("new");
+      return;
+    }
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(editorRoute)) { setError("This editor link is unavailable."); return; }
+    const abort = new AbortController();
+    client.call<{ revision: number; project: Project }>(tenant, "projects/" + editorRoute, { signal: abort.signal })
+      .then(detail => {
+        if (abort.signal.aborted || latestScope.current !== scope) return;
+        if (detail.revision !== page.revision) throw Error("Refresh the workspace before editing.");
+        setUpdates(detail.project.updates ?? []);
+        setMilestones(detail.project.milestones ?? []);
+        setEditing(detail.project);
+      }).catch(error => { if (!abort.signal.aborted) failed(error); });
+    return () => abort.abort();
+  }, [client, tenant, scope, page.revision, area, editorRoute]);
   async function perform(work: () => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
@@ -213,13 +262,14 @@ export function ProjectStaffWorkspace({
     setHistoryCursor(p.nextCursor);
   }
   return (
-    <section className="secure-staff" aria-label="Project administration">
+    <section className="secure-staff intel-staff" aria-label="Project administration">
       <div className="secure-hero secure-staff-hero">
         <div>
           <p className="secure-eyebrow">
             Morris administration · {reportMonth(month)}
           </p>
-          <h2>{workspace.tenant.name}</h2>
+          <h2>{staffRoute === "time" ? "QuickBooks Time status" : sections[area]}</h2>
+          <p>{workspace.tenant.name}</p>
         </div>
       </div>
       <div className="exec-frame exec-staff-frame">
@@ -248,6 +298,19 @@ export function ProjectStaffWorkspace({
       </nav>
       </aside>
       <div className="exec-content">
+      {area !== "overview" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
+        <button className="exec-text-button" type="button" onClick={() => changeArea("overview")}>Morris Overview</button>
+        <span aria-current="page">{sections[area]}</span>
+      </nav>}
+      {area === "overview" && <section aria-label="Morris operating overview">
+        <div className="intel-pulse" aria-label="Projects on the current page">
+          {(["active", "planned", "completed"] as const).map(status => <button className="intel-pulse-item" key={status}
+            type="button" onClick={() => changeArea("projects")}><span>{projectStatus[status]}</span><b>{page.projects?.filter(p => p.status === status).length ?? 0}</b></button>)}
+        </div>
+        <h3>Workspace</h3>
+        <div className="intel-staff-overview">{Object.entries(sections).filter(([key]) => key !== "overview").map(([key,label]) =>
+          <button type="button" key={key} onClick={() => changeArea(key as Area)}>{label}</button>)}</div>
+      </section>}
       {error && (
         <p className="secure-message secure-error" role="alert">
           {error}
@@ -279,10 +342,8 @@ export function ProjectStaffWorkspace({
             <button
               disabled={busy || page.revision === 0}
               onClick={() => {
-                creation.current = `${Date.now()}-${crypto.randomUUID()}`;
-                setUpdates([]);
-                setMilestones([]);
-                setEditing("new");
+                if (!editorDirty || window.confirm("Discard the unsaved project changes?"))
+                  portalNavigate({ staff: "projects", editor: "new" });
               }}
             >
               Create project
@@ -391,6 +452,7 @@ export function ProjectStaffWorkspace({
                   },
                 );
                 creation.current = undefined;
+                portalNavigate({ editor: null }, true);
                 refresh();
               });
             }}
@@ -500,14 +562,25 @@ export function ProjectStaffWorkspace({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => { if (!editorDirty || window.confirm("Discard the unsaved project changes?")) setEditing(undefined); }}
+                onClick={() => { if (!editorDirty || window.confirm("Discard the unsaved project changes?")) portalNavigate({ editor: null }); }}
               >
                 Cancel
               </button>
             </div>
           </form>
         )}
-        <div className="secure-project-grid">
+        <div className="intel-workspace-toolbar" aria-label="Project layout">
+          <button type="button" aria-pressed={!tableView} className="secure-secondary" onClick={() => portalNavigate({ "staff-layout": null })}>Cards</button>
+          <button type="button" aria-pressed={tableView} className="secure-secondary" onClick={() => portalNavigate({ "staff-layout": "table" })}>Table</button>
+        </div>
+        {tableView && <div className="intel-table-scroll" tabIndex={0} role="region" aria-label="Projects table">
+          <table><thead><tr><th scope="col">Project</th><th scope="col">Status</th><th scope="col">Visibility</th><th scope="col">Allocated</th><th scope="col">Work order</th></tr></thead>
+          <tbody>{page.projects?.map(p => <tr key={p.id}><th scope="row"><button type="button" className="exec-text-button" disabled={busy}
+            onClick={() => { if (!editorDirty || window.confirm("Discard the unsaved project changes?")) portalNavigate({ staff: "projects", editor: p.id }); }}>{p.name}</button></th>
+            <td>{projectStatus[p.status]}</td><td>{p.published ? "Published" : "Unpublished"}</td><td>{reportHours(p.seconds)} h</td><td>{p.workOrderReference || "—"}</td>
+          </tr>)}</tbody></table>
+        </div>}
+        <div hidden={tableView} className="secure-project-grid">
           {page.projects?.map((p) => (
             <article className="secure-card" key={p.id}>
               <div className="secure-card-flags">
@@ -566,27 +639,16 @@ export function ProjectStaffWorkspace({
                 <button
                   disabled={busy}
                   aria-label={`Edit ${p.name}`}
-                  onClick={() =>
-                    void perform(async () => {
-                      const d = await client.call<{
-                        revision: number;
-                        project: Project;
-                      }>(tenant, `projects/${p.id}`);
-                      if (
-                        d.revision !== page.revision ||
-                        latestScope.current !== scope
-                      )
-                        throw Error("Refresh the workspace before editing.");
-                      setUpdates(d.project.updates ?? []);
-                      setMilestones(d.project.milestones ?? []);
-                      setEditing(d.project);
-                    })
-                  }
+                  onClick={() => { if (!editorDirty || window.confirm("Discard the unsaved project changes?")) portalNavigate({ staff: "projects", editor: p.id }); }}
                 >
                   Edit
                 </button>
                 <button type="button" className="secure-secondary" disabled={busy} aria-label={"Organize " + p.name}
                   onClick={() => { setOrganizing(p); changeArea("portfolio"); }}>Organize</button>
+                <button type="button" className="secure-secondary" disabled={busy} onClick={event => {
+                  previewButton.current = event.currentTarget;
+                  portalNavigate({ "staff-preview": p.id }, false, "staff-preview");
+                }}>Presentation preview</button>
                 <button
                   className="secure-secondary"
                   disabled={busy}
@@ -969,6 +1031,7 @@ export function ProjectStaffWorkspace({
           </article>
           <article className="secure-card">
             <h3>QuickBooks Time</h3>
+            {staffRoute !== "time" && <button className="exec-text-button" type="button" onClick={() => portalNavigate({ staff: "time" })}>Open QuickBooks Time status</button>}
             {page.nextCursor && (
               <button
                 disabled={busy}
@@ -991,6 +1054,11 @@ export function ProjectStaffWorkspace({
           </article>
         </section>
       )}
+      {preview && <Suspense fallback={<p role="status">Opening presentation preview…</p>}>
+        <StaffPresentation scope="project-preview" scopeTitle={preview.name} onClose={() => closePortalOverlay("staff-preview")}
+          report={{ month, tenant: workspace.tenant, projects: [publicProject(preview, preview.seconds)], totalSeconds: preview.seconds }} />
+      </Suspense>}
+      {location.has("staff-preview") && page.revision > 0 && !preview && <p role="status">This presentation preview is unavailable on the current project page.</p>}
       </div>
       </div>
     </section>
