@@ -525,16 +525,18 @@ export function ProjectStaffWorkspace({
               <div className="secure-actions">
                 <a
                   href="#project-time-hours"
+                  aria-label={`View hours for ${p.name}`}
                   onClick={(event) => {
                     event.preventDefault();
                     setSelectedProject(p);
                     changeArea("hours");
                   }}
                 >
-                  View hours for {p.name}
+                  View hours
                 </a>
                 <button
                   disabled={busy}
+                  aria-label={`Edit ${p.name}`}
                   onClick={() =>
                     void perform(async () => {
                       const d = await client.call<{
@@ -552,11 +554,12 @@ export function ProjectStaffWorkspace({
                     })
                   }
                 >
-                  Edit {p.name}
+                  Edit
                 </button>
                 <button
                   className="secure-secondary"
                   disabled={busy}
+                  aria-label={`${p.published ? "Unpublish" : "Publish"} ${p.name}`}
                   onClick={() =>
                     void perform(async () => {
                       await client.call(
@@ -574,7 +577,7 @@ export function ProjectStaffWorkspace({
                     })
                   }
                 >
-                  {p.published ? "Unpublish" : "Publish"} {p.name}
+                  {p.published ? "Unpublish" : "Publish"}
                 </button>
               </div>
             </article>

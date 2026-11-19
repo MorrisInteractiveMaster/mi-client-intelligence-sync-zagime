@@ -12,7 +12,7 @@
   color: var(--secure-ink);
 }
 
-.secure-shell :is(h1, h2, h3, h4) {
+.nordic.secure-shell :is(h1, h2, h3, h4) {
   color: var(--secure-ink);
   line-height: 1.2;
   margin: 0;
@@ -130,7 +130,7 @@
   border-bottom: 1px solid var(--secure-line);
 }
 
-.secure-shell button,
+.nordic.secure-shell button,
 .secure-shell .secure-actions a {
   display: inline-flex;
   align-items: center;
@@ -157,7 +157,7 @@
   opacity: 0.5;
   cursor: default;
 }
-.secure-shell
+.nordic.secure-shell
   :is(
     .secure-secondary,
     .secure-tabs button:not([aria-pressed="true"]),
@@ -233,7 +233,7 @@
 .secure-shell .secure-project-grid > .secure-card {
   margin: 0;
 }
-.secure-card h3 {
+.secure-shell .secure-card h3 {
   margin: 10px 0;
   font-size: clamp(1.12rem, 3vw, 1.32rem);
   font-weight: 650;
