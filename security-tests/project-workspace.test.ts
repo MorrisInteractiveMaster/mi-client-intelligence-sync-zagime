@@ -22,7 +22,7 @@ import { staffTestFixture } from "../server/testing/morris-staff-fixture";
 
 test(
   "project-only secured Auth/Firestore workflow and real browser persistence without agreement records",
-  { timeout: 120000 },
+  { timeout: 150000 },
   async () => {
     const runtime = firebaseRuntime(
       "emulator",
@@ -105,7 +105,7 @@ test(
     // Fixture entry only: no production test hook, token value in bundle, browser storage or real OAuth.
     await build({
       stdin: {
-        contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {ProjectStaffWorkspace} from './src/api/ProjectWorkspace'; import {SecuredApiClient} from './src/api/client'; import './src/api/secure.css'; import './src/reporting/nordic.css'; const identity=window.__localProjectFixture; const client=new SecuredApiClient(true, location.origin, async()=>identity.token, undefined, ()=>identity.proof, 'projects'); client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElementById('root')).render(<main className="nordic secure-shell"><h1>Synthetic secured project workspace</h1><ProjectStaffWorkspace client={client} tenant="${tenant}" workspace={workspace} month="2026-11" onDenied={()=>document.body.textContent='Access denied'}/></main>)).catch(()=>document.body.textContent='Access denied');`,
+        contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {ProjectStaffWorkspace} from './src/api/ProjectWorkspace'; import {ProjectClientReport} from './src/api/ProjectClientReport'; import {SecuredApiClient} from './src/api/client'; import './src/api/secure.css'; import './src/reporting/nordic.css'; const identity=window.__localProjectFixture; const client=new SecuredApiClient(true, location.origin, async()=>identity.token, undefined, ()=>identity.proof, 'projects'); client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElementById('root')).render(<main className="nordic secure-shell"><h1>Synthetic secured project workspace</h1>{workspace.role === "staff" ? <ProjectStaffWorkspace client={client} tenant="${tenant}" workspace={workspace} month="2026-11" onDenied={()=>document.body.textContent='Access denied'}/> : <ProjectClientReport client={client} tenant="${tenant}" month="2026-11" onDenied={()=>document.body.textContent='Access denied'}/>}</main>)).catch(()=>document.body.textContent='Access denied');`,
         loader: "jsx",
         resolveDir: process.cwd(),
       },
@@ -651,8 +651,8 @@ test(
       const evidence = resolve("test-results/project-only-browser");
       await mkdir(evidence, { recursive: true });
       const errors: string[] = [];
-      const session = async (width: number) => {
-        const fresh = await signStaff();
+      const session = async (width: number, role: "staff" | "client" = "staff") => {
+        const fresh = role === "staff" ? await signStaff() : await authenticate("signInWithPassword", { email: "project-client@example.com", password, returnSecureToken: true });
         const context = await browser!.newContext({
           viewport: { width, height: 1000 },
         });
@@ -662,10 +662,10 @@ test(
           },
           {
             token: fresh.idToken,
-            proof: {
+            proof: role === "staff" ? {
               idToken: microsoftToken,
               accessToken: "synthetic-delegated-proof",
-            },
+            } : undefined,
           },
         );
         await context.route("**/*", (route) =>
@@ -679,9 +679,8 @@ test(
           if (m.type() === "error") errors.push(m.text());
         });
         await page.goto(origin, { waitUntil: "networkidle" });
-        await page
-          .getByRole("button", { name: "Create project", exact: true })
-          .waitFor();
+        if (role === "staff") await page.getByRole("button", { name: "Create project", exact: true }).waitFor();
+        else await page.getByRole("heading", { name: "Published projects", exact: true }).waitFor();
         return { context, page };
       };
       const first = await session(1440);
@@ -711,8 +710,10 @@ test(
         })
         .waitFor();
       await first.page
-        .getByRole("button", { name: "Clear search", exact: true })
+        .getByRole("navigation", { name: "Morris workspace sections" })
+        .getByRole("button", { name: "Projects", exact: true })
         .click();
+      await first.page.getByRole("button", { name: "Clear search", exact: true }).click();
       await first.page
         .getByRole("heading", { name: "HIDDEN-PROJECT", exact: true })
         .waitFor();
@@ -741,6 +742,18 @@ test(
       await first.page
         .getByLabel("Internal notes", { exact: true })
         .fill("Browser synthetic private note");
+      await first.page.getByLabel("Client description").fill("Published synthetic project description");
+      await first.page.getByRole("button", { name: "Add update", exact: true }).click();
+      await first.page.getByLabel("Update title").fill("Approved delivery update");
+      await first.page.getByLabel("Update text").fill("The client can see this update.");
+      await first.page.getByLabel("Show this update to clients").check();
+      await first.page.getByRole("button", { name: "Add update", exact: true }).click();
+      await first.page.getByLabel("Update title").nth(1).fill("PRIVATE-UPDATE");
+      await first.page.getByLabel("Update text").nth(1).fill("Private draft detail.");
+      await first.page.getByRole("button", { name: "Add milestone", exact: true }).click();
+      await first.page.getByLabel("Milestone title").fill("Approved milestone");
+      await first.page.getByLabel("Milestone completed").check();
+      await first.page.getByLabel("Show this milestone to clients").check();
       await first.page
         .getByRole("button", { name: "Save project", exact: true })
         .click();
@@ -767,6 +780,7 @@ test(
           exact: true,
         })
         .waitFor();
+      await first.page.getByRole("button", { name: "Hours & allocations", exact: true }).click();
       await first.page
         .getByRole("button", { name: "Load authorized time", exact: true })
         .click();
@@ -788,7 +802,9 @@ test(
       await first.page
         .getByRole("button", { name: "Save allocation", exact: true })
         .click();
-      await card.getByText(/0.5 h in 2026-11/).waitFor();
+      await first.page.getByRole("navigation").getByRole("button", { name: "Projects", exact: true }).click();
+      await card.locator("dd").first().filter({ hasText: /^0\.5 h$/ }).waitFor();
+      await first.page.getByRole("button", { name: "Hours & allocations", exact: true }).click();
       await first.page
         .getByRole("button", { name: "Load authorized time", exact: true })
         .click();
@@ -796,6 +812,7 @@ test(
         .getByRole("button", { name: "Allocation history", exact: true })
         .click();
       await first.page.getByText(/Revision 2 ·/).waitFor();
+      await first.page.getByRole("navigation").getByRole("button", { name: "Audit history", exact: true }).click();
       await first.page
         .getByRole("button", { name: "Load audit history", exact: true })
         .click();
@@ -803,6 +820,9 @@ test(
         .getByText(/allocation-changed/)
         .first()
         .waitFor();
+      await first.page.getByRole("button", { name: "Integrations", exact: true }).click();
+      await first.page.getByText("QuickBooks Time is disconnected.").waitFor();
+      await first.page.getByRole("navigation").getByRole("button", { name: "Projects", exact: true }).click();
       await first.page.screenshot({
         path: join(evidence, "staff-1440.png"),
         fullPage: true,
@@ -817,7 +837,7 @@ test(
           }),
         });
         await saved.getByText(/45% progress/).waitFor();
-        await saved.getByText(/0.5 h in 2026-11/).waitFor();
+        await saved.locator("dd").first().filter({ hasText: /^0\.5 h$/ }).waitFor();
         assert.ok(
           await second.page.evaluate(
             () => document.documentElement.scrollWidth <= innerWidth,
@@ -829,7 +849,6 @@ test(
         });
         await second.context.close();
       }
-      assert.deepEqual(errors, []);
       const persisted = (
         await root
           .collection("projects")
@@ -839,6 +858,7 @@ test(
       assert.equal(persisted.plan.targetSeconds, 4500);
       assert.equal(persisted.internalNotes, "Browser synthetic private note");
       assert.equal(persisted.published, true);
+      assert.equal(persisted.updates[1].visible, false);
       assert.deepEqual(
         (await root.collection("rawTime").doc("synthetic-time").get()).data(),
         sourceBefore,
@@ -855,6 +875,54 @@ test(
           ),
         ).includes("Browser saved project"),
       );
+      // Add only the new browser project to the already approved synthetic client's scope.
+      const membershipRef = root.collection("memberships").doc(key("project-client"));
+      const originalScope = (await membershipRef.get()).data()!.projectIds;
+      await membershipRef.update({ projectIds: [...originalScope, persisted.id] });
+      for (const width of [1440, 390]) {
+        const clientBrowser = await session(width, "client");
+        const { page } = clientBrowser;
+        const search = page.getByRole("searchbox", { name: "Search published projects" });
+        await search.fill("HIDDEN-PROJECT");
+        await page.getByText("No published projects match.").waitFor();
+        await search.fill("BROWSER SAVED");
+        const visibleCard = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Browser saved project", exact: true }) });
+        await visibleCard.getByText("45% progress").waitFor();
+        await visibleCard.locator("dd").first().filter({ hasText: /^0\.5 h$/ }).waitFor();
+        await visibleCard.getByText("Updates and milestones").click();
+        await visibleCard.getByText("Approved delivery update").waitFor();
+        await visibleCard.getByText("Approved milestone").waitFor();
+        assert.ok(!(await page.locator("body").innerText()).match(/PRIVATE-UPDATE|Browser synthetic private note|QuickBooks Time|Allocate recorded hours/));
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        await page.screenshot({ path: join(evidence, `client-${width}.png`), fullPage: true });
+        await clientBrowser.context.close();
+      }
+      const approvedReport = await json(await request("report?month=2026-11", "GET", undefined, client.idToken));
+      const approvedCard = approvedReport.projects.find((item: { id: string }) => item.id === persisted.id);
+      assert.equal(approvedCard.updates.length, 1);
+      assert.equal(approvedCard.milestones.length, 1);
+      assert.ok(!JSON.stringify(approvedCard).includes("PRIVATE-UPDATE"));
+      assert.ok(!JSON.stringify(approvedCard).includes("internalNotes"));
+      await json(await request(`projects/${persisted.id}`, "PATCH", {
+        expectedRevision: await revision(),
+        patch: {
+          name: persisted.name,
+          description: persisted.description,
+          internalNotes: persisted.internalNotes,
+          plan: persisted.plan,
+          progress: 50,
+          status: persisted.status,
+        },
+      }));
+      const legacyEdit = (await root.collection("projects").doc(persisted.id).get()).data()!;
+      assert.deepEqual(legacyEdit.updates, persisted.updates);
+      assert.deepEqual(legacyEdit.milestones, persisted.milestones);
+      await json(await request(`projects/${persisted.id}/publication`, "PATCH", {
+        expectedRevision: await revision(), published: false,
+      }));
+      const afterUnpublish = await json(await request("report?month=2026-11", "GET", undefined, client.idToken));
+      assert.ok(!afterUnpublish.projects.some((item: { id: string }) => item.id === persisted.id));
+      assert.deepEqual(errors, []);
       await writeFile(
         join(evidence, "report.json"),
         JSON.stringify(
@@ -867,6 +935,8 @@ test(
             reload: true,
             independentSession: true,
             publication: true,
+            approvedClientViewports: [1440, 390],
+            publishedTimeline: true,
             allocation: true,
             history: true,
             audits: true,

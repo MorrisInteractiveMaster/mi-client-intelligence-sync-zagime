@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { TimeStatus } from "../projects/time";
-import type { SecuredApiClient } from "./client";
+import { ApiError, type SecuredApiClient } from "./client";
+import { reportHours, reportMonth, reportTimestamp } from "./dashboard-format";
 
 export function TimeConnectionPanel({
   client,
@@ -12,6 +13,8 @@ export function TimeConnectionPanel({
   busy,
   run,
   onChanged,
+  onDenied,
+  manage = true,
 }: {
   client: SecuredApiClient;
   tenant: string;
@@ -22,9 +25,12 @@ export function TimeConnectionPanel({
   busy: boolean;
   run: (fn: () => Promise<void>) => Promise<void>;
   onChanged: () => void;
+  onDenied: () => void;
+  manage?: boolean;
 }) {
   const [status, setStatus] = useState<TimeStatus>();
   const [unavailable, setUnavailable] = useState(false);
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     const abort = new AbortController();
     setUnavailable(false);
@@ -42,29 +48,53 @@ export function TimeConnectionPanel({
       .then((value) => {
         if (!abort.signal.aborted) setStatus(value);
       })
-      .catch(() => {
-        if (!abort.signal.aborted) setUnavailable(true);
+      .catch((error: unknown) => {
+        if (abort.signal.aborted) return;
+        if (error instanceof ApiError && [401, 403].includes(error.status))
+          onDenied();
+        else setUnavailable(true);
       });
     return () => abort.abort();
-  }, [client, tenant, month, projectId, refreshVersion]);
+  }, [client, tenant, month, projectId, refreshVersion, retry, onDenied]);
   if (unavailable)
-    return <p>QuickBooks Time connection status is unavailable.</p>;
+    return (
+      <div className="secure-empty">
+        <p role="alert">QuickBooks Time connection status is unavailable.</p>
+        <button onClick={() => setRetry((value) => value + 1)}>
+          Retry connection status
+        </button>
+      </div>
+    );
   if (!status) return <p role="status">Checking QuickBooks Time connection…</p>;
   if (status.state === "disconnected")
     return <p>QuickBooks Time is disconnected.</p>;
   return (
     <section aria-label="QuickBooks Time connection">
       {status.month === month && status.state === "configured" && (
-        <p>
-          {new Intl.NumberFormat(undefined, {
-            maximumFractionDigits: 3,
-          }).format((status.recordedSeconds ?? 0) / 3600)}{" "}
-          h recorded with unknown approval in {month}.{" "}
-          {new Intl.NumberFormat(undefined, {
-            maximumFractionDigits: 3,
-          }).format((status.unallocatedSeconds ?? 0) / 3600)}{" "}
-          h unallocated.
-        </p>
+        <>
+          <h4>QuickBooks Time · {reportMonth(month)}</h4>
+          <p className="secure-muted">
+            Source-recorded hours have unknown approval. Allocations are Morris
+            reporting splits.
+          </p>
+          <dl
+            className="secure-metrics"
+            aria-label="QuickBooks Time for the month"
+          >
+            <div>
+              <dt>Source-recorded</dt>
+              <dd>{reportHours(status.recordedSeconds ?? 0)} h</dd>
+            </div>
+            <div>
+              <dt>Allocated from these entries</dt>
+              <dd>{reportHours(status.allocatedSeconds ?? 0)} h</dd>
+            </div>
+            <div>
+              <dt>Unallocated</dt>
+              <dd>{reportHours(status.unallocatedSeconds ?? 0)} h</dd>
+            </div>
+          </dl>
+        </>
       )}
       {status.state === "unmapped" && (
         <p>
@@ -76,22 +106,22 @@ export function TimeConnectionPanel({
       {status.state === "configured" &&
         status.lifetimeRecordedSeconds !== undefined && (
           <p>
-            {new Intl.NumberFormat(undefined, {
-              maximumFractionDigits: 3,
-            }).format(status.lifetimeRecordedSeconds / 3600)}{" "}
-            h recorded across all imported months.
+            {reportHours(status.lifetimeRecordedSeconds)} h source-recorded ·{" "}
+            {reportHours(status.lifetimeUnallocatedSeconds ?? 0)} h unallocated
+            across imported months.
           </p>
         )}
       {status.mappings.map((mapping) => (
         <article className="secure-card" key={mapping.jobcodeId}>
-          <h3>
+          <h4>
             {projects.find((p) => p.id === mapping.projectId)?.name ??
               mapping.projectId}
-          </h3>
+          </h4>
           <p>QuickBooks Time jobcode {mapping.jobcodeId}</p>
           {mapping.sourceProject?.state === "verified" && (
             <p>
-              Time project {mapping.sourceProject.name} ({mapping.sourceProject.id})
+              Time project {mapping.sourceProject.name} (
+              {mapping.sourceProject.id})
               {mapping.sourceProject.active ? "" : " · inactive"}
             </p>
           )}
@@ -103,18 +133,20 @@ export function TimeConnectionPanel({
           )}
           <p>
             {mapping.lastSuccess
-              ? "Last successful sync " + mapping.lastSuccess
+              ? "Last successful sync " + reportTimestamp(mapping.lastSuccess)
               : "Awaiting first sync"}
           </p>
           {mapping.through && (
-            <p>Source changes checked through {mapping.through}</p>
+            <p>
+              Source changes checked through {reportTimestamp(mapping.through)}
+            </p>
           )}
           {mapping.failed && (
             <p role="alert">
               The last sync failed. The previous checkpoint was retained.
             </p>
           )}
-          {status.canManage && (
+          {manage && status.canManage && (
             <button
               disabled={busy}
               onClick={() =>

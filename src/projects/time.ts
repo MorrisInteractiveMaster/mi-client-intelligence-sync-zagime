@@ -20,7 +20,9 @@ export interface TimeMapping {
 export interface TimeStatus {
   month?: string;
   recordedSeconds?: number;
+  allocatedSeconds?: number;
   unallocatedSeconds?: number;
+  lifetimeUnallocatedSeconds?: number;
   lifetimeRecordedSeconds?: number;
   state: "disconnected" | "unmapped" | "configured";
   canManage: boolean;

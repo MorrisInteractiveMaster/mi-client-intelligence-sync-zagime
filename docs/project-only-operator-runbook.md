@@ -132,3 +132,9 @@ curl --fail --silent 'https://mi-client-staging-dashboard-u3xjh6xfkq-nn.a.run.ap
 If restoring the original 00001-b4d revision, its known blank-screen defect returns. No data deletion/restore/migration accompanies traffic rollback. Preserve newly written synthetic tenant records and audit evidence; review any intervening revisions before a later migration. Do not remove candidate tags/images/data automatically.
 
 Production (default), real client data, QuickBooks OAuth/import/schedules, new projects/databases, secrets/IAM/provider/user changes and production readiness remain blocked. C must verify native Projects entitlement and server-side Zagimē stable-ID scope; no Customer/subcustomer fallback. D separately verifies relevant operational Time capability. No API callback URI is registered or claimed implemented in B.
+
+## Dashboard experience rollout
+
+For the dashboard experience PR, substitute its reviewed SHA and immutable image digest in section C. Retain the exact approved frontend tenant and provider build configuration used for the serving revision. Leave the Time connector disabled for the dashboard rollout. Preserve the existing Cloud Run service, attached identity and traffic split.
+
+The release adds optional fields on existing project and projection documents. Older projects show an empty timeline and require no migration, reseeding or index change. Use the approved staff and client acceptance checks in section D after the preview. Save one synthetic draft update and one client-visible update, verify refreshed reporting, and confirm the scoped client sees the approved update only after publication. Verify that allocations still reconcile and that Time reports disconnected. Record the previous revision for traffic rollback before promotion.

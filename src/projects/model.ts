@@ -1,3 +1,21 @@
+export const MAX_PROJECT_TIMELINE_ITEMS = 8;
+export const MAX_PROJECT_UPDATE_TEXT = 500;
+
+export interface ProjectMilestone {
+  id: string;
+  title: string;
+  date: string;
+  completed: boolean;
+  visible: boolean;
+}
+export interface ProjectUpdate {
+  id: string;
+  title: string;
+  date: string;
+  body: string;
+  visible: boolean;
+}
+
 /** Project-only persisted model. Legacy reporting/demo types remain separate. */
 export interface Project {
   schemaVersion: 2;
@@ -16,6 +34,8 @@ export interface Project {
   progress: number;
   description: string;
   internalNotes: string;
+  updates?: ProjectUpdate[];
+  milestones?: ProjectMilestone[];
   workOrderReference?: string;
   plan: { basis: "monthly" | "fixed"; targetSeconds: number };
   published: boolean;
@@ -33,6 +53,8 @@ export type ManagedProject = Pick<
   | "internalNotes"
   | "plan"
   | "workOrderReference"
+  | "updates"
+  | "milestones"
 >;
 export type ProjectView = Pick<
   Project,
@@ -45,7 +67,16 @@ export type ProjectView = Pick<
   | "description"
   | "plan"
   | "published"
-> & { lifetimeSeconds: number };
+> & {
+  lifetimeSeconds: number;
+  updates?: (Omit<ProjectUpdate, "visible"> & { visible: true })[];
+  milestones?: (Omit<ProjectMilestone, "visible"> & { visible: true })[];
+};
+
+export type StaffProjectSummary = ProjectView & {
+  seconds: number;
+  workOrderReference?: string;
+};
 export interface ProjectWorkspace {
   role: "staff" | "client";
   revision: number;
@@ -56,13 +87,18 @@ export interface ProjectReport {
   month: string;
   tenant: { id: string; name: string };
   totalSeconds: number;
-  projects: (Omit<ProjectView, "published" | "tenantId"> & {
+  projects: (Omit<
+    ProjectView,
+    "published" | "tenantId" | "updates" | "milestones"
+  > & {
     seconds: number;
+    updates?: Omit<ProjectUpdate, "visible">[];
+    milestones?: Omit<ProjectMilestone, "visible">[];
   })[];
 }
 export interface ProjectPage {
   revision: number;
-  projects?: (ProjectView & { seconds: number })[];
+  projects?: StaffProjectSummary[];
   sources?: import("../api/types").StaffSource[];
   history?: import("../api/types").HistoryRow[];
   audits?: {
@@ -79,6 +115,92 @@ export const seconds = (value: unknown): value is number =>
   Number.isSafeInteger(value) &&
   (value as number) >= 0 &&
   (value as number) <= 3_600_000_000;
+function timeline(value: unknown, kind: "updates"): ProjectUpdate[];
+function timeline(value: unknown, kind: "milestones"): ProjectMilestone[];
+function timeline(value: unknown, kind: "updates" | "milestones") {
+  if (!Array.isArray(value) || value.length > MAX_PROJECT_TIMELINE_ITEMS)
+    throw Error("Invalid project timeline");
+  const ids = new Set<string>();
+  return value.map((item) => {
+    const update = kind === "updates";
+    if (
+      !item ||
+      typeof item !== "object" ||
+      Array.isArray(item) ||
+      Object.keys(item).some(
+        (key) =>
+          ![
+            "id",
+            "title",
+            "date",
+            "visible",
+            update ? "body" : "completed",
+          ].includes(key),
+      ) ||
+      typeof item.id !== "string" ||
+      !/^[a-zA-Z0-9_-]{1,64}$/.test(item.id) ||
+      ids.has(item.id) ||
+      typeof item.title !== "string" ||
+      !item.title.trim() ||
+      item.title.length > 120 ||
+      typeof item.date !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(item.date) ||
+      !Number.isFinite(Date.parse(item.date)) ||
+      new Date(item.date).toISOString().slice(0, 10) !== item.date ||
+      typeof item.visible !== "boolean"
+    )
+      throw Error("Invalid project timeline entry");
+    ids.add(item.id);
+    const common = {
+      id: item.id,
+      title: item.title.trim(),
+      date: item.date,
+      visible: item.visible,
+    };
+    if (update) {
+      if (
+        typeof item.body !== "string" ||
+        !item.body.trim() ||
+        item.body.length > MAX_PROJECT_UPDATE_TEXT
+      )
+        throw Error("Invalid project update");
+      return { ...common, body: item.body.trim() };
+    }
+    if (typeof item.completed !== "boolean")
+      throw Error("Invalid project milestone");
+    return { ...common, completed: item.completed };
+  });
+}
+
+function updateFields({
+  id,
+  title,
+  date,
+  body,
+}: Omit<ProjectUpdate, "visible">) {
+  return { id, title, date, body };
+}
+
+function milestoneFields({
+  id,
+  title,
+  date,
+  completed,
+}: Omit<ProjectMilestone, "visible">) {
+  return { id, title, date, completed };
+}
+
+export function approvedProjectContent(p: Project) {
+  return {
+    updates: (p.updates ?? [])
+      .filter((item) => item.visible === true)
+      .map((item) => ({ ...updateFields(item), visible: true as const })),
+    milestones: (p.milestones ?? [])
+      .filter((item) => item.visible === true)
+      .map((item) => ({ ...milestoneFields(item), visible: true as const })),
+  };
+}
+
 export function managedProject(input: unknown): ManagedProject {
   if (!input || typeof input !== "object" || Array.isArray(input))
     throw Error("Invalid project");
@@ -94,6 +216,8 @@ export function managedProject(input: unknown): ManagedProject {
           "internalNotes",
           "plan",
           "workOrderReference",
+          "updates",
+          "milestones",
         ].includes(k),
     )
   )
@@ -127,6 +251,12 @@ export function managedProject(input: unknown): ManagedProject {
     progress: p.progress,
     description: p.description,
     internalNotes: p.internalNotes,
+    ...(p.updates === undefined
+      ? {}
+      : { updates: timeline(p.updates, "updates") }),
+    ...(p.milestones === undefined
+      ? {}
+      : { milestones: timeline(p.milestones, "milestones") }),
     ...(p.workOrderReference?.trim()
       ? { workOrderReference: p.workOrderReference.trim() }
       : {}),
@@ -134,7 +264,7 @@ export function managedProject(input: unknown): ManagedProject {
   };
 }
 export function projectView(
-  p: Omit<ProjectView, "lifetimeSeconds">,
+  p: Omit<ProjectView, "lifetimeSeconds" | "updates" | "milestones">,
   lifetimeSeconds: number,
 ): ProjectView {
   if (!Number.isSafeInteger(lifetimeSeconds) || lifetimeSeconds < 0)
@@ -164,5 +294,14 @@ export function publicProject(
     tenantId: __,
     ...safe
   } = projectView(v, v.lifetimeSeconds);
-  return { ...safe, seconds: periodSeconds };
+  return {
+    ...safe,
+    seconds: periodSeconds,
+    updates: (v.updates ?? [])
+      .filter((item) => item.visible === true)
+      .map(updateFields),
+    milestones: (v.milestones ?? [])
+      .filter((item) => item.visible === true)
+      .map(milestoneFields),
+  };
 }

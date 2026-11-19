@@ -127,12 +127,16 @@ export class TimeSync {
         canManage: this.allowed(tenant, who),
         mappings: rows,
         ...(project
-          ? { lifetimeRecordedSeconds: lifetime?.recorded ?? 0 }
+          ? {
+              lifetimeRecordedSeconds: lifetime?.recorded ?? 0,
+              lifetimeUnallocatedSeconds: (lifetime?.recorded ?? 0) - (lifetime?.allocated ?? 0),
+            }
           : {}),
         ...(month
           ? {
               month,
               recordedSeconds: totals?.recorded ?? 0,
+              allocatedSeconds: totals?.allocated ?? 0,
               unallocatedSeconds:
                 (totals?.recorded ?? 0) - (totals?.allocated ?? 0),
             }
