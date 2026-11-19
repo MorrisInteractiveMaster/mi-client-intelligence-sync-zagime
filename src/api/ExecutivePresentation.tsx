@@ -23,6 +23,7 @@ export default function ExecutivePresentation({ report, onClose }: { report: Pro
   const [playing, setPlaying] = useState(false);
   const [fullscreenError, setFullscreenError] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const period = reportMonth(report.month);
@@ -55,7 +56,8 @@ export default function ExecutivePresentation({ report, onClose }: { report: Pro
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      if (document.fullscreenElement === el) void document.exitFullscreen().catch(() => {});
+      if (document.fullscreenElement && el.contains(document.fullscreenElement))
+        void document.exitFullscreen().catch(() => {});
       el.close();
       document.body.style.overflow = previous;
     };
@@ -77,6 +79,7 @@ export default function ExecutivePresentation({ report, onClose }: { report: Pro
         event.preventDefault(); go(index + (event.key === "ArrowRight" ? 1 : -1));
       }
     }}>
+    <div className="exec-presentation-stage" ref={stage}>
     <header className="exec-presentation-top">
       <img src={brandAsset("branding/zagime/zagime-main-logo.png")} alt="Zagimē Anishinabēk" />
       <button className="exec-icon" type="button" aria-label="Close presentation" onClick={onClose}><X size={20} /></button>
@@ -103,10 +106,11 @@ export default function ExecutivePresentation({ report, onClose }: { report: Pro
         {scenes.map(({label}, i) => <option key={label} value={i}>{label}</option>)}
       </select>
       {typeof document !== "undefined" && document.fullscreenEnabled && <button className="exec-icon" type="button" aria-label="Toggle fullscreen" onClick={() => {
-        const operation = document.fullscreenElement ? document.exitFullscreen() : dialog.current?.requestFullscreen();
+        const operation = document.fullscreenElement ? document.exitFullscreen() : stage.current?.requestFullscreen();
         void operation?.catch(() => setFullscreenError(true));
       }}><Maximize size={17} /></button>}
     </footer>
     {fullscreenError && <p role="status" className="exec-presentation-message">Fullscreen is unavailable. The presentation is still open.</p>}
+    </div>
   </dialog>;
 }

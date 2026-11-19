@@ -205,11 +205,12 @@
   box-sizing: border-box;
   width: min(1060px,calc(100vw - 24px)); max-width: 100%; max-height: calc(100dvh - 24px);
   overflow: auto; overscroll-behavior: contain; border: 1px solid #294962; border-radius: 22px;
-  background: #01264f; color: white; padding: clamp(14px,3vw,44px);
+  background: #01264f; color: white; padding: 0;
   font-family: "DM Sans Variable", sans-serif;
 }
 .exec-presentation::backdrop { background: #051826d9; }
-.exec-presentation:fullscreen { max-width: none; width: 100%; max-height: 100%; border: 0; border-radius: 0; height: 100%; }
+.exec-presentation-stage { padding: clamp(14px,3vw,44px); background: #01264f; color: white; }
+.exec-presentation-stage:fullscreen { box-sizing: border-box; width: 100%; height: 100%; overflow: auto; }
 .exec-presentation-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: clamp(14px, 3vw, 35px); }
 .exec-presentation-top img { object-fit: contain; width: min(165px, 50%); }
 .exec-presentation-body { display: grid; grid-template-columns: 1fr minmax(0,1.3fr); gap: clamp(18px, 4vw, 68px); min-height: 270px; align-items: center; }

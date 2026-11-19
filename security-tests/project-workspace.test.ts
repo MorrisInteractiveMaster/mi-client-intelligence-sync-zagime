@@ -1045,7 +1045,7 @@ function ClientFixture() {
           const maximize = presentation.getByRole("button", { name: "Toggle fullscreen" });
           if (await maximize.count()) {
             await maximize.click();
-            await page.waitForFunction(() => document.fullscreenElement?.tagName === "DIALOG");
+            await page.waitForFunction(() => document.fullscreenElement?.classList.contains("exec-presentation-stage"));
             await maximize.click();
             await page.waitForFunction(() => !document.fullscreenElement);
           }
