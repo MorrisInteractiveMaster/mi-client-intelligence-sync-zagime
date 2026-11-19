@@ -119,6 +119,9 @@ export async function savePortfolioRecord(
   const next = previous ? rows.map(x => x.id === item.id ? item : x) : [...rows, item];
   if (next.length > portfolioLimits[section]) invalid();
   const portfolio = { ...config, [section]: next };
+  // Leave room for Firestore's nested field and document overhead.
+  if (Buffer.byteLength(JSON.stringify(portfolio)) > 750_000)
+    throw Error("Invalid portfolio size");
   const revision = expectedRevision + 1;
   if (!Number.isSafeInteger(revision)) invalid();
   const audit = randomUUID();

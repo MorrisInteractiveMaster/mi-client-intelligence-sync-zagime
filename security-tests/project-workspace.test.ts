@@ -1116,6 +1116,11 @@ function ClientFixture() {
               assert.equal(await dialog.getByLabel("Presentation chapter").evaluate(element => getComputedStyle(element).backgroundColor), "rgb(20, 59, 98)");
               const dialogRect = (await dialog.boundingBox())!;
               assert.ok(dialogRect.x >= 0 && dialogRect.x + dialogRect.width <= 390 && dialogRect.y >= 0 && dialogRect.y + dialogRect.height <= 640);
+              await page.setViewportSize({ width: 320, height: 440 });
+              const shortDialog = (await dialog.boundingBox())!;
+              const footer = (await dialog.locator("footer").boundingBox())!;
+              assert.ok(footer.y + footer.height <= shortDialog.y + shortDialog.height);
+              await page.setViewportSize({ width: 390, height: 640 });
               await page.screenshot({ path: join(evidence, "presentation-" + engine.name() + "-390.png") });
               await dialog.getByRole("button", { name: "Close presentation" }).click();
               await dialog.waitFor({ state: "hidden" });
