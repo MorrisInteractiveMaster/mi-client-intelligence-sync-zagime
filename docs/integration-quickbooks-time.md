@@ -1,92 +1,100 @@
-# QuickBooks Time integration
+# QuickBooks Time customer sync
 
-The project-only workspace has a disabled-by-default read connector for legacy QuickBooks Time. This PR uses synthetic provider responses and named Firestore emulators. The owner previously reported a successful live `/current_user` request. The deployed account's jobcode, timesheet, deletion and approval permissions still require review.
+The connector is read-only at QuickBooks Time and disabled by default. This rollout scopes the existing staging tenant to **Zagimē Anishinabēk Nation**. The four work-order labels supplied by the owner are reconciliation references. No account or jobcode ID is inferred from a name or work-order number.
 
-- The connector uses GET `current_user`, `jobcodes`, `projects`, `timesheets` and `timesheets_deleted` on `https://rest.tsheets.com/api/v1`. It checks the credential user's ID and Time account slug and verifies regular leaf jobcodes with exact `ids` and an active/archived child check. The vendor's timesheet jobcode filters include descendants, so parent jobcodes are refused and every returned row must match the requested leaf exactly. Timesheet reads disable supplemental data. The deletion reference does not document a supplemental-data toggle, so the connector discards that response section in memory. No worker names, notes, payroll fields or employee identifiers are persisted. Exact project matches may persist their source name and status on the staff-only mapping. [Time API reference](https://tsheetsteam.github.io/api_docs/)
-- Changes use the live and deleted feeds with `modified_since`, `modified_before`, numeric `page`, 50-row pages and the `more` flag. Each click processes up to seven days of modification history and five pages per feed, with one minute of lag and overlap. The configured floor concerns modification timestamps, so an older work date can enter through a later correction. Requests use a five-second timeout, a 2 MiB response bound, one request per second per instance and up to three attempts on throttling/transient failure. Long Retry-After delays stop the run so the operator can retry later.
-- Only completed regular/manual time enters totals. The API can query on-clock rows, but the connector waits for completed time. `locked` is not a verified approval signal. All imported hours remain unknown approval pending a separate account-level verification of supported approval data. Reports show recorded and unallocated totals for the selected work month across imported records.
-- Explicitly scoped deletions and corrections preserve immutable normalized versions. The source ID includes product/account/external ID. Source changes that alter duration, jobcode or work date reverse the prior applied split atomically and keep Morris allocation intent and revision history. A staff member can then review and save a new split for an active record. The connector writes no project-managed fields. Only applied aggregates from published, authorized projects reach clients.
-- A filtered incremental feed cannot prove a row was moved to an unapproved jobcode, or recognize a tombstone whose original jobcode the vendor omits. The connector does not infer deletions from absence. Keep that limitation in the owner review and stop using the totals if such a move is known until scoped reconciliation is reviewed. The API exposes numbered pages rather than a snapshot cursor. Overlap and idempotent replay mitigate retries, but do not guarantee detection of late backdated vendor changes outside the overlap. This release does not automate historical backfill or polling.
-- Intuit describes phased migration of Classic Time to QuickBooks Online. Confirm the legacy API and grant still work for the approved account before rollout. The migration notice establishes no API shutdown date for this account. The separate Accounting connector remains disabled. [Intuit migration notice](https://quickbooks.intuit.com/learn-support/en-us/help-article/time-tracking/classic-quickbooks-time-moving-quickbooks-online/L5tnv0Sms_US_en_US)
+## Source contract
 
-## Project search and the standard Accounting API
+- An authorized operator confirms the numeric customer **parent jobcode ID** in the matching Time account. `GET /jobcodes?ids=…` verifies that exact record. `GET /jobcodes?parent_ids=…&active=both&type=regular` returns direct children. Walk only verified parent IDs and check every returned ID and `parent_id`, including archived and nested jobcodes. `GET /projects?jobcode_ids=…` supplements a single discovered jobcode when the account exposes project metadata. Verify the returned project ID and `parent_jobcode_id`. A jobcode can exist without a project metadata record. The customer root itself is excluded from project/time import. [QuickBooks Time API reference](https://tsheetsteam.github.io/api_docs/#retrieve-jobcodes)
+- `timesheets` and `timesheets_deleted` are filtered by verified jobcode, regular type and modification window. A parent filter may return child time. Verify the returned jobcode against the known descendants, then import only the exact jobcode in each batch. The immutable source key includes the Time company and timesheet ID. An explicit tombstone or correction reconciles reporting and retains the prior versions. A jobcode absent from a complete discovery is marked missing, its earlier data is retained, and its future reads stop. A move outside the customer tree or a deletion without sufficient jobcode evidence cannot be inferred from absence. Review any stale reported totals with the owner. [Timesheet filtering](https://tsheetsteam.github.io/api_docs/#retrieve-timesheets)
+- Each checkpoint advances only after the scoped live and deleted feeds validate and all rows commit. A retry replays the previous overlap safely, and a dense window is halved before retry where possible. Numbered pages and overlapping timestamps do not constitute a snapshot or guarantee detection of arbitrary backdated changes. The reviewed modification floor is the earliest supported source history. Lifetime means all imported history since that floor. The worker bounds traversal to eight nested levels and 100 catalog entries, including retained missing records, and stops rather than widening scope or silently truncating. Extremely dense timestamps or retention capacity require a reviewed reconciliation.
+- The optional on-clock query uses the verified customer ID, `on_the_clock=yes`, and the same modification floor. Only an observed count and elapsed seconds per jobcode are saved. The last snapshot is timestamped and can be stale. Timers do not appear in recorded/allocated hours. Completed entries keep exact integer seconds and approval `unknown` until source evidence supports a classification.
+- A new mapping creates one deterministic unpublished draft. Renames update the staff-only source catalog while Morris names, plans, progress, notes, updates, milestones and publication stay under Morris control. Linking to an existing project changes the staff reporting grouping. The source anchor, original draft and existing manual allocations remain. Earlier explicitly mapped pilot projects can be adopted when rediscovered under this customer. Their legacy source anchors are fixed to preserve earlier totals. Zagimē clients receive only explicitly scoped, published Morris allocations. Unallocated source time is visible to staff under **Hours & allocations** and **Integrations**.
 
-Search by project name, work-order reference or internal ID. The secured list checks 25 authorized projects at a time and offers a continuation when more remain. **View hours** shows monthly recorded and unallocated hours, lifetime recorded hours, mapped Time jobcodes and source freshness for the selected project. The project card shows monthly and lifetime hours applied through Morris allocations. Clients search only their published project results. Project Time totals are maintained at `timeProjectTotals/{internalProjectId}/periods/{monthOrLifetime}` in the same transactions as tenant totals.
+## Storage and retry behaviour
 
-The prior synthetic prototype reads Accounting `TimeActivity` fixtures and joins `CustomerRef.value` to a work-order lookup, then totals `Hours` and `Minutes`. That establishes the prototype's method. The exact previous live method is still unverified. The only live request documented in the handoff is legacy Time `GET /current_user`.
+The worker uses the existing `tenants/{tenant}` namespace in `mi-client-staging`. `timeMappings` stores the account/jobcode relationship, customer catalog key and source snapshot. `timeRuns` stores customer enrollment, bounded run lease, Regina completion day and daily status. Registration and audit events commit atomically with the existing `projects` and `projectViews` writes. `rawTime/{source}/versions`, `timeProjectTotals`, the existing per-job checkpoints and the allocation/audit paths retain their existing authority. No new composite index is required.
 
-Intuit documents standard Accounting entity GET-by-ID and queries. Its SDK documents `TimeActivity.Id`, `CustomerRef`, `TxnDate`, `Hours` and `Minutes`. A response field alone does not establish that it can be used as an Accounting query filter. A read using an explicitly approved `TimeActivity` ID is a standard candidate for an authorized sandbox check. To use Accounting for search or sync, first establish the exact supported project filter and association for the realm from a sanitized prior request or scoped sandbox proof. [Intuit REST operations](https://static.developer.intuit.com/output_html/qbo/docs/learn/rest-api-features.html) · [TimeActivity SDK reference](https://static.developer.intuit.com/sdkdocs/qbv3doc/ipp-v3-java-devkit-javadoc/com/intuit/ipp/data/TimeActivity.html)
+The daily worker fences an execution for up to 27 minutes, uses a 25-minute work budget and reuses the existing fenced per-job transactions. It processes unfinished history round-robin against a daily cutoff. A completed Regina day is deduplicated. A failed attempt preserves previous successful jobcode checkpoints, records the failure stage and returns a nonzero exit code. A manual repeat of the job resumes failed work. Connector operators can also retry one discovered jobcode from the dashboard. The schedule is **06:00 America/Regina**.
 
-The Time jobcode path requires no premium Projects API or tier upgrade. The Accounting investigation provides no authority for Customer discovery, unscoped TimeActivity queries or financial reads. A future Accounting adapter needs separate realm and credential binding, explicit reference mappings, and a rule to prevent double counting exported Time entries.
+## Approved staging rollout
 
-## Owner-reviewed staging activation
+Every live step below requires owner authorization. Do not build or run against `(default)`, reseed the existing tenant, change OAuth providers or log credentials. Use the active dashboard rollout procedure for image publication and the exact existing runtime settings. [Active dashboard rollout](project-only-operator-runbook.md#dashboard-experience-rollout)
 
-The connector remains off unless `ENABLE_QUICKBOOKS_TIME=true` is explicitly set. Merge alone does not turn it on. Follow [the project-only staging runbook](project-only-operator-runbook.md) for named-database, staff identity and client publication checks. Use the existing Cloud Run service and the existing `mi-client-staging` database in Montréal. No step targets `(default)`.
+1. Record the real Time company ID, actor ID, account slug, and the independently verified numeric parent ID. Confirm the account exposes all four known work orders and permits the requested scoped historical and incremental reads. The enrollment command also compares the returned parent label with **Zagimē Anishinabēk Nation** during setup. Once enrolled, stable IDs control scope. Record permissions for completed time, deletions, archived jobs and on-clock visibility separately. Missing entitlement remains a rollout blocker.
+2. Prepare a pinned regional Secret Manager version in `northamerica-northeast1` using the approved version payload. It contains `companyId`, `userId`, `clientUrl`, `tenant`, `customerParentId` (string), `expiresAt` (UTC ISO timestamp with milliseconds), and `accessToken`. Bind the exact payload bytes by SHA-256, independently approve the account and customer scope, and grant only version access to the approved existing runtime identity on that specific secret. Use provider grant evidence to bind the company when `current_user` omits the numeric company ID. No token value belongs in shell commands, app configuration or environment files. When renewal is needed, approve a new numeric version and digest with identical account/customer scope, update both the job and dashboard using separate reviewed rollout, and verify access before retiring the previous version. Expired credentials fail closed. Automatic refresh is outside this implementation. [Regional secret access](https://docs.cloud.google.com/secret-manager/regional-secrets/access-secret-version-rs)
+3. Copy the approved active runtime staging guard values into a private job environment file. Retain `BACKEND_MODE=staging`, `STAGING_FIREBASE_PROJECT_ID=morris-client-dash-zagime`, `FIRESTORE_DATABASE_ID=mi-client-staging`, UID `6d09ea71-f495-44a5-94a6-732ed1c47d88` and the reviewed runtime identity and verification guard values. Retain the existing approved `MORRIS_DASHBOARD_TENANT_ID`. Add these settings for the job and the later dashboard connector revision.
 
-1. Record owner approval for one Zagimē regular leaf jobcode, its internal project ID, the narrow UTC modification floor and which workers' relevant time may be processed. Assign one existing verified Morris staff Firebase UID as connector operator. Confirm Intuit grants this credential the authorized leaf, completed-timesheet and deletion reads. Confirm how vendor dates and approval states are represented for that exact account. Approval stays unknown until there is source evidence for a stronger classification.
-2. Independently verify the exact credential against the vendor's account and grant records. The legacy grant response documents `company_id`, `user_id` and `client_url`; `current_user` confirms the active user ID and account slug but does not document `company_id`. For a pre-issued credential, require independent account evidence linking that exact credential to the numeric company ID, user, slug and approved jobcode. Hold activation if that evidence is unavailable. The operator records approval without copying the credential or raw grants into a ticket.
-3. In an approved secret-handling environment, put only a JSON object with keys `companyId`, `userId`, `clientUrl`, `tenant`, `jobcodeIds` (array), `expiresAt` (UTC ISO timestamp with milliseconds), and `accessToken` in a Montréal regional Secret Manager version. Use string IDs. Record the SHA-256 of the exact JSON bytes and the resulting numeric version in the restricted deployment review. The backend validates the digest, expiry and binding before its first Intuit request. No refresh token is needed for this pilot. Token renewal requires a separately approved replacement version and digest. The owner must separately approve `secretmanager.versions.access` scoped to that secret for the existing attached runtime identity. Cloud Run cannot mount regional secrets natively, so the application uses the documented regional access API with the attached identity. Do not fall back to a global secret, file or environment token. [Regional secret access](https://docs.cloud.google.com/secret-manager/regional-secrets/access-secret-version-rs) · [Cloud Run secret limitations](https://docs.cloud.google.com/run/docs/configuring/services/secrets#regional-secrets)
-4. Establish the rollout baseline with these read-only Cloud Shell Bash commands. Verify the existing service account is `mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com` and the database UID is `6d09ea71-f495-44a5-94a6-732ed1c47d88`. Verify the current traffic split and approved regional image digest. Record the currently serving, tested rollback revision for the commands below. Confirm there is one serving revision before applying the 100% traffic commands. Otherwise record and restore the exact approved split.
+| Setting | Reviewed value |
+| --- | --- |
+| `ENABLE_QUICKBOOKS_TIME` | `true` only after authorized Time rollout |
+| `QUICKBOOKS_TIME_ACCOUNT_ID` | Exact numeric Time account |
+| `QUICKBOOKS_TIME_CLIENT_URL` | Approved account slug |
+| `QUICKBOOKS_TIME_CREDENTIAL_USER_ID` | Exact active provider actor |
+| `QUICKBOOKS_TIME_ADMIN_UID` | Existing authorized Morris connector operator |
+| `QUICKBOOKS_TIME_CUSTOMER_PARENT_ID` | Exact independently approved customer jobcode |
+| `QUICKBOOKS_TIME_MODIFIED_FROM` | Approved modification floor as a UTC date |
+| `QUICKBOOKS_TIME_SECRET_ID`, `QUICKBOOKS_TIME_SECRET_VERSION`, `QUICKBOOKS_TIME_CREDENTIAL_SHA256` | Reviewed regional secret reference, numeric version and payload digest |
+| `QUICKBOOKS_TIME_ON_CLOCK_SNAPSHOT` | Optional. Start with `false`; enable only after entitlement and expected start/end fields are verified |
+
+The former `QUICKBOOKS_TIME_APPROVED_JOBCODES` is replaced by the bound parent. Remove it from the approved connector revision if present. The Cloud Run job has a single task and uses the same named database verification as the app. Confirm the existing runtime IAM policy still denies access to the default database. The separate Scheduler invocation identity needs job-level invocation only. The owner-approved setup operator must separately have permission to execute that job with argument overrides.
 
 ```bash
+set +x
+set -euo pipefail
 PROJECT=morris-client-dash-zagime
 REGION=northamerica-northeast1
-SERVICE=mi-client-staging-dashboard
-gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --format='yaml(status.url,status.traffic,spec.template.spec.serviceAccountName,spec.template.spec.timeoutSeconds,spec.template.spec.containers[0].image)'
-gcloud firestore databases describe --project="$PROJECT" --database=mi-client-staging \
-  --format='yaml(name,uid,locationId,type)'
+JOB=mi-client-time-sync
+SCHEDULE=mi-client-time-daily
+RUNTIME_SA=mi-client-staging-api@morris-client-dash-zagime.iam.gserviceaccount.com
+: "${TIME_TENANT:?Set the approved existing dashboard tenant}"
+: "${REVIEWED_IMAGE:?Set the owner-reviewed immutable image digest}"
+: "${PRIVATE_JOB_ENV:?Set the private job environment file path}"
+[[ "$REVIEWED_IMAGE" =~ @sha256:[0-9a-f]{64}$ ]]
+
+# Inventory first. Reuse an existing reviewed job rather than creating a duplicate.
+gcloud run jobs list --project="$PROJECT" --region="$REGION"
+gcloud scheduler jobs list --project="$PROJECT" --location="$REGION"
+
+# Separately approved candidate job creation. This command does not execute it.
+gcloud run jobs create "$JOB" --project="$PROJECT" --region="$REGION" \
+  --image="$REVIEWED_IMAGE" --service-account="$RUNTIME_SA" --env-vars-file="$PRIVATE_JOB_ENV" \
+  --command=node --args="dist-server/operator.mjs,sync-time-customer,$TIME_TENANT" \
+  --tasks=1 --parallelism=1 --max-retries=1 --task-timeout=1800s
 ```
 
-5. Separately approve deployment of the reviewed image with Time explicitly off. Use a pinned digest from the existing registry and preserve all existing auth, origin, scaling, runtime identity and database settings. Verify `/health`, the sign-in page, staff editing, a client session and named staging persistence with existing synthetic fixtures before enabling Time. The Cloud Run timeout is 210 seconds. Node's 10-second header/body receipt limits are unchanged. The application stops starting source work after 150 seconds or a disconnected browser. It waits for any in-flight Firestore transaction to settle and never clears another run's lease. A failed run retains the previous watermark; a crashed lease expires after 240 seconds. Single transaction attempts leave retries to the operator. [Cloud Run request timeout](https://docs.cloud.google.com/run/docs/configuring/request-timeout) · [Node request receipt timeout](https://nodejs.org/api/http.html#serverrequesttimeout)
+4. After approval to read the scoped account, dry-run customer verification. Compare the job count with the approved references and cross-check the parent and work-order IDs in the authorized Time account. After separate setup-write approval, enroll the stable scoped ID. The setup command creates only a scoped marker and audit event. Run one controlled sync after first-import approval and verify unpublished projects, unknown approval, integer seconds, fresh checkpoints and denied client access to source data.
 
 ```bash
-# Set IMAGE_DIGEST to the approved immutable image URI for the reviewed commit.
-: "${IMAGE_DIGEST:?Set the approved regional image digest}"
-gcloud run services update "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --image="$IMAGE_DIGEST" --timeout=210s --no-traffic \
-  --update-env-vars=ENABLE_QUICKBOOKS_TIME=false
-gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --format='yaml(status.latestReadyRevisionName,status.traffic,spec.template.spec.timeoutSeconds)'
-# After approval, set REVIEWED_REVISION to the above ready revision.
-: "${REVIEWED_REVISION:?Set the approved ready revision}"
-gcloud run services update-traffic "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --to-revisions="$REVIEWED_REVISION=100"
+gcloud run jobs execute "$JOB" --project="$PROJECT" --region="$REGION" --wait \
+  --args="dist-server/operator.mjs,verify-time-customer,$TIME_TENANT"
+gcloud run jobs execute "$JOB" --project="$PROJECT" --region="$REGION" --wait \
+  --args="dist-server/operator.mjs,verify-time-customer,$TIME_TENANT,--apply"
+gcloud run jobs execute "$JOB" --project="$PROJECT" --region="$REGION" --wait
 ```
 
-6. Separately approve activation after verifying the rollout and signing off all account and data-scope gates. Set the shell variables below to approved values in the restricted operator session. These values are identifiers, a version and a hash. The access token stays in Secret Manager. The command preserves the existing named-database and staff authorization settings. Verify the retained tenant matches the approved credential and project mapping. Stage the revision without traffic, verify that its revision is ready and that the prior revision still serves traffic, then separately approve promoting the activation revision.
+5. When ready to show the integration to staff, stage the approved dashboard image at zero normal traffic with the existing identity, origin, named database and approved frontend settings. The **only** additional runtime changes for this release are the Time settings listed above. Preserve unrelated runtime variables and secrets using `--update-env-vars` for those approved settings. Review candidate configuration before cutover using the existing active rollout. Verify the serving Cloud Run request timeout is at least 210 seconds for the scoped manual sync. If it is shorter, separately approve the timeout change before enabling the operator action. The scheduled job has its own task deadline. Verify authorized staff can see records and retry a scoped job, and verify an approved client sees only published allocated summaries. No production access is needed.
+6. After the manual job and dashboard checks pass, separately approve the daily Scheduler job. Use an approved same-project identity with `roles/run.invoker` bound to this job only. Retain Google-managed Scheduler service-agent permissions. Apply the reviewed [schedule definition](../deployment/time-sync-scheduler.example.json) using an owner-approved invoker, or use the equivalent Cloud Shell command below. Scheduler success confirms dispatch, while Cloud Run execution success and persisted daily status confirm synchronization. [Cloud Run scheduled execution](https://docs.cloud.google.com/run/docs/execute/jobs-on-schedule)
 
 ```bash
-: "${TIME_OPERATOR_UID:?Set the approved Firebase UID}"
-: "${TIME_ACCOUNT_ID:?Set the approved Time company ID}"
-: "${TIME_CLIENT_URL:?Set the approved Time account slug}"
-: "${TIME_USER_ID:?Set the approved credential user ID}"
-: "${TIME_JOBCODE:?Set the single approved leaf ID}"
-: "${TIME_FROM:?Set the approved UTC modification floor YYYY-MM-DD}"
-: "${TIME_SECRET_ID:?Set the reviewed Montreal regional secret ID}"
-: "${TIME_SECRET_VERSION:?Set the approved numeric version}"
-: "${TIME_SHA256:?Set the approved SHA-256 of the version payload}"
-
-gcloud run services update "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --timeout=210s --no-traffic \
-  --update-env-vars="ENABLE_QUICKBOOKS_TIME=true,QUICKBOOKS_TIME_ADMIN_UID=$TIME_OPERATOR_UID,QUICKBOOKS_TIME_ACCOUNT_ID=$TIME_ACCOUNT_ID,QUICKBOOKS_TIME_CLIENT_URL=$TIME_CLIENT_URL,QUICKBOOKS_TIME_CREDENTIAL_USER_ID=$TIME_USER_ID,QUICKBOOKS_TIME_APPROVED_JOBCODES=$TIME_JOBCODE,QUICKBOOKS_TIME_MODIFIED_FROM=$TIME_FROM,QUICKBOOKS_TIME_SECRET_ID=$TIME_SECRET_ID,QUICKBOOKS_TIME_SECRET_VERSION=$TIME_SECRET_VERSION,QUICKBOOKS_TIME_CREDENTIAL_SHA256=$TIME_SHA256"
-gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --format='yaml(status.latestReadyRevisionName,status.traffic,spec.template.spec.serviceAccountName,spec.template.spec.timeoutSeconds)'
-# After separate approval, set ACTIVATION_REVISION to the verified ready revision.
-: "${ACTIVATION_REVISION:?Set the approved activation revision}"
-gcloud run services update-traffic "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --to-revisions="$ACTIVATION_REVISION=100"
+: "${APPROVED_SCHEDULER_INVOKER:?Set the approved dedicated invocation service account}"
+gcloud scheduler jobs create http "$SCHEDULE" --project="$PROJECT" --location="$REGION" \
+  --schedule="0 6 * * *" --time-zone="America/Regina" \
+  --uri="https://run.googleapis.com/v2/projects/$PROJECT/locations/$REGION/jobs/$JOB:run" \
+  --http-method=POST --oauth-service-account-email="$APPROVED_SCHEDULER_INVOKER" \
+  --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
+  --attempt-deadline=30s --max-retry-attempts=1 --min-backoff=60s --max-backoff=60s
+gcloud scheduler jobs describe "$SCHEDULE" --project="$PROJECT" --location="$REGION"
 ```
 
-7. As the designated connector operator, select the approved internal project, enter the one approved jobcode and choose **Approve Time mapping**. The server checks the attached credential, active Time identity and exact leaf scope. Review the metadata state. A 403 or 404 from the project metadata endpoint is shown as unavailable, and an empty exact result is shown separately. These states permit the separately verified jobcode-only association. Unexpected rows, pagination of an exact association, and a changed Time project ID fail closed before timesheet reads. Click **Sync jobcode** once. Compare the resulting checkpoint, source counts, work dates, integer seconds, allocation totals and authorization boundaries against the approved reference. Keep this evidence in the restricted operator record. If the source has no scoped data or returns unusable deletion information, hold further rollout.
-8. If anything diverges, route all traffic back to the reviewed connector-disabled revision and independently verify that the Time workspace reports disconnected. This preserves projects and historical revisions. Allow up to four minutes for an abandoned lease to expire. Source rows already committed require reviewed reconciliation if their reporting impact needs to change.
+## Stop, retry and rollback
+
+Pause the schedule to stop new scheduled dispatches. Check existing job executions before resuming or retrying. In an incident, have the approved operator cancel any running execution, then wait for the bounded lease to expire if cancellation prevents release. Restore the exact previous active dashboard traffic map following the active rollout runbook. Pause manual runs while resolving the incident. Traffic rollback and Scheduler pause preserve projects, mappings, raw versions, allocations and checkpoints.
 
 ```bash
-: "${REVIEWED_REVISION:?Set the verified connector-disabled rollback revision}"
-gcloud run services update-traffic "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --to-revisions="$REVIEWED_REVISION=100"
-gcloud run services describe "$SERVICE" --project="$PROJECT" --region="$REGION" \
-  --format='yaml(status.url,status.traffic)'
+gcloud scheduler jobs pause "$SCHEDULE" --project="$PROJECT" --location="$REGION"
+gcloud run jobs executions list --job="$JOB" --project="$PROJECT" --region="$REGION"
+# After correcting the cause and confirming no execution is active, retry failed work:
+gcloud run jobs execute "$JOB" --project="$PROJECT" --region="$REGION" --wait
 ```
 
-Per tenant, the connector uses `timeMappings/{accountJobHash}`, `syncCheckpoints/{providerAccountJobHash}`, `timeMonthlyTotals/{month}` and existing `rawTime/{sourceId}` with immutable `versions/{revision}`. Staff-only Time metadata lives on the mapping. It never replaces Morris project names, status, notes or publication. The same verified named database safeguards cover every request. Sync reserves a fenced lease, validates both feeds before any source write, then applies each row transactionally. A later row failure leaves the previous watermark intact, and replay skips already committed versions. Existing query indexes suffice.
+No live account setup, deployment, schedule creation, IAM update or data import was performed by this implementation.

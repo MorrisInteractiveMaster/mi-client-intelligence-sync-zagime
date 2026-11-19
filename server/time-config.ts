@@ -18,13 +18,17 @@ export function configureTime(
   };
   const tenant = safeId(required("MORRIS_DASHBOARD_TENANT_ID"));
   const clientUrl = required("QUICKBOOKS_TIME_CLIENT_URL");
-  const jobcodes = required("QUICKBOOKS_TIME_APPROVED_JOBCODES").split(",").map(timeId);
+  if (env.QUICKBOOKS_TIME_APPROVED_JOBCODES)
+    throw Error(
+      "Remove the legacy Time jobcode allowlist before customer-scoped activation",
+    );
+  const customerParentId = timeId(
+    required("QUICKBOOKS_TIME_CUSTOMER_PARENT_ID"),
+  );
   const version = required("QUICKBOOKS_TIME_SECRET_VERSION");
   const sha256 = required("QUICKBOOKS_TIME_CREDENTIAL_SHA256");
   if (
     !/^[a-zA-Z0-9_-]{1,100}$/.test(clientUrl) ||
-    jobcodes.length > 25 ||
-    new Set(jobcodes).size !== jobcodes.length ||
     !/^[1-9][0-9]*$/.test(version) ||
     !/^[a-f0-9]{64}$/.test(sha256)
   )
@@ -32,7 +36,8 @@ export function configureTime(
   const connection = {
     tenant,
     clientUrl,
-    jobcodes,
+    customerParentId,
+    onClock: env.QUICKBOOKS_TIME_ON_CLOCK_SNAPSHOT === "true",
     account: timeId(required("QUICKBOOKS_TIME_ACCOUNT_ID")),
     userId: timeId(required("QUICKBOOKS_TIME_CREDENTIAL_USER_ID")),
     admin: safeId(required("QUICKBOOKS_TIME_ADMIN_UID")),
@@ -41,11 +46,13 @@ export function configureTime(
   return new TimeSync(
     store,
     connection,
-    new TimeClient(regionalTimeToken({
-      secret: required("QUICKBOOKS_TIME_SECRET_ID"),
-      ...connection,
-      version,
-      sha256,
-    })),
+    new TimeClient(
+      regionalTimeToken({
+        secret: required("QUICKBOOKS_TIME_SECRET_ID"),
+        ...connection,
+        version,
+        sha256,
+      }),
+    ),
   );
 }

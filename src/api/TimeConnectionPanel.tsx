@@ -70,6 +70,38 @@ export function TimeConnectionPanel({
     return <p>QuickBooks Time is disconnected.</p>;
   return (
     <section aria-label="QuickBooks Time connection">
+      {status.customerScoped && !status.customerVerified && (
+        <p role="status">
+          Waiting for the approved QuickBooks Time customer setup.
+        </p>
+      )}
+      {status.lastDailySuccess && (
+        <p>
+          Last successful daily sync {reportTimestamp(status.lastDailySuccess)}
+        </p>
+      )}
+      {status.dailyState === "running" && (
+        <p role="status">Daily sync in progress.</p>
+      )}
+      {status.dailyState === "failed" && (
+        <p role="alert">
+          The daily sync did not complete (
+          {status.errorStage ?? "retry required"}). Completed work-order
+          checkpoints were retained.
+        </p>
+      )}
+      {status.runningFailed && (
+        <p role="status">
+          The latest on-clock snapshot could not be refreshed.
+        </p>
+      )}
+      {status.running && (
+        <p>
+          On-clock snapshot at {reportTimestamp(status.running.observedAt)} ·{" "}
+          {status.running.count} running · {reportHours(status.running.seconds)}{" "}
+          h elapsed. These hours are separate from recorded totals.
+        </p>
+      )}
       {status.month === month && status.state === "configured" && (
         <>
           <h4>QuickBooks Time · {reportMonth(month)}</h4>
@@ -114,10 +146,39 @@ export function TimeConnectionPanel({
       {status.mappings.map((mapping) => (
         <article className="secure-card" key={mapping.jobcodeId}>
           <h4>
-            {projects.find((p) => p.id === mapping.projectId)?.name ??
+            {mapping.sourceName ??
+              projects.find((p) => p.id === mapping.projectId)?.name ??
               mapping.projectId}
           </h4>
           <p>QuickBooks Time jobcode {mapping.jobcodeId}</p>
+          {mapping.mappingState && (
+            <p>
+              {mapping.mappingState === "registered"
+                ? "Registered as its own project"
+                : "Linked to an existing project"}{" "}
+              ·{" "}
+              {projects.find((p) => p.id === mapping.projectId)?.name ??
+                mapping.projectId}
+            </p>
+          )}
+          {status.month === month && mapping.recordedSeconds !== undefined && (
+            <p>
+              {reportHours(mapping.recordedSeconds)} h recorded ·{" "}
+              {reportHours(mapping.allocatedSeconds ?? 0)} h allocated ·{" "}
+              {reportHours(mapping.unallocatedSeconds ?? 0)} h unallocated ·{" "}
+              {reportHours(mapping.lifetimeRecordedSeconds ?? 0)} h lifetime
+              recorded
+            </p>
+          )}
+          {mapping.sourceState === "inactive" && (
+            <p role="status">Inactive in QuickBooks Time.</p>
+          )}
+          {mapping.sourceState === "missing" && (
+            <p role="status">
+              Outside the current customer catalog. Prior recorded hours are
+              retained for review.
+            </p>
+          )}
           {mapping.sourceProject?.state === "verified" && (
             <p>
               Time project {mapping.sourceProject.name} (
@@ -146,7 +207,7 @@ export function TimeConnectionPanel({
               The last sync failed. The previous checkpoint was retained.
             </p>
           )}
-          {manage && status.canManage && (
+          {manage && status.canManage && mapping.sourceState !== "missing" && (
             <button
               disabled={busy}
               onClick={() =>
@@ -167,52 +228,79 @@ export function TimeConnectionPanel({
           )}
         </article>
       ))}
-      {status.canManage && !projectId && (
-        <form
-          className="secure-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const data = new FormData(event.currentTarget);
-            void run(async () => {
-              await client.call(tenant, "time/mapping", {
-                method: "POST",
-                body: {
-                  jobcodeId: data.get("jobcode"),
-                  projectId: data.get("project"),
-                },
+      {manage &&
+        status.canManage &&
+        !projectId &&
+        (!status.customerScoped ||
+          status.mappings.some((m) => m.canRelink)) && (
+          <form
+            className="secure-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const data = new FormData(event.currentTarget);
+              void run(async () => {
+                await client.call(tenant, "time/mapping", {
+                  method: "POST",
+                  body: {
+                    jobcodeId: data.get("jobcode"),
+                    projectId: data.get("project"),
+                  },
+                });
+                onChanged();
               });
-              onChanged();
-            });
-          }}
-        >
-          <label>
-            Approved QuickBooks Time jobcode ID
-            <input
-              name="jobcode"
-              required
-              inputMode="numeric"
-              pattern="[1-9][0-9]{0,19}"
-            />
-          </label>
-          <label htmlFor="time-mapping-project">Reporting project</label>
-          <select
-            id="time-mapping-project"
-            name="project"
-            required
-            defaultValue=""
+            }}
           >
-            <option value="">Choose project</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-          <button disabled={busy || projects.length === 0}>
-            Approve Time mapping
-          </button>
-        </form>
-      )}
+            <label>
+              {status.customerScoped
+                ? "Discovered work order"
+                : "Approved QuickBooks Time jobcode ID"}
+              {status.customerScoped ? (
+                <select name="jobcode" required defaultValue="">
+                  <option value="">Choose work order</option>
+                  {status.mappings
+                    .filter((mapping) => mapping.canRelink)
+                    .map((mapping) => (
+                      <option key={mapping.jobcodeId} value={mapping.jobcodeId}>
+                        {mapping.sourceName} ({mapping.jobcodeId})
+                      </option>
+                    ))}
+                </select>
+              ) : (
+                <input
+                  name="jobcode"
+                  required
+                  inputMode="numeric"
+                  pattern="[1-9][0-9]{0,19}"
+                />
+              )}
+            </label>
+            <label htmlFor="time-mapping-project">Reporting project</label>
+            <select
+              id="time-mapping-project"
+              name="project"
+              required
+              defaultValue=""
+            >
+              <option value="">Choose project</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+            {status.customerScoped && (
+              <p>
+                Linking changes where recorded time is grouped. Saved
+                allocations and the original draft project are retained.
+              </p>
+            )}
+            <button disabled={busy || projects.length === 0}>
+              {status.customerScoped
+                ? "Link to project"
+                : "Approve Time mapping"}
+            </button>
+          </form>
+        )}
     </section>
   );
 }
