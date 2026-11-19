@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ProjectReport } from "../projects/model";
 import { ApiError, type SecuredApiClient } from "./client";
 import {
@@ -44,11 +44,15 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
   const [presenting, setPresenting] = useState(false);
   const presentationTrigger = useRef<HTMLButtonElement>(null);
   const page = useRef<HTMLDivElement>(null);
+  const previousView = useRef(view);
+  useLayoutEffect(() => {
+    if (previousView.current !== view) page.current?.focus({ preventScroll: true });
+    previousView.current = view;
+  }, [view]);
   const choose = (next: string) => {
     setSearch("");
     setStatus("all");
     setView(next);
-    requestAnimationFrame(() => page.current?.focus({ preventScroll: true }));
   };
   const current = result?.client === client ? result : undefined;
   useEffect(() => {

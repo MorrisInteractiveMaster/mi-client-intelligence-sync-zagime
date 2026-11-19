@@ -1025,6 +1025,7 @@ function ClientFixture() {
         assert.doesNotMatch(await page.locator("body").innerText(), /INTERNAL-CONTACT|PRIVATE-DIRECTORY|UNLINKED-DIRECTORY/);
         await page.screenshot({ path: join(evidence, "directory-" + width + ".png"), fullPage: true });
         await nav.getByRole("button", { name: "Leadership summary", exact: true }).click();
+        await page.waitForFunction(() => document.activeElement?.classList.contains("exec-content"));
         const help = page.getByRole("button", { name: "How are allocated hours calculated?" });
         await help.focus();
         const tooltip = page.getByRole("tooltip");
