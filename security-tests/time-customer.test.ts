@@ -87,6 +87,7 @@ test("verified customer discovery, registration, linking, daily reconciliation a
               : "Other customer",
             active: true,
           },
+          { id: 81, parent_id: 0, name: "Zagim\u0113 Anishinab\u0113k Nation", active: true },
           ...jobs,
         ];
         let found = query.has("ids")
