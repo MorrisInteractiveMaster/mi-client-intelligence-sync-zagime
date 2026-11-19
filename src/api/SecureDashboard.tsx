@@ -283,7 +283,7 @@ export function SecureDashboard() {
       )}
       {workspace?.role === "client" && client && (
         <ProjectClientReport
-          key={subject + "|" + month}
+          key={subject}
           client={client}
           tenant={import.meta.env.VITE_SECURE_TENANT_ID ?? ""}
           month={month}

@@ -11,21 +11,30 @@ import {
 const searchText = (value: string) =>
   value.trim().normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
-export function ProjectClientReport({
-  client,
-  tenant,
-  month,
-  onDenied,
-}: {
+type ReportScope = {
   client: SecuredApiClient;
   tenant: string;
   month: string;
   onDenied: () => void;
-}) {
-  const [report, setReport] = useState<ProjectReport>();
-  const [error, setError] = useState(false);
+};
+
+export function ProjectClientReport(props: ReportScope) {
+  return (
+    <ScopedClientReport
+      key={JSON.stringify([props.tenant, props.month])}
+      {...props}
+    />
+  );
+}
+
+function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
+  const [result, setResult] = useState<{
+    client: SecuredApiClient;
+    report?: ProjectReport;
+  }>();
   const [epoch, setEpoch] = useState(0);
   const [search, setSearch] = useState("");
+  const current = result?.client === client ? result : undefined;
   useEffect(() => {
     const abort = new AbortController();
     client
@@ -33,18 +42,21 @@ export function ProjectClientReport({
         signal: abort.signal,
       })
       .then((data) => {
-        if (!abort.signal.aborted) setReport(data);
+        if (abort.signal.aborted) return;
+        if (data.month !== month || data.tenant.id !== tenant)
+          throw Error("Unexpected reporting scope");
+        setResult({ client, report: data });
       })
       .catch((failure: unknown) => {
         if (abort.signal.aborted) return;
         if (failure instanceof ApiError && [401, 403].includes(failure.status))
           onDenied();
-        else setError(true);
+        else setResult({ client });
       });
     return () => abort.abort();
   }, [client, tenant, month, epoch, onDenied]);
 
-  if (error)
+  if (current && !current.report)
     return (
       <section className="secure-empty">
         <h2>Reporting is temporarily unavailable</h2>
@@ -53,7 +65,7 @@ export function ProjectClientReport({
         </p>
         <button
           onClick={() => {
-            setError(false);
+            setResult(undefined);
             setEpoch((value) => value + 1);
           }}
         >
@@ -61,6 +73,7 @@ export function ProjectClientReport({
         </button>
       </section>
     );
+  const report = current?.report;
   if (!report)
     return (
       <p className="secure-empty" role="status">
@@ -74,7 +87,7 @@ export function ProjectClientReport({
   const matching = visible.filter((project) =>
     searchText(project.name).includes(searchText(search)),
   );
-  const period = reportMonth(month);
+  const period = reportMonth(report.month);
   return (
     <>
       <section className="secure-hero" aria-labelledby="published-tenant">

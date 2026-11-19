@@ -105,7 +105,14 @@ test(
     // Fixture entry only: no production test hook, token value in bundle, browser storage or real OAuth.
     await build({
       stdin: {
-        contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {ProjectStaffWorkspace} from './src/api/ProjectWorkspace'; import {ProjectClientReport} from './src/api/ProjectClientReport'; import {SecuredApiClient} from './src/api/client'; import './src/api/secure.css'; import './src/reporting/nordic.css'; const identity=window.__localProjectFixture; const client=new SecuredApiClient(true, location.origin, async()=>identity.token, undefined, ()=>identity.proof, 'projects'); client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElementById('root')).render(<main className="nordic secure-shell"><h1>Synthetic secured project workspace</h1>{workspace.role === "staff" ? <ProjectStaffWorkspace client={client} tenant="${tenant}" workspace={workspace} month="2026-11" onDenied={()=>document.body.textContent='Access denied'}/> : <ProjectClientReport client={client} tenant="${tenant}" month="2026-11" onDenied={()=>document.body.textContent='Access denied'}/>}</main>)).catch(()=>document.body.textContent='Access denied');`,
+        contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {ProjectStaffWorkspace} from './src/api/ProjectWorkspace'; import {ProjectClientReport} from './src/api/ProjectClientReport'; import {SecuredApiClient} from './src/api/client'; import './src/api/secure.css'; import './src/reporting/nordic.css'; const identity=window.__localProjectFixture; // Let held reporting responses reach React after a switch, even if a transport cannot cancel.
+const client=new SecuredApiClient(true, location.origin, async()=>identity.token, (input, init)=>fetch(input, String(input).includes('/report?') ? {...init, signal: undefined} : init), ()=>identity.proof, 'projects');
+const denied=()=>document.body.textContent='Access denied';
+function ClientFixture() {
+  const [month, setMonth] = React.useState("2026-11");
+  return <><label>Reporting month<input type="month" value={month} onChange={(event)=>setMonth(event.target.value)}/></label><ProjectClientReport client={client} tenant="${tenant}" month={month} onDenied={denied}/></>;
+}
+ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElementById('root')).render(<main className="nordic secure-shell"><h1>Synthetic secured project workspace</h1>{workspace.role === "staff" ? <ProjectStaffWorkspace client={client} tenant="${tenant}" workspace={workspace} month="2026-11" onDenied={()=>document.body.textContent='Access denied'}/> : <ClientFixture/>}</main>)).catch(()=>document.body.textContent='Access denied');`,
         loader: "jsx",
         resolveDir: process.cwd(),
       },
@@ -895,6 +902,50 @@ test(
         assert.ok(!(await page.locator("body").innerText()).match(/PRIVATE-UPDATE|Browser synthetic private note|QuickBooks Time|Allocate recorded hours/));
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         await page.screenshot({ path: join(evidence, `client-${width}.png`), fullPage: true });
+        if (width === 1440) {
+          const octoberRequested = Promise.withResolvers<void>();
+          const octoberRelease = Promise.withResolvers<void>();
+          await page.route("**/report?month=2026-10", async (route) => {
+            octoberRequested.resolve();
+            await octoberRelease.promise;
+            await route.continue();
+          }, { times: 1 });
+          await page.route("**/report?month=2026-12", async (route) => {
+            // A wrong-month response must fail closed, just like a network error.
+            const response = await route.fetch({
+              url: route.request().url().replace("2026-12", "2026-10"),
+            });
+            await route.fulfill({ response });
+          }, { times: 1 });
+          const filter = page.getByLabel("Reporting month");
+          const portfolio = page.getByLabel("Published portfolio summary");
+          try {
+            await filter.fill("2026-10");
+            await octoberRequested.promise;
+            await page.getByRole("status").filter({ hasText: "Loading approved reporting" }).waitFor();
+            assert.equal(await portfolio.count(), 0);
+            await filter.fill("2026-12");
+            await page.getByRole("alert").filter({ hasText: "The published report could not be loaded" }).waitFor();
+            assert.equal(await portfolio.count(), 0);
+            await filter.fill("2026-11");
+            await portfolio.getByText("Allocated hours · November 2026").waitFor();
+            await portfolio.getByText("0.5 h", { exact: true }).waitFor();
+            assert.equal(await page.getByRole("alert").count(), 0);
+            const late = page.waitForResponse((response) => response.url().endsWith("/report?month=2026-10"));
+            octoberRelease.resolve();
+            await (await late).finished();
+            assert.equal(await portfolio.getByText("Allocated hours · November 2026").count(), 1);
+            assert.equal(await portfolio.getByText("0.5 h", { exact: true }).count(), 1);
+
+            await filter.fill("2026-10");
+            await portfolio.getByText("Allocated hours · October 2026").waitFor();
+            await portfolio.getByText("0 h", { exact: true }).waitFor();
+            const octoberProject = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Browser saved project", exact: true }) });
+            assert.equal(await octoberProject.locator("dd").first().textContent(), "0 h");
+          } finally {
+            octoberRelease.resolve();
+          }
+        }
         await clientBrowser.context.close();
       }
       const approvedReport = await json(await request("report?month=2026-11", "GET", undefined, client.idToken));
@@ -937,6 +988,7 @@ test(
             publication: true,
             approvedClientViewports: [1440, 390],
             publishedTimeline: true,
+            rapidMonthSwitch: true,
             allocation: true,
             history: true,
             audits: true,
