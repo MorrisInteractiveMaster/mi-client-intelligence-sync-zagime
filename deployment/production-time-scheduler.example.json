@@ -1,0 +1,20 @@
+{
+  "name": "projects/morris-client-dash-zagime/locations/northamerica-northeast1/jobs/mi-client-prod-time-daily",
+  "description": "Review only. Invoke the production QuickBooks Time sync job.",
+  "schedule": "0 6 * * *",
+  "timeZone": "America/Regina",
+  "attemptDeadline": "30s",
+  "retryConfig": {
+    "retryCount": 1,
+    "minBackoffDuration": "60s",
+    "maxBackoffDuration": "60s"
+  },
+  "httpTarget": {
+    "uri": "https://run.googleapis.com/v2/projects/morris-client-dash-zagime/locations/northamerica-northeast1/jobs/mi-client-prod-time-sync:run",
+    "httpMethod": "POST",
+    "oauthToken": {
+      "serviceAccountEmail": "OWNER_APPROVED_INVOKER_EMAIL",
+      "scope": "https://www.googleapis.com/auth/cloud-platform"
+    }
+  }
+}

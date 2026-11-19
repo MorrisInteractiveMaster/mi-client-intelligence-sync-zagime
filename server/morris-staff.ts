@@ -1,3 +1,4 @@
+import { validProductionTenant } from "./database-target";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import type { MicrosoftProof } from "./request-identity";
 export const MORRIS_STAFF_DOMAIN = "morrisinteractive.ca";
@@ -16,9 +17,9 @@ export function staffConfiguration(env: NodeJS.ProcessEnv): StaffConfiguration {
   if (
     !uuid.test(entraTenantId) ||
     !uuid.test(clientId) ||
-    !/^synthetic-[-a-z0-9]{1,100}$/.test(tenantId)
+    !(env.BACKEND_MODE === "production" ? validProductionTenant(tenantId) : /^synthetic-[-a-z0-9]{1,100}$/.test(tenantId))
   )
-    throw Error("Missing approved corporate staging configuration");
+    throw Error("Missing approved corporate dashboard configuration");
   return { entraTenantId, clientId, tenantId };
 }
 /** No email-only grant, custom claim or employee membership. Keys are pinned to the configured tenant. */

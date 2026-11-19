@@ -1,3 +1,4 @@
+import { assertProjectDatabase } from "./database-target";
 import { safeId } from "./contracts";
 import { regionalTimeToken } from "./time-credential";
 import { TimeClient, timeId, workDate } from "./time-client";
@@ -10,13 +11,23 @@ export function configureTime(
   env: NodeJS.ProcessEnv,
 ) {
   if (env.ENABLE_QUICKBOOKS_TIME !== "true") return new TimeSync(store);
-  if (mode !== "staging") throw Error("Time requires approved staging");
+  if (mode !== "staging" && mode !== "production") throw Error("Time requires an approved live environment");
+  const production = mode === "production";
+  const target = production ? assertProjectDatabase(store.db) : undefined;
+  if (production && (target?.mode !== "production" || env.PRODUCTION_TIME_APPROVED !== "true"))
+    throw Error("Production Time activation requires independent approval");
   const required = (key: string) => {
     const value = env[key];
     if (!value) throw Error("Incomplete Time configuration");
     return value;
   };
   const tenant = safeId(required("MORRIS_DASHBOARD_TENANT_ID"));
+  const secret = required("QUICKBOOKS_TIME_SECRET_ID");
+  if (production
+    ? secret !== "mi-client-prod-time" || tenant !== target!.tenantId
+    : secret === "mi-client-prod-time"
+  )
+    throw Error("Time credential environment mismatch");
   const clientUrl = required("QUICKBOOKS_TIME_CLIENT_URL");
   if (env.QUICKBOOKS_TIME_APPROVED_JOBCODES)
     throw Error(
@@ -48,7 +59,10 @@ export function configureTime(
     connection,
     new TimeClient(
       regionalTimeToken({
-        secret: required("QUICKBOOKS_TIME_SECRET_ID"),
+        secret,
+        ...(production
+          ? { production: { databaseUid: target!.uid!, modifiedFrom: connection.from } }
+          : {}),
         ...connection,
         version,
         sha256,

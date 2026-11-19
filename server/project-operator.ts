@@ -2,7 +2,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import type { Auth } from "firebase-admin/auth";
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { assertProjectDatabase } from "./database-target";
+import { assertProjectDatabase, assertProductionTenant } from "./database-target";
 import { safeId } from "./contracts";
 import { key } from "./firestore-store";
 import {
@@ -16,7 +16,7 @@ export async function seedProjectSynthetic(
   tenant: string,
   apply = false,
 ) {
-  assertProjectDatabase(db);
+  if (assertProjectDatabase(db).mode === "production") throw Error("Synthetic operations are forbidden in production");
   safeId(tenant);
   if (!tenant.startsWith("synthetic-"))
     throw Error("Synthetic tenant prefix required");
@@ -97,6 +97,29 @@ export async function seedProjectSynthetic(
   );
 }
 
+/** Creates only the tenant marker and an audit in the empty production database. */
+export async function initializeProductionTenant(db: Firestore, tenant: string, apply = false) {
+  const target = assertProjectDatabase(db);
+  if (target.mode !== "production") throw Error("Verified production runtime required");
+  assertProductionTenant(target, tenant);
+  const root = db.doc(`tenants/${safeId(tenant)}`);
+  if ((await root.listCollections()).length) throw Error("Production tenant must be empty");
+  return db.runTransaction(async (tx) => {
+    if ((await tx.get(root)).exists) throw Error("Production tenant already exists");
+    if (apply) {
+      tx.create(root, {
+        name: "Zagimē Anishinabēk Nation", schemaVersion: 2, revision: 1,
+        environment: "production", synthetic: false,
+      });
+      tx.create(root.collection("audits").doc("production-initialized"), {
+        id: "production-initialized", tenantId: tenant, actor: "approved-operator",
+        action: "production-initialized", entityId: tenant, at: new Date().toISOString(), revision: 1,
+      });
+    }
+    return { dryRun: !apply, documents: 2, fixtures: 0 };
+  });
+}
+
 /** Explicit approved client only; does not enroll staff, create users or modify Auth. */
 export async function provisionProjectClient(
   db: Firestore,
@@ -104,49 +127,53 @@ export async function provisionProjectClient(
   value: unknown,
   apply = false,
 ) {
-  assertProjectDatabase(db);
+  const target = assertProjectDatabase(db);
+  const production = target.mode === "production";
   const p = value as {
     approved: boolean;
     tenantId: string;
     uid: string;
     projectIds: string[];
+    databaseUid?: string;
+    action?: "grant" | "revoke";
   };
+  const revoke = production && p?.action === "revoke";
   if (
     !p ||
     p.approved !== true ||
     typeof p.tenantId !== "string" ||
-    !p.tenantId.startsWith("synthetic-") ||
-    typeof p.uid !== "string" ||
+    (production ? p.tenantId !== target.tenantId || p.databaseUid !== target.uid ||
+      !["grant", "revoke"].includes(p.action ?? "") : !p.tenantId.startsWith("synthetic-")) ||
+    typeof p.uid !== "string" || !p.uid || p.uid.length > 128 ||
     !Array.isArray(p.projectIds) ||
-    p.projectIds.length < 1 ||
+    (revoke ? p.projectIds.length !== 0 : p.projectIds.length < 1) ||
     p.projectIds.length > 100 ||
     Object.keys(p).some(
-      (k) => !["approved", "tenantId", "uid", "projectIds"].includes(k),
+      (k) => !["approved", "tenantId", "uid", "projectIds"].includes(k) &&
+        !(production && ["databaseUid", "action"].includes(k)),
     )
   )
     throw Error("Invalid client approval");
   const tenant = safeId(p.tenantId),
     ids = [...new Set(p.projectIds.map(safeId))].sort(),
-    user = await auth.getUser(p.uid);
-  if (
-    user.disabled ||
-    !user.emailVerified ||
-    !user.providerData.some((p) => p.providerId === "google.com")
-  )
+    user = revoke ? undefined : await auth.getUser(p.uid);
+  const google = user?.providerData.find((p) => p.providerId === "google.com");
+  if (user && (user.disabled || !user.emailVerified || !google || (production && !google.uid)))
     throw Error("Unapproved client identity");
   const membership = {
     schemaVersion: 2,
     tenantId: tenant,
-    subject: user.uid,
+    subject: p.uid,
     role: "client",
     approved: true,
     enabled: true,
     projectIds: ids,
+    ...(production && google ? { googleSubject: google.uid } : {}),
   };
   return db.runTransaction(
     async (tx) => {
       const root = db.doc(`tenants/${tenant}`),
-        ref = root.collection("memberships").doc(key(user.uid));
+        ref = root.collection("memberships").doc(key(p.uid));
       const [t, prior, ...projects] = await tx.getAll(
         root,
         ref,
@@ -155,7 +182,7 @@ export async function provisionProjectClient(
       if (
         !t.exists ||
         t.data()!.schemaVersion !== 2 ||
-        t.data()!.synthetic !== true ||
+        (production ? t.data()!.environment !== "production" || t.data()!.synthetic !== false : t.data()!.synthetic !== true) ||
         projects.some(
           (d) =>
             !d.exists ||
@@ -163,25 +190,34 @@ export async function provisionProjectClient(
             d.data()!.schemaVersion !== 2,
         )
       )
-        throw Error("Invalid synthetic client scope");
-      if (prior.exists) {
-        if (!isDeepStrictEqual(prior.data(), membership))
+        throw Error("Invalid client scope");
+      if (revoke) {
+        const current = prior.data();
+        if (!prior.exists || current?.enabled === false) return { dryRun: !apply, changed: false };
+        if (current?.role !== "client" || current.subject !== p.uid || current.tenantId !== tenant || current.schemaVersion !== 2)
+          throw Error("Invalid client membership");
+      } else if (prior.exists) {
+        const current = prior.data()!;
+        if (isDeepStrictEqual(current, membership)) return { dryRun: !apply, changed: false };
+        if (!production || current.enabled !== false ||
+            !isDeepStrictEqual({ ...current, enabled: true, projectIds: ids }, membership))
           throw Error(
             "Existing membership requires independent revocation/review",
           );
-        return { dryRun: !apply, changed: false };
       }
       if (apply) {
         const revision = t.data()!.revision + 1,
           id = randomUUID();
         if (!Number.isSafeInteger(revision)) throw Error("Invalid revision");
-        tx.create(ref, membership);
+        if (revoke) tx.update(ref, { enabled: false });
+        else if (prior.exists) tx.update(ref, { enabled: true, projectIds: ids });
+        else tx.create(ref, membership);
         tx.create(root.collection("audits").doc(id), {
           id,
           tenantId: tenant,
-          action: "project-client-provisioned",
+          action: revoke ? "project-client-revoked" : "project-client-provisioned",
           actor: "approved-operator",
-          entityId: key(user.uid),
+          entityId: key(p.uid),
           revision,
           at: new Date().toISOString(),
         });

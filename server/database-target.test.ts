@@ -72,10 +72,7 @@ test("same-project staging requires explicit named database and every guard; no 
     ENABLE_LIVE_FIREBASE: "true",
     FIRESTORE_RULES_VERIFIED: "true",
   };
-  assert.equal(
-    databaseTarget("production", COMPANY_PROJECT, undefined, prod).databaseId,
-    "(default)",
-  );
+  assert.throws(() => databaseTarget("production", COMPANY_PROJECT, undefined, prod));
   assert.throws(() =>
     databaseTarget("production", COMPANY_PROJECT, STAGING_DATABASE, prod),
   );

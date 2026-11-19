@@ -6,7 +6,7 @@ import {
   type Firestore,
   type Transaction,
 } from "firebase-admin/firestore";
-import { assertProjectDatabase } from "./database-target";
+import { assertProjectDatabase, assertProductionTenant } from "./database-target";
 import {
   type VerifiedIdentity,
   type IdentityVerifier,
@@ -29,13 +29,14 @@ import {
 import type { PageQuery } from "../src/api/types";
 import type { Allocation } from "../src/reporting/model";
 
-/** New workflow cannot select production or silently use an unverified SDK. */
+/** Project operations require a verified named database and its tenant binding. */
 export class ProjectStore {
   constructor(readonly db: Firestore) {
     assertProjectDatabase(db);
   }
   async access(tx: Transaction, tenant: string, who: VerifiedIdentity) {
-    assertProjectDatabase(this.db);
+    const target = assertProjectDatabase(this.db);
+    assertProductionTenant(target, tenant);
     const root = this.db.doc(`tenants/${safeId(tenant)}`);
     const staff = who.corporatePolicy === true && who.staffTenantId === tenant;
     const [t, member] = staff
@@ -46,6 +47,7 @@ export class ProjectStore {
         );
     if (!t.exists) throw Error("Forbidden");
     const meta = t.data()!;
+    assertProductionTenant(target, tenant, meta);
     if (meta.schemaVersion !== 2) throw Error("Migration required");
     if (
       !Number.isSafeInteger(meta.revision) ||
@@ -60,6 +62,7 @@ export class ProjectStore {
         m.schemaVersion !== 2 ||
         m.tenantId !== tenant ||
         m.subject !== who.subject ||
+        (target.mode === "production" && (!who.googleSubject || m.googleSubject !== who.googleSubject)) ||
         m.role !== "client" ||
         m.approved !== true ||
         m.enabled !== true ||

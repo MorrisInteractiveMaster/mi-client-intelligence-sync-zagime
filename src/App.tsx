@@ -421,6 +421,8 @@ function Shell() {
   );
 }
 export default function App() {
+  if (import.meta.env.VITE_DASHBOARD_DEPLOYMENT === "production")
+    return <HashRouter><SecureDashboard /></HashRouter>;
   return (
     <HashRouter>
       <PortalProvider>

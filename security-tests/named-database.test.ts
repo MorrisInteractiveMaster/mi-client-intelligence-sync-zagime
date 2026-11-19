@@ -229,7 +229,7 @@ test("bootstrap, creation, publication, allocation and maintenance stay in named
   assert.equal((await root.collection("audits").get()).size, 0);
   assert.equal((await root.collection("rawTime").get()).size, 0);
 });
-test("browser rules deny named and default database access even with a shared administrator identity", async () => {
+test("browser rules deny production, staging and default database access even with a shared administrator identity", async () => {
   const app = initializeApp(
     { projectId: "demo-mi-security", apiKey: "synthetic-key" },
     "named-database-browser-test",
@@ -237,9 +237,11 @@ test("browser rules deny named and default database access even with a shared ad
   const auth = getAuth(app);
   connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   const db = getFirestore(app, "mi-client-staging"),
-    defaultDb = getFirestore(app, "(default)");
+    defaultDb = getFirestore(app, "(default)"),
+    productionDb = getFirestore(app, "mi-client-production");
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
   connectFirestoreEmulator(defaultDb, "127.0.0.1", 8080);
+  connectFirestoreEmulator(productionDb, "127.0.0.1", 8080);
   const denied = (e: any) => e.code === "permission-denied";
   try {
     await assert.rejects(() => getDoc(doc(db, `tenants/${tenant}`)), denied);
@@ -254,11 +256,14 @@ test("browser rules deny named and default database access even with a shared ad
         () => getDoc(doc(defaultDb, `tenants/${tenant}`)),
         denied,
       );
+      await assert.rejects(() => getDoc(doc(productionDb, `tenants/${tenant}`)), denied);
+      await assert.rejects(() => setDoc(doc(productionDb, `tenants/${tenant}`), { role: "administrator" }), denied);
       await signOut(auth);
     }
   } finally {
     await terminate(db);
     await terminate(defaultDb);
+    await terminate(productionDb);
     await deleteApp(app);
   }
 });

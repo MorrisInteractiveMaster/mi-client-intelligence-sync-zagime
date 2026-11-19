@@ -2,6 +2,13 @@ import { STAGING_SERVICE_ACCOUNT } from "./attached-identity";
 import type { Firestore } from "firebase-admin/firestore";
 export const COMPANY_PROJECT = "morris-client-dash-zagime";
 export const STAGING_DATABASE = "mi-client-staging";
+export const PRODUCTION_DATABASE = "mi-client-production";
+export const PRODUCTION_SERVICE_ACCOUNT = "mi-client-production-api@morris-client-dash-zagime.iam.gserviceaccount.com";
+export const PRODUCTION_SERVICE = "mi-client-prod-dashboard";
+export const PRODUCTION_OPERATOR = "mi-client-prod-operator";
+export const PRODUCTION_TIME_JOB = "mi-client-prod-time-sync";
+export const validProductionTenant = (id: string) =>
+  /^[a-z][a-z0-9-]{1,100}$/.test(id) && !id.startsWith("synthetic-");
 export const REGION = "northamerica-northeast1";
 export const EXPECTED_STAGING_UID = "6d09ea71-f495-44a5-94a6-732ed1c47d88";
 export type RuntimeMode = "emulator" | "production" | "staging";
@@ -12,6 +19,7 @@ export interface DatabaseTarget {
   resource: string;
   uid?: string;
   serviceAccountEmail?: string;
+  tenantId?: string;
 }
 export function databaseTarget(
   mode: RuntimeMode,
@@ -43,6 +51,7 @@ export function databaseTarget(
       throw Error("Live Firebase is disabled or unsafe");
     if (mode === "staging") {
       if (
+        env.ENABLE_PRODUCTION === "true" ||
         !/^[a-z][a-z0-9-]{5,29}$/.test(projectId) ||
         projectId !== env.STAGING_FIREBASE_PROJECT_ID ||
         env.ENABLE_SYNTHETIC_STAGING !== "true" ||
@@ -63,16 +72,26 @@ export function databaseTarget(
         throw Error("Explicit verified named staging configuration required");
     } else {
       if (
+        env.BACKEND_MODE !== "production" ||
         projectId !== COMPANY_PROJECT ||
-        (databaseId !== undefined && databaseId !== "(default)") ||
+        projectId !== env.PRODUCTION_FIREBASE_PROJECT_ID ||
+        databaseId !== PRODUCTION_DATABASE ||
+        env.FIRESTORE_DATABASE_ID !== PRODUCTION_DATABASE ||
+        env.ENABLE_PRODUCTION !== "true" ||
+        env.PRODUCTION_IAM_VERIFIED !== "true" ||
+        env.PRODUCTION_SERVICE_ACCOUNT_EMAIL !== PRODUCTION_SERVICE_ACCOUNT ||
+        env.PRODUCTION_DATABASE_UID === EXPECTED_STAGING_UID ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(env.PRODUCTION_DATABASE_UID ?? "") ||
+        !validProductionTenant(env.MORRIS_DASHBOARD_TENANT_ID ?? "") ||
+        env.STAGING_PREVIEW_ONLY === "true" ||
         env.ENABLE_SYNTHETIC_STAGING === "true" ||
+        env.SERVE_STAGING_FRONTEND === "true" ||
         env.STAGING_FIREBASE_PROJECT_ID ||
         env.STAGING_DATABASE_UID ||
         env.STAGING_IAM_VERIFIED ||
         env.STAGING_SERVICE_ACCOUNT_EMAIL
       )
         throw Error("Unintended production access refused");
-      databaseId = "(default)";
     }
   }
   return {
@@ -85,15 +104,20 @@ export function databaseTarget(
           uid: env.STAGING_DATABASE_UID,
           serviceAccountEmail: env.STAGING_SERVICE_ACCOUNT_EMAIL,
         }
-      : {}),
+      : mode === "production"
+        ? {
+            uid: env.PRODUCTION_DATABASE_UID,
+            serviceAccountEmail: PRODUCTION_SERVICE_ACCOUNT,
+            tenantId: env.MORRIS_DASHBOARD_TENANT_ID,
+          }
+        : {}),
   };
 }
 /** No metadata mismatch, missing database, permission error or timeout can cause fallback. */
-export function assertStagingMetadata(target: DatabaseTarget, value: unknown) {
+export function assertDatabaseMetadata(target: DatabaseTarget, value: unknown) {
   const d = value as Record<string, unknown> | null;
   if (
-    target.mode !== "staging" ||
-    target.databaseId !== STAGING_DATABASE ||
+    !isNamedLiveTarget(target) ||
     !d ||
     d.name !== target.resource ||
     d.uid !== target.uid ||
@@ -101,8 +125,16 @@ export function assertStagingMetadata(target: DatabaseTarget, value: unknown) {
     d.type !== "FIRESTORE_NATIVE" ||
     d.databaseEdition !== "STANDARD"
   )
-    throw Error("Staging database verification failed");
+    throw Error(target.mode === "production" ? "Production database verification failed" : "Staging database verification failed");
 }
+export function isNamedLiveTarget(target: DatabaseTarget) {
+  return ((target.mode === "staging" && target.databaseId === STAGING_DATABASE) ||
+          (target.mode === "production" && target.databaseId === PRODUCTION_DATABASE &&
+           target.projectId === COMPANY_PROJECT && target.serviceAccountEmail === PRODUCTION_SERVICE_ACCOUNT)) &&
+    Boolean(target.uid) && target.resource === `projects/${target.projectId}/databases/${target.databaseId}`;
+}
+
+export const assertStagingMetadata = assertDatabaseMetadata;
 const verifiedDatabases = new WeakMap<object, DatabaseTarget>();
 /** Called only after runtime verification and explicit SDK database selection. */
 export function rememberVerifiedDatabase(
@@ -136,9 +168,26 @@ export function assertOperatorDatabase(db: Pick<Firestore, "databaseId">) {
   }
   return target;
 }
-/** Current project-only workflow cannot use historical alternate staging projects. */
+/** Project workflows use an explicitly verified database. Legacy maintenance stays in staging. */
 export function assertProjectDatabase(db: Pick<Firestore, "databaseId">) {
+  if (db.databaseId === PRODUCTION_DATABASE) {
+    const target = verifiedDatabases.get(db);
+    if (target?.mode !== "production" || process.env.BACKEND_MODE !== "production")
+      throw Error("Verified production runtime required");
+    const configured = databaseTarget("production", COMPANY_PROJECT, db.databaseId);
+    if (target.uid !== configured.uid || target.tenantId !== configured.tenantId ||
+        target.serviceAccountEmail !== configured.serviceAccountEmail || !isNamedLiveTarget(target))
+      throw Error("Production target changed");
+    return target;
+  }
   const target = assertOperatorDatabase(db);
   if (!((target.mode === "emulator" && target.projectId === "demo-mi-security") || (target.mode === "staging" && target.projectId === COMPANY_PROJECT && target.uid === EXPECTED_STAGING_UID))) throw Error("Invalid project database target");
   return target;
+}
+
+/** Validate tenant binding before accessing a path, then validate its persisted environment. */
+export function assertProductionTenant(target: DatabaseTarget, tenant: string, meta?: Record<string, unknown>) {
+  if (target.mode === "production" &&
+      (tenant !== target.tenantId || (meta && (meta.environment !== "production" || meta.synthetic !== false))))
+    throw Error("Forbidden");
 }

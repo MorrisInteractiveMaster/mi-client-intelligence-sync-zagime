@@ -1,0 +1,13 @@
+{
+  "title": "Morris named production data runtime",
+  "description": "Bind only to the mi-client-production Firestore database.",
+  "stage": "GA",
+  "includedPermissions": [
+    "datastore.databases.get",
+    "datastore.databases.getMetadata",
+    "datastore.entities.get",
+    "datastore.entities.list",
+    "datastore.entities.create",
+    "datastore.entities.update"
+  ]
+}
