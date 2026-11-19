@@ -89,6 +89,18 @@ export function TimeConnectionPanel({
               mapping.projectId}
           </h3>
           <p>QuickBooks Time jobcode {mapping.jobcodeId}</p>
+          {mapping.sourceProject?.state === "verified" && (
+            <p>
+              Time project {mapping.sourceProject.name} ({mapping.sourceProject.id})
+              {mapping.sourceProject.active ? "" : " · inactive"}
+            </p>
+          )}
+          {mapping.sourceProject?.state === "unavailable" && (
+            <p>Time project metadata is unavailable for this connection.</p>
+          )}
+          {mapping.sourceProject?.state === "no-match" && (
+            <p>QuickBooks Time returned no project for this jobcode.</p>
+          )}
           <p>
             {mapping.lastSuccess
               ? "Last successful sync " + mapping.lastSuccess

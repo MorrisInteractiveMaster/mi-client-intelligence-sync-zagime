@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { TimeClient, mountedTimeToken } from "./time-client";
+import { TimeClient } from "./time-client";
 import {
   beginTimeState,
   exchangeTimeCode,
@@ -102,7 +102,6 @@ test("scope failures, invalid durations and long Retry-After stop without wideni
     c.read("42", since, before, false),
     /temporarily unavailable/,
   );
-  assert.throws(() => mountedTimeToken("/tmp/token"), /secret mount/);
 });
 test("OAuth grant requires exact HTTPS callback, one-use actor-bound state and correct company", async () => {
   const attempt = {
@@ -176,4 +175,81 @@ test("OAuth grant requires exact HTTPS callback, one-use actor-bound state and c
     exchangeTimeCode({ ...input, state: expired }, stateStore, grant, 301000),
   );
   assert.equal(sent, 1);
+});
+
+test("project metadata is limited to the exact jobcode with no fallback", async () => {
+  const project = { id: 17, jobcode_id: 42, parent_jobcode_id: 0, name: "Time planning", status: "not_started", active: true, notes: "private" };
+  const reply = (projects: unknown, more = false) =>
+    Response.json({ results: { projects }, more });
+  let response = reply({ 17: project });
+  let calls = 0;
+  const client = new TimeClient(async () => "fixture", async (input, init) => {
+    calls++;
+    const url = new URL(String(input));
+    assert.equal(url.pathname, "/api/v1/projects");
+    assert.equal(init?.method, "GET");
+    assert.deepEqual(Object.fromEntries(url.searchParams), {
+      jobcode_ids: "42", active: "both", supplemental_data: "no",
+    });
+    return response;
+  }, async () => {});
+  assert.deepEqual(await client.projectMetadata("42"), {
+    state: "verified", id: "17", parentJobcodeId: null, name: "Time planning", status: "not_started", active: true,
+  });
+  response = reply([]);
+  assert.deepEqual(await client.projectMetadata("42"), { state: "no-match" });
+  for (const status of [403, 404]) {
+    response = new Response(null, { status });
+    assert.deepEqual(await client.projectMetadata("42"), { state: "unavailable" });
+  }
+  response = new Response(null, { status: 401 });
+  await assert.rejects(client.projectMetadata("42"), /authorization/);
+  response = reply({ 17: { ...project, jobcode_id: 43 } });
+  await assert.rejects(client.projectMetadata("42"), /scope mismatch/);
+  response = reply({ 17: project }, true);
+  await assert.rejects(client.projectMetadata("42"), /Ambiguous/);
+  response = reply({ 17: project, 18: { ...project, id: 18 } });
+  await assert.rejects(client.projectMetadata("42"), /Ambiguous/);
+  assert.equal(calls, 8);
+});
+
+test("aborted Time sessions do not retry or continue pagination", async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  const client = new TimeClient(async () => "fixture", async (_input, init) => {
+    calls++;
+    controller.abort();
+    assert.equal(init?.signal?.aborted, true);
+    return Response.json({ results: { timesheets: { 8: row } }, more: true });
+  }, async () => {});
+  const session = await client.session(controller.signal);
+  await assert.rejects(session.read("42", since, before, false));
+  assert.equal(calls, 1);
+});
+
+test("actor verification rejects conflicting account metadata even when the user and slug match", async () => {
+  let reply: Record<string, unknown> = {};
+  const user = { id: 7, client_url: "fixture-company", active: true };
+  const client = new TimeClient(async () => "fixture", async (input) => {
+    assert.equal(new URL(String(input)).pathname, "/api/v1/current_user");
+    return Response.json(reply);
+  }, async () => {});
+  reply = { results: { users: { 7: user } } };
+  await client.verifyActor("fixture-company", "7", "99");
+  reply = { ...reply, company_id: 98 };
+  await assert.rejects(client.verifyActor("fixture-company", "7", "99"), /account mismatch/);
+  reply = { results: { users: { 7: { ...user, company_id: 98 } } } };
+  await assert.rejects(client.verifyActor("fixture-company", "7", "99"), /account mismatch/);
+});
+
+test("capacity overflow fails without returning an incomplete feed", async () => {
+  const pages: string[] = [];
+  const client = new TimeClient(async () => "fixture", async (input) => {
+    const query = new URL(String(input)).searchParams;
+    assert.equal(query.get("jobcode_ids"), "42");
+    pages.push(query.get("page")!);
+    return Response.json({ results: { timesheets_deleted: { 8: row } }, more: true });
+  }, async () => {});
+  await assert.rejects(client.read("42", since, before, true), /capacity exceeded/);
+  assert.deepEqual(pages, ["1", "2", "3", "4", "5"]);
 });

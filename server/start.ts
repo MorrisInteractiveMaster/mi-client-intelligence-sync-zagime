@@ -53,6 +53,7 @@ const server = apiServer(backend, {
   time: configureTime(projectStore, mode, process.env),
   ...(process.env.SERVE_STAGING_FRONTEND === "true" && mode === "staging" ? { frontend: "dist" } : {}),
 });
+// Header/body receipt only. QuickBooks Time processing uses its own budget.
 server.requestTimeout = 10000;
 server.headersTimeout = 10000;
 server.listen(

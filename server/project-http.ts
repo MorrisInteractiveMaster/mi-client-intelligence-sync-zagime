@@ -7,6 +7,7 @@ export async function projectRequest(
   req: IncomingMessage,
   readBody: () => Promise<Record<string, any>>,
   time?: TimeSync,
+  disconnected?: AbortSignal,
 ) {
   const url = new URL(req.url!, "http://local");
   const timeRoute =
@@ -60,8 +61,8 @@ export async function projectRequest(
         status: 200,
         body:
           action === "mapping"
-            ? await time.approve(tenant, who, body.jobcodeId, body.projectId)
-            : await time.sync(tenant, who, body.jobcodeId),
+            ? await time.approve(tenant, who, body.jobcodeId, body.projectId, disconnected)
+            : await time.sync(tenant, who, body.jobcodeId, disconnected),
       };
     }
     return { status: 405, body: { error: "method_not_allowed" } };

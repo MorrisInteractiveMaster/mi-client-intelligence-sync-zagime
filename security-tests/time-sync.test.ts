@@ -51,9 +51,11 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
   });
   let calls = 0,
     phase = "initial";
+  let enteredProvider: () => void;
+  const providerEntered = new Promise<void>((resolve) => { enteredProvider = resolve; });
   const api = new TimeClient(
     async () => "fixture",
-    async (input) => {
+    async (input, init) => {
       calls++;
       const url = new URL(String(input));
       const endpoint = url.pathname.split("/").at(-1)!;
@@ -61,7 +63,7 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
         return Response.json({
           results: {
             users: {
-              7: { id: 7, client_url: "fixture-company", active: true },
+              7: { id: 7, client_url: phase === "wrong-account" ? "other-company" : "fixture-company", active: true },
             },
           },
         });
@@ -75,6 +77,25 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
           more: false,
         });
       assert.equal(url.searchParams.get("jobcode_ids"), "42");
+      if (endpoint === "projects") {
+        const id = phase === "changed-project" ? 78 : 77;
+        return Response.json({
+          results: { projects: { [id]: {
+            id, jobcode_id: 42, parent_jobcode_id: 0,
+            name: "Time source project", status: "in_progress", active: true,
+          } } },
+          more: false,
+        });
+      }
+      assert.ok(["timesheets", "timesheets_deleted"].includes(endpoint));
+      if (phase === "disconnect") {
+        enteredProvider();
+        const signal = init!.signal!;
+        await new Promise<void>((_, reject) => {
+          if (signal.aborted) reject(signal.reason);
+          else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      }
       const deletion = endpoint === "timesheets_deleted";
       if (deletion && phase === "transport")
         return new Response("private", { status: 500 });
@@ -139,8 +160,9 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v2/tenants/${tenant}/`;
-  const req = (path: string, body?: unknown, subject = actor) =>
+  const req = (path: string, body?: unknown, subject = actor, signal?: AbortSignal) =>
     fetch(base + path, {
+      signal,
       headers: {
         Authorization: "Bearer " + subject,
         ...(body ? { "Content-Type": "application/json" } : {}),
@@ -178,7 +200,18 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
     );
     await data(await req("time", undefined, buyer), 403);
     assert.equal(calls, 0);
+    phase = "wrong-account";
+    await data(await req("time/mapping", { jobcodeId: "42", projectId }), 503);
+    assert.equal(calls, 1);
+    assert.equal((await root.collection("timeMappings").get()).size, 0);
+    phase = "initial";
     await data(await req("time/mapping", { jobcodeId: "42", projectId }));
+    phase = "changed-project";
+    const beforeMismatch = calls;
+    await data(await req("time/sync", { jobcodeId: "42" }), 503);
+    assert.equal(calls - beforeMismatch, 4);
+    assert.equal((await raw.get()).exists, false);
+    assert.equal((await checkpoint.get()).data()!.through, undefined);
     await data(
       await req("time/mapping", {
         jobcodeId: "42",
@@ -190,6 +223,24 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
     await data(await req("time/sync", { jobcodeId: "42" }), 503);
     assert.equal((await raw.get()).exists, false);
     assert.equal((await checkpoint.get()).data()!.through, undefined);
+    phase = "disconnect";
+    const cancelled = new AbortController();
+    const running = req("time/sync", { jobcodeId: "42" }, actor, cancelled.signal);
+    const disconnected = assert.rejects(running, { name: "AbortError" });
+    try {
+      await providerEntered;
+      await data(await req("time/sync", { jobcodeId: "42" }), 409);
+    } finally {
+      cancelled.abort();
+    }
+    await disconnected;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      if ((await checkpoint.get()).data()!.run === null) break;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal((await checkpoint.get()).data()!.run, null);
+    assert.equal((await checkpoint.get()).data()!.through, undefined);
+    assert.equal((await raw.get()).exists, false);
     phase = "transport";
     await data(await req("time/sync", { jobcodeId: "42" }), 503);
     assert.equal((await raw.get()).exists, false);
@@ -225,6 +276,7 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
     const projectStatus = await data(
       await req("time?month=2026-11&project=synthetic-planning"),
     );
+    assert.equal(projectStatus.mappings[0].sourceProject.id, "77");
     assert.equal(projectStatus.recordedSeconds, 1800);
     assert.equal(projectStatus.lifetimeRecordedSeconds, 1800);
     assert.deepEqual(

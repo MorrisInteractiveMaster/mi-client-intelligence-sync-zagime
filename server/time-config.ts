@@ -1,5 +1,6 @@
 import { safeId } from "./contracts";
-import { mountedTimeToken, TimeClient, timeId, workDate } from "./time-client";
+import { regionalTimeToken } from "./time-credential";
+import { TimeClient, timeId, workDate } from "./time-client";
 import { TimeSync } from "./time-sync";
 import type { ProjectStore } from "./project-workspace";
 
@@ -17,24 +18,34 @@ export function configureTime(
   };
   const tenant = safeId(required("MORRIS_DASHBOARD_TENANT_ID"));
   const clientUrl = required("QUICKBOOKS_TIME_CLIENT_URL");
-  const jobcodes = [
-    ...new Set(
-      required("QUICKBOOKS_TIME_APPROVED_JOBCODES").split(",").map(timeId),
-    ),
-  ];
-  if (!/^[a-zA-Z0-9_\-]{1,100}$/.test(clientUrl) || jobcodes.length > 25)
-    throw Error("Invalid Time scope");
+  const jobcodes = required("QUICKBOOKS_TIME_APPROVED_JOBCODES").split(",").map(timeId);
+  const version = required("QUICKBOOKS_TIME_SECRET_VERSION");
+  const sha256 = required("QUICKBOOKS_TIME_CREDENTIAL_SHA256");
+  if (
+    !/^[a-zA-Z0-9_-]{1,100}$/.test(clientUrl) ||
+    jobcodes.length > 25 ||
+    new Set(jobcodes).size !== jobcodes.length ||
+    !/^[1-9][0-9]*$/.test(version) ||
+    !/^[a-f0-9]{64}$/.test(sha256)
+  )
+    throw Error("Invalid Time scope or credential binding");
+  const connection = {
+    tenant,
+    clientUrl,
+    jobcodes,
+    account: timeId(required("QUICKBOOKS_TIME_ACCOUNT_ID")),
+    userId: timeId(required("QUICKBOOKS_TIME_CREDENTIAL_USER_ID")),
+    admin: safeId(required("QUICKBOOKS_TIME_ADMIN_UID")),
+    from: workDate(required("QUICKBOOKS_TIME_MODIFIED_FROM")),
+  };
   return new TimeSync(
     store,
-    {
-      tenant,
-      clientUrl,
-      jobcodes,
-      account: timeId(required("QUICKBOOKS_TIME_ACCOUNT_ID")),
-      userId: timeId(required("QUICKBOOKS_TIME_CREDENTIAL_USER_ID")),
-      admin: safeId(required("QUICKBOOKS_TIME_ADMIN_UID")),
-      from: workDate(required("QUICKBOOKS_TIME_MODIFIED_FROM")),
-    },
-    new TimeClient(mountedTimeToken(required("QUICKBOOKS_TIME_TOKEN_FILE"))),
+    connection,
+    new TimeClient(regionalTimeToken({
+      secret: required("QUICKBOOKS_TIME_SECRET_ID"),
+      ...connection,
+      version,
+      sha256,
+    })),
   );
 }

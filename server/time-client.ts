@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import type { TimeProjectMetadata } from "../src/projects/time";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const base = "https://rest.tsheets.com/api/v1/";
@@ -19,18 +19,7 @@ export function workDate(value: unknown): string {
     throw Error("Invalid Time date");
   return value;
 }
-export type TimeToken = () => Promise<string>;
-export function mountedTimeToken(path: string): TimeToken {
-  if (!/^\/var\/secrets\/quickbooks-time\/[a-zA-Z0-9_-]+$/.test(path))
-    throw Error("Invalid Time secret mount");
-  return async () => {
-    try {
-      return (await readFile(path, "utf8")).trim();
-    } catch {
-      throw Error("Time credential unavailable");
-    }
-  };
-}
+export type TimeToken = (signal?: AbortSignal) => Promise<string>;
 export interface TimeRow {
   id: string;
   jobcodeId: string;
@@ -50,7 +39,7 @@ function rows(reply: JsonObject, collection: string): [string, unknown][] {
   if (Array.isArray(value) && value.length === 0) return [];
   return Object.entries(object(value));
 }
-async function readJson(response: Response) {
+export async function readTimeJson(response: Response, maxBytes = 2 * 1024 * 1024) {
   const reader = response.body?.getReader();
   if (!reader) throw Error("Invalid Time response");
   const parts: Buffer[] = [];
@@ -60,7 +49,7 @@ async function readJson(response: Response) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > 2 * 1024 * 1024) throw Error("Time response too large");
+      if (size > maxBytes) throw Error("Time response too large");
       parts.push(Buffer.from(value));
     }
     return object(JSON.parse(Buffer.concat(parts).toString("utf8")));
@@ -86,29 +75,37 @@ export class TimeClient {
   constructor(
     private token: TimeToken,
     private request = fetch,
-    private wait = sleep as (ms: number) => Promise<unknown>,
+    private wait: (ms: number, signal?: AbortSignal) => Promise<unknown> =
+      (ms, signal) => sleep(ms, undefined, { signal }),
     private pacing = { next: 0 },
+    private signal?: AbortSignal,
   ) {}
-  async session() {
-    const token = await this.token();
+  async session(signal: AbortSignal) {
+    const token = await this.token(signal);
+    signal.throwIfAborted();
     return new TimeClient(
       async () => token,
       this.request,
       this.wait,
       this.pacing,
+      signal,
     );
   }
   private async get(
-    path: "jobcodes" | "timesheets" | "timesheets_deleted" | "current_user",
+    path: "jobcodes" | "timesheets" | "timesheets_deleted" | "current_user" | "projects",
     query: Record<string, string>,
   ) {
-    const token = await this.token();
+    const token = await this.token(this.signal);
     if (!/^[\x21-\x7e]{1,4096}$/.test(token))
       throw Error("Invalid Time credential");
     for (let attempt = 0; attempt < 3; attempt++) {
-      const start = Math.max(Date.now(), this.pacing.next);
+      this.signal?.throwIfAborted();
+      const now = Date.now();
+      const start = Math.max(now, this.pacing.next);
       this.pacing.next = start + 1000;
-      if (start > Date.now()) await this.wait(start - Date.now());
+      if (start > now) await this.wait(start - now, this.signal);
+      this.signal?.throwIfAborted();
+      const timeout = AbortSignal.timeout(5000);
       let response: Response | undefined;
       try {
         response = await this.request(
@@ -116,7 +113,7 @@ export class TimeClient {
           {
             method: "GET",
             redirect: "error",
-            signal: AbortSignal.timeout(5000),
+            signal: this.signal ? AbortSignal.any([this.signal, timeout]) : timeout,
             headers: {
               Authorization: "Bearer " + token,
               Accept: "application/json",
@@ -126,9 +123,15 @@ export class TimeClient {
       } catch {
         /* bounded transport retry, without vendor details */
       }
+      if (this.signal?.aborted) {
+        await response?.body?.cancel();
+        this.signal.throwIfAborted();
+      }
       if (response?.ok) {
         try {
-          return await readJson(response);
+          const reply = await readTimeJson(response);
+          this.signal?.throwIfAborted();
+          return reply;
         } catch {
           throw Error("Invalid Time response");
         }
@@ -136,6 +139,8 @@ export class TimeClient {
       const status = response?.status;
       const retry = response?.headers.get("Retry-After");
       await response?.body?.cancel();
+      if (path === "projects" && (status === 403 || status === 404))
+        return null;
       if (status === 401 || status === 403)
         throw Error("Time authorization unavailable");
       if (status && status !== 429 && status < 500)
@@ -147,29 +152,32 @@ export class TimeClient {
         : 1000 * (attempt + 1);
       if (attempt === 2 || !Number.isFinite(delay) || delay > 5000)
         throw Error("Time temporarily unavailable");
-      await this.wait(delay);
+      await this.wait(delay, this.signal);
     }
     throw Error("Time temporarily unavailable");
   }
-  async verifyActor(clientUrl: string, userId: string) {
-    const users = rows(await this.get("current_user", {}), "users");
+  async verifyActor(clientUrl: string, userId: string, account: string) {
+    const reply = (await this.get("current_user", {}))!;
+    const users = rows(reply, "users");
     const [id, value] = users[0] ?? [];
+    if (users.length !== 1 || id !== userId) throw Error("Time account mismatch");
+    const user = object(value);
     if (
-      users.length !== 1 ||
-      id !== userId ||
-      timeId(object(value).id) !== userId ||
-      object(value).client_url !== clientUrl ||
-      object(value).active !== true
+      timeId(user.id) !== userId ||
+      user.client_url !== clientUrl ||
+      user.active !== true ||
+      (user.company_id !== undefined && timeId(user.company_id) !== account) ||
+      (reply.company_id !== undefined && timeId(reply.company_id) !== account)
     )
       throw Error("Time account mismatch");
   }
   async verifyJobcode(id: string) {
-    const r = await this.get("jobcodes", {
+    const r = (await this.get("jobcodes", {
       ids: timeId(id),
       active: "both",
       supplemental_data: "no",
       limit: "1",
-    });
+    }))!;
     const jobs = rows(r, "jobcodes");
     if (
       r.more !== false ||
@@ -180,14 +188,50 @@ export class TimeClient {
       object(jobs[0][1]).has_children !== false
     )
       throw Error("Time jobcode must be a verified leaf");
-    const children = await this.get("jobcodes", {
+    const children = (await this.get("jobcodes", {
       parent_ids: id,
       active: "both",
       supplemental_data: "no",
       limit: "1",
-    });
+    }))!;
     if (children.more !== false || rows(children, "jobcodes").length)
       throw Error("Time jobcode must be a verified leaf");
+  }
+  async projectMetadata(jobcodeId: string): Promise<TimeProjectMetadata> {
+    const reply = await this.get("projects", {
+      jobcode_ids: timeId(jobcodeId),
+      active: "both",
+      supplemental_data: "no",
+    });
+    if (!reply) return { state: "unavailable" };
+    const projects = rows(reply, "projects");
+    if (reply.more !== false || projects.length > 1)
+      throw Error("Ambiguous Time project association");
+    if (!projects.length) return { state: "no-match" };
+    const [key, value] = projects[0];
+    const project = object(value);
+    const id = timeId(project.id);
+    if (key !== id || timeId(project.jobcode_id) !== jobcodeId)
+      throw Error("Time project scope mismatch");
+    if (
+      typeof project.active !== "boolean" ||
+      typeof project.name !== "string" ||
+      !project.name.trim() ||
+      project.name.length > 512 ||
+      (project.status !== "not_started" && project.status !== "in_progress" && project.status !== "complete")
+    )
+      throw Error("Invalid Time project metadata");
+    return {
+      state: "verified",
+      id,
+      parentJobcodeId:
+        project.parent_jobcode_id === 0 || project.parent_jobcode_id === "0"
+          ? null
+          : timeId(project.parent_jobcode_id),
+      name: project.name,
+      status: project.status,
+      active: project.active,
+    };
   }
   async read(
     jobcodeId: string,
@@ -198,7 +242,7 @@ export class TimeClient {
     const path = deleted ? "timesheets_deleted" : "timesheets";
     const result: TimeRow[] = [];
     for (let page = 1; page <= 5; page++) {
-      const reply = await this.get(path, {
+      const reply = (await this.get(path, {
         jobcode_ids: timeId(jobcodeId),
         jobcode_type: "regular",
         modified_since: vendorTimestamp(since),
@@ -206,7 +250,7 @@ export class TimeClient {
         limit: "50",
         page: String(page),
         ...(deleted ? {} : { on_the_clock: "no", supplemental_data: "no" }),
-      });
+      }))!;
       if (typeof reply.more !== "boolean")
         throw Error("Invalid Time pagination");
       const batch = rows(reply, path);

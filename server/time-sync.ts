@@ -9,7 +9,7 @@ import {
   timeTotalsWrite,
   type TimeTotals,
 } from "./time-totals";
-import type { TimeStatus } from "../src/projects/time";
+import type { TimeProjectMetadata, TimeStatus } from "../src/projects/time";
 import { type TimeClient, type TimeRow, timeId, workDate } from "./time-client";
 
 export interface TimeConnection {
@@ -22,7 +22,21 @@ export interface TimeConnection {
   from: string;
 }
 const day = 86400000;
-type Mapping = { jobcodeId: string; projectId: string; account: string };
+const workBudgetMs = 150_000;
+const leaseMs = 240_000;
+const singleAttempt = { maxAttempts: 1 };
+
+function workSignal(disconnected?: AbortSignal) {
+  const deadline = AbortSignal.timeout(workBudgetMs);
+  return disconnected ? AbortSignal.any([disconnected, deadline]) : deadline;
+}
+type Mapping = {
+  jobcodeId: string;
+  projectId: string;
+  account: string;
+  sourceProject?: TimeProjectMetadata;
+  verifiedSourceProjectId?: string;
+};
 type Run = { run: string; expires: number; through?: string };
 type Portion = { projectId: string; seconds: number };
 
@@ -101,6 +115,9 @@ export class TimeSync {
               ? { lastSuccess: s.lastSuccess, through: s.through }
               : {}),
             failed: s?.failed === true,
+            ...(m.data()!.sourceProject
+              ? { sourceProject: m.data()!.sourceProject as TimeProjectMetadata }
+              : {}),
           },
         ];
       });
@@ -127,7 +144,9 @@ export class TimeSync {
     who: VerifiedIdentity,
     job: string,
     project: string,
+    disconnected?: AbortSignal,
   ) {
+    const signal = workSignal(disconnected);
     if (
       !this.allowed(tenant, who) ||
       !this.connection!.jobcodes.includes(timeId(job))
@@ -147,26 +166,35 @@ export class TimeSync {
         target.data()!.schemaVersion !== 2
       )
         throw Error("Forbidden");
-      if (previous.exists && previous.data()!.projectId !== project)
+      if (previous.exists && (previous.data()!.projectId !== project ||
+          previous.data()!.account !== this.connection!.account ||
+          previous.data()!.jobcodeId !== job))
         throw Error("Time mapping conflict");
       return { root, revision: meta.revision as number, previous };
     };
-    const first = await this.store.db.runTransaction(check);
+    const first = await this.store.db.runTransaction(check, singleAttempt);
     if (first.previous.exists) return { changed: false };
-    const client = await this.client!.session();
+    const client = await this.client!.session(signal);
     await client.verifyActor(
       this.connection!.clientUrl,
       this.connection!.userId,
+      this.connection!.account,
     );
     await client.verifyJobcode(job);
+    const sourceProject = await client.projectMetadata(job);
     return this.store.db.runTransaction(async (tx) => {
       const { root, revision, previous } = await check(tx);
       if (previous.exists) return { changed: false };
+      signal.throwIfAborted();
       tx.create(previous.ref, {
         jobcodeId: job,
         projectId: project,
         account: this.connection!.account,
         approvedBy: who.subject,
+        sourceProject,
+        ...(sourceProject.state === "verified"
+          ? { verifiedSourceProjectId: sourceProject.id }
+          : {}),
       });
       this.audit(
         tx,
@@ -177,7 +205,7 @@ export class TimeSync {
         revision,
       );
       return { changed: true };
-    });
+    }, singleAttempt);
   }
   private audit(
     tx: Transaction,
@@ -200,7 +228,8 @@ export class TimeSync {
     });
     tx.update(root, { revision: revision + 1 });
   }
-  async sync(tenant: string, who: VerifiedIdentity, job: string) {
+  async sync(tenant: string, who: VerifiedIdentity, job: string, disconnected?: AbortSignal) {
+    const signal = workSignal(disconnected);
     if (
       !this.allowed(tenant, who) ||
       !this.connection!.jobcodes.includes(timeId(job))
@@ -239,9 +268,10 @@ export class TimeSync {
           Math.max(floor, watermark - 60000),
         ).toISOString();
         const before = new Date(upper).toISOString();
+        signal.throwIfAborted();
         tx.set(
           checkpoint,
-          { run, expires: this.now() + 240000 },
+          { run, expires: this.now() + leaseMs },
           { merge: true },
         );
         return {
@@ -252,31 +282,54 @@ export class TimeSync {
           before,
           previous: lease?.through,
         };
-      });
-    const finish = (failed: boolean) =>
+      }, singleAttempt);
+    const finish = (sourceProject?: TimeProjectMetadata) =>
       this.store.db.runTransaction(async (tx) => {
+        if (sourceProject) {
+          const { staff } = await this.store.access(tx, tenant, who);
+          if (!staff) throw Error("Forbidden");
+        }
         const state = (await tx.get(checkpoint)).data();
         if (state?.run !== run || state.through !== previous)
           throw Error("Time sync busy");
+        if (sourceProject) {
+          signal.throwIfAborted();
+          if (state.expires <= this.now()) throw Error("Time sync busy");
+          if (JSON.stringify(mapping.sourceProject) !== JSON.stringify(sourceProject))
+            tx.update(this.mapping(root, job), {
+              sourceProject,
+              ...(sourceProject.state === "verified"
+                ? { verifiedSourceProjectId: sourceProject.id }
+                : {}),
+            });
+        }
         tx.update(checkpoint, {
           run: null,
           expires: 0,
-          failed,
-          ...(!failed
+          failed: !sourceProject,
+          ...(sourceProject
             ? {
                 through: before,
                 lastSuccess: new Date(this.now()).toISOString(),
               }
             : {}),
         });
-      });
+      }, singleAttempt);
     try {
-      const client = await this.client!.session();
+      const client = await this.client!.session(signal);
       await client.verifyActor(
         this.connection!.clientUrl,
         this.connection!.userId,
+        this.connection!.account,
       );
       await client.verifyJobcode(job);
+      const sourceProject = await client.projectMetadata(job);
+      if (
+        sourceProject.state === "verified" &&
+        mapping.verifiedSourceProjectId &&
+        sourceProject.id !== mapping.verifiedSourceProjectId
+      )
+        throw Error("Time project scope mismatch");
       const rows = [
         ...(await client.read(job, since, before, false)),
         ...(await client.read(job, since, before, true)),
@@ -297,12 +350,12 @@ export class TimeSync {
       let changed = 0;
       for (const row of ordered)
         changed += Number(
-          await this.apply(root, checkpoint, run, mapping, row, who),
+          await this.apply(root, checkpoint, run, mapping, row, who, signal),
         );
-      await finish(false);
+      await finish(sourceProject);
       return { changed, through: before };
     } catch {
-      await finish(true).catch(() => {});
+      await finish().catch(() => {});
       throw Error("Time synchronization failed");
     }
   }
@@ -313,7 +366,9 @@ export class TimeSync {
     mapping: Mapping,
     row: TimeRow,
     who: VerifiedIdentity,
+    signal: AbortSignal,
   ) {
+    signal.throwIfAborted();
     const id = sourceRecordId("quickbooks-time", mapping.account, row.id);
     const source = root.collection("rawTime").doc(id);
     const head = root.collection("allocationHeads").doc(id);
@@ -396,6 +451,8 @@ export class TimeSync {
       ]);
       if (held && material)
         await this.reverse(tx, root, old.record.date.slice(0, 7), applied);
+      signal.throwIfAborted();
+      if (lock.data()!.expires <= this.now()) throw Error("Time sync busy");
       const envelope = {
         schemaVersion: 2,
         source: "quickbooks-time",
@@ -435,7 +492,7 @@ export class TimeSync {
         meta.revision,
       );
       return true;
-    });
+    }, singleAttempt);
   }
   private async reverse(
     tx: Transaction,

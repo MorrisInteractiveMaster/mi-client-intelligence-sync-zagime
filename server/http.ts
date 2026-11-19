@@ -119,8 +119,16 @@ export function apiServer(
         return send(res, 401, { error: "unauthenticated" });
       if ((req.url?.length ?? 0) > 2048) throw Error("Invalid URL");
       if (options.projects) {
-        const result = await projectRequest(options.projects, req, () => body(req), options.time);
-        return send(res, result.status, result.body);
+        const disconnected = new AbortController();
+        const cancel = () => disconnected.abort();
+        res.once("close", cancel);
+        try {
+          const result = await projectRequest(options.projects, req, () => body(req), options.time, disconnected.signal);
+          if (!res.destroyed) return send(res, result.status, result.body);
+          return;
+        } finally {
+          res.off("close", cancel);
+        }
       }
       const url = new URL(req.url!, "http://local");
       const staff =
@@ -289,6 +297,7 @@ export function apiServer(
       }
       return send(res, 405, { error: "method_not_allowed" });
     } catch (e) {
+      if (res.destroyed) return;
       const msg = e instanceof Error ? e.message : "";
       const [status, error] =
         msg === "Time sync busy" || msg === "Time mapping conflict"
