@@ -15,6 +15,14 @@ export interface TimeMapping {
   lastSuccess?: string;
   through?: string;
   failed?: boolean;
+  sourceName?: string;
+  sourceState?: "active" | "inactive" | "missing";
+  mappingState?: "registered" | "linked";
+  canRelink?: boolean;
+  recordedSeconds?: number;
+  allocatedSeconds?: number;
+  unallocatedSeconds?: number;
+  lifetimeRecordedSeconds?: number;
   sourceProject?: TimeProjectMetadata;
 }
 export interface TimeStatus {
@@ -27,4 +35,11 @@ export interface TimeStatus {
   state: "disconnected" | "unmapped" | "configured";
   canManage: boolean;
   mappings: TimeMapping[];
+  customerScoped?: boolean;
+  customerVerified?: boolean;
+  dailyState?: "running" | "failed" | "complete";
+  errorStage?: "discovery" | "entries" | "timers";
+  lastDailySuccess?: string;
+  running?: { observedAt: string; count: number; seconds: number };
+  runningFailed?: boolean;
 }

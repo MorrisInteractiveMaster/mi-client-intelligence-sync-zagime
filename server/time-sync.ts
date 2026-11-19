@@ -11,7 +11,26 @@ import {
   type TimeTotals,
 } from "./time-totals";
 import type { TimeProjectMetadata, TimeStatus } from "../src/projects/time";
-import { type TimeClient, type TimeRow, timeId, workDate } from "./time-client";
+import {
+  type TimeClient,
+  type TimeJobcode,
+  type TimeRow,
+  TimePageCapacityError,
+  timeCatalogLimit,
+  timeId,
+  workDate,
+} from "./time-client";
+import {
+  reconcileTimeCatalog,
+  timeAudit,
+  timeMapping,
+  timeMappings,
+  timeRun,
+  timeSystemActor,
+  timeTenantRevision,
+  type CatalogJob,
+  type TimeMappingRecord,
+} from "./time-catalog";
 
 export interface TimeConnection {
   tenant: string;
@@ -19,19 +38,29 @@ export interface TimeConnection {
   admin: string;
   clientUrl: string;
   userId: string;
-  jobcodes: string[];
   from: string;
 }
+type TimeScope = TimeConnection &
+  (
+    | { customerParentId: string; onClock?: boolean; jobcodes?: never }
+    | { customerParentId?: never; onClock?: never; jobcodes: string[] }
+  );
 const day = 86400000;
 const workBudgetMs = 150_000;
 const leaseMs = 240_000;
+const dailyBudgetMs = 25 * 60_000;
+const customerName = "Zagimē Anishinabēk Nation";
+const reginaDay = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Regina",
+  dateStyle: "short",
+});
 const singleAttempt = { maxAttempts: 1 };
 
 function workSignal(disconnected?: AbortSignal) {
   const deadline = AbortSignal.timeout(workBudgetMs);
   return disconnected ? AbortSignal.any([disconnected, deadline]) : deadline;
 }
-type Mapping = {
+type ActiveMapping = {
   jobcodeId: string;
   projectId: string;
   account: string;
@@ -39,12 +68,17 @@ type Mapping = {
   verifiedSourceProjectId?: string;
 };
 type Run = { run: string; expires: number; through?: string };
+type VerifiedJob = {
+  client: TimeClient;
+  job: CatalogJob;
+  descendants: Set<string>;
+};
 type Portion = { projectId: string; seconds: number };
 
 export class TimeSync {
   constructor(
     private store: ProjectStore,
-    private connection?: TimeConnection,
+    private connection?: TimeScope,
     private client?: TimeClient,
     private now = Date.now,
   ) {}
@@ -56,9 +90,14 @@ export class TimeSync {
     );
   }
   private mapping(root: DocumentReference, job: string) {
-    return root
-      .collection("timeMappings")
-      .doc(key(this.connection!.account, timeId(job)));
+    return timeMapping(root, this.connection!.account, timeId(job));
+  }
+  private catalogKey() {
+    return key(
+      "quickbooks-time-customer",
+      this.connection!.account,
+      this.connection!.customerParentId!,
+    );
   }
   private checkpoint(root: DocumentReference, job: string) {
     return root
@@ -83,53 +122,161 @@ export class TimeSync {
         if (p?.tenantId !== tenant || p.schemaVersion !== 2 || p.id !== project)
           throw Error("Forbidden");
       }
-      const ids = this.connection.jobcodes;
-      const mappings = await tx.getAll(
-        ...ids.map((job) => this.mapping(root, job)),
-      );
-      const states = await tx.getAll(
-        ...ids.map((job) => this.checkpoint(root, job)),
-      );
-      const totals = month
-        ? ((
-            await tx.get(
-              project
-                ? timeProjectTotal(root, project, month)
-                : root.collection("timeMonthlyTotals").doc(month),
-            )
-          ).data() as TimeTotals | undefined)
-        : undefined;
-      const lifetime = project
-        ? ((
-            await tx.get(timeProjectTotal(root, project, "lifetime"))
-          ).data() as TimeTotals | undefined)
-        : undefined;
-      const rows = mappings.flatMap((m, i) => {
-        if (!m.exists || (project && m.data()!.projectId !== project))
-          return [];
-        const s = states[i].data();
-        return [
-          {
-            jobcodeId: ids[i],
-            projectId: m.data()!.projectId as string,
-            ...(s?.lastSuccess
-              ? { lastSuccess: s.lastSuccess, through: s.through }
-              : {}),
-            failed: s?.failed === true,
-            ...(m.data()!.sourceProject
-              ? { sourceProject: m.data()!.sourceProject as TimeProjectMetadata }
-              : {}),
+      const { customerParentId, jobcodes } = this.connection;
+      const allMappings = customerParentId
+        ? (await tx.get(timeMappings(root, this.catalogKey()))).docs
+        : await tx.getAll(...jobcodes!.map((job) => this.mapping(root, job)));
+      if (allMappings.length > timeCatalogLimit)
+        throw Error("Time catalog capacity exceeded");
+      const mappings = allMappings.flatMap((m) => {
+        const value = m.data() as TimeMappingRecord | undefined;
+        if (!value || (project && value.projectId !== project)) return [];
+        if (
+          value.account !== this.connection!.account ||
+          m.id !== this.mapping(root, value.jobcodeId).id
+        )
+          throw Error("Time scope mismatch");
+        return [value];
+      });
+      const states = mappings.length
+        ? await tx.getAll(
+            ...mappings.map((m) => this.checkpoint(root, m.jobcodeId)),
+          )
+        : [];
+      const anchors = [
+        ...new Set(
+          mappings.map((m) => safeId(m.scopeProjectId ?? m.projectId)),
+        ),
+      ];
+      const perPeriod = new Map<string, Map<string, TimeTotals>>();
+      const readTotals = async (period: string) => {
+        const refs = anchors.map((id) => timeProjectTotal(root, id, period));
+        if (!refs.length) return { recorded: 0, allocated: 0 };
+        const byAnchor = new Map<string, TimeTotals>();
+        perPeriod.set(period, byAnchor);
+        return (await tx.getAll(...refs)).reduce(
+          (sum, row, i) => {
+            const value = row.data() as TimeTotals | undefined;
+            byAnchor.set(anchors[i], value ?? { recorded: 0, allocated: 0 });
+            return {
+              recorded: sum.recorded + (value?.recorded ?? 0),
+              allocated: sum.allocated + (value?.allocated ?? 0),
+            };
           },
-        ];
+          { recorded: 0, allocated: 0 },
+        );
+      };
+      const totals = month
+        ? customerParentId || project
+          ? await readTotals(month)
+          : ((
+              await tx.get(root.collection("timeMonthlyTotals").doc(month))
+            ).data() as TimeTotals | undefined)
+        : undefined;
+      const lifetime =
+        customerParentId || project ? await readTotals("lifetime") : undefined;
+      const daily = customerParentId
+        ? (await tx.get(timeRun(root, this.catalogKey()))).data()
+        : undefined;
+      const timers = (
+        customerParentId && this.connection.onClock ? daily?.running : undefined
+      ) as Awaited<ReturnType<TimeClient["running"]>> | undefined;
+      const running =
+        timers &&
+        mappings.reduce(
+          (sum, m) => {
+            const value = timers.jobs[m.jobcodeId];
+            return {
+              count: sum.count + (value?.count ?? 0),
+              seconds: sum.seconds + (value?.seconds ?? 0),
+            };
+          },
+          { count: 0, seconds: 0 },
+        );
+      const rows = mappings.map((m, i) => {
+        const s = states[i].data();
+        const anchor = m.scopeProjectId;
+        const rowMonth =
+          anchor &&
+          month &&
+          m.sourceJob &&
+          anchor === "time-" + key(m.account, m.jobcodeId)
+            ? perPeriod.get(month)?.get(anchor)
+            : undefined;
+        return {
+          ...(rowMonth
+            ? {
+                recordedSeconds: rowMonth.recorded,
+                allocatedSeconds: rowMonth.allocated,
+                unallocatedSeconds: rowMonth.recorded - rowMonth.allocated,
+                lifetimeRecordedSeconds:
+                  perPeriod.get("lifetime")?.get(anchor!)?.recorded ?? 0,
+              }
+            : {}),
+          jobcodeId: m.jobcodeId,
+          projectId: m.projectId,
+          ...(m.sourceJob
+            ? {
+                sourceName: m.sourceJob.name,
+                sourceState: m.sourceJob.missing
+                  ? ("missing" as const)
+                  : m.sourceJob.active
+                    ? ("active" as const)
+                    : ("inactive" as const),
+                canRelink:
+                  m.scopeProjectId === "time-" + key(m.account, m.jobcodeId) &&
+                  !m.sourceJob.missing,
+                mappingState:
+                  m.projectId === "time-" + key(m.account, m.jobcodeId)
+                    ? ("registered" as const)
+                    : ("linked" as const),
+              }
+            : {}),
+          ...(s?.lastSuccess
+            ? { lastSuccess: s.lastSuccess, through: s.through }
+            : {}),
+          failed: s?.failed === true,
+          ...(m.sourceProject ? { sourceProject: m.sourceProject } : {}),
+        };
       });
       return {
         state: rows.length ? "configured" : "unmapped",
         canManage: this.allowed(tenant, who),
         mappings: rows,
-        ...(project
+        ...(customerParentId
+          ? {
+              customerScoped: true,
+              customerVerified: daily?.customerBound === true,
+              ...(daily?.errorStage
+                ? {
+                    errorStage: daily.errorStage as
+                      | "discovery"
+                      | "entries"
+                      | "timers",
+                  }
+                : {}),
+              ...(daily?.lastSuccess
+                ? { lastDailySuccess: daily.lastSuccess as string }
+                : {}),
+              ...(daily?.status
+                ? {
+                    dailyState: (daily.status === "running" &&
+                    daily.expires <= this.now()
+                      ? "failed"
+                      : daily.status) as "running" | "failed" | "complete",
+                  }
+                : {}),
+              ...(daily?.runningFailed ? { runningFailed: true } : {}),
+              ...(timers && running
+                ? { running: { ...running, observedAt: timers.observedAt } }
+                : {}),
+            }
+          : {}),
+        ...(lifetime
           ? {
               lifetimeRecordedSeconds: lifetime?.recorded ?? 0,
-              lifetimeUnallocatedSeconds: (lifetime?.recorded ?? 0) - (lifetime?.allocated ?? 0),
+              lifetimeUnallocatedSeconds:
+                (lifetime?.recorded ?? 0) - (lifetime?.allocated ?? 0),
             }
           : {}),
         ...(month
@@ -152,12 +299,12 @@ export class TimeSync {
     disconnected?: AbortSignal,
   ) {
     const signal = workSignal(disconnected);
-    if (
-      !this.allowed(tenant, who) ||
-      !this.connection!.jobcodes.includes(timeId(job))
-    )
-      throw Error("Forbidden");
+    if (!this.allowed(tenant, who)) throw Error("Forbidden");
+    timeId(job);
     safeId(project);
+    if (this.connection!.customerParentId)
+      return this.link(tenant, who, job, project);
+    if (!this.connection!.jobcodes!.includes(job)) throw Error("Forbidden");
     const check = async (tx: Transaction) => {
       const { root, staff, meta } = await this.store.access(tx, tenant, who);
       if (!staff) throw Error("Forbidden");
@@ -171,9 +318,12 @@ export class TimeSync {
         target.data()!.schemaVersion !== 2
       )
         throw Error("Forbidden");
-      if (previous.exists && (previous.data()!.projectId !== project ||
+      if (
+        previous.exists &&
+        (previous.data()!.projectId !== project ||
           previous.data()!.account !== this.connection!.account ||
-          previous.data()!.jobcodeId !== job))
+          previous.data()!.jobcodeId !== job)
+      )
         throw Error("Time mapping conflict");
       return { root, revision: meta.revision as number, previous };
     };
@@ -212,6 +362,51 @@ export class TimeSync {
       return { changed: true };
     }, singleAttempt);
   }
+  private async link(
+    tenant: string,
+    who: VerifiedIdentity,
+    job: string,
+    project: string,
+  ) {
+    return this.store.db.runTransaction(
+      async (tx) => {
+        const { root, staff, meta } = await this.store.access(tx, tenant, who);
+        if (!staff) throw Error("Forbidden");
+        const [target, entry] = await tx.getAll(
+          root.collection("projects").doc(project),
+          this.mapping(root, job),
+        );
+        const p = target.data();
+        const m = entry.data() as TimeMappingRecord | undefined;
+        if (
+          p?.tenantId !== tenant ||
+          p.schemaVersion !== 2 ||
+          p.id !== project ||
+          !m ||
+          m.catalog !== this.catalogKey() ||
+          m.jobcodeId !== job ||
+          m.account !== this.connection!.account ||
+          m.sourceJob?.missing !== false
+        )
+          throw Error("Forbidden");
+        if (m.projectId === project) return { changed: false };
+        // Adoption keeps legacy totals intact, including when old jobcodes share an anchor.
+        if (m.scopeProjectId !== "time-" + key(m.account, job))
+          throw Error("Time mapping conflict");
+        tx.update(entry.ref, { projectId: project });
+        this.audit(
+          tx,
+          root,
+          who.subject,
+          project,
+          "time-work-order-linked",
+          meta.revision,
+        );
+        return { changed: true };
+      },
+      { maxAttempts: 3 },
+    );
+  }
   private audit(
     tx: Transaction,
     root: DocumentReference,
@@ -221,37 +416,263 @@ export class TimeSync {
     revision: number,
   ) {
     if (!Number.isSafeInteger(revision + 1)) throw Error("Invalid revision");
-    const id = randomUUID();
-    tx.create(root.collection("audits").doc(id), {
-      id,
-      tenantId: root.id,
+    timeAudit(
+      tx,
+      root,
       actor,
       entityId,
       action,
-      revision: revision + 1,
-      at: new Date(this.now()).toISOString(),
-    });
+      revision + 1,
+      new Date(this.now()).toISOString(),
+    );
     tx.update(root, { revision: revision + 1 });
   }
-  async sync(tenant: string, who: VerifiedIdentity, job: string, disconnected?: AbortSignal) {
-    const signal = workSignal(disconnected);
-    if (
-      !this.allowed(tenant, who) ||
-      !this.connection!.jobcodes.includes(timeId(job))
-    )
+  async sync(
+    tenant: string,
+    who: VerifiedIdentity,
+    job: string,
+    disconnected?: AbortSignal,
+  ) {
+    if (!this.allowed(tenant, who)) throw Error("Forbidden");
+    timeId(job);
+    if (this.connection!.jobcodes && !this.connection!.jobcodes.includes(job))
       throw Error("Forbidden");
+    return this.syncJob(tenant, who, job, workSignal(disconnected));
+  }
+  private async authorize(
+    tx: Transaction,
+    root: DocumentReference,
+    who?: VerifiedIdentity,
+  ) {
+    if (!who) return timeTenantRevision(tx, root);
+    const { staff, meta } = await this.store.access(tx, root.id, who);
+    if (!staff) throw Error("Forbidden");
+    return meta.revision as number;
+  }
+  private async provider(signal: AbortSignal) {
+    const { clientUrl, userId, account } = this.connection!;
+    const client = await this.client!.session(signal);
+    await client.verifyActor(clientUrl, userId, account);
+    return client;
+  }
+  private async metadata(client: TimeClient, job: TimeJobcode) {
+    const metadata = await client.projectMetadata(job.id);
+    if (
+      metadata.state === "verified" &&
+      metadata.parentJobcodeId !== job.parentId
+    )
+      throw Error("Time project parent mismatch");
+    return metadata;
+  }
+  private descendants(jobs: TimeJobcode[], job: string) {
+    const matching = new Set<string>([job]);
+    // customerTree returns parents before children.
+    for (const child of jobs)
+      if (child.parentId && matching.has(child.parentId))
+        matching.add(child.id);
+    matching.delete(job);
+    return matching;
+  }
+  private customer(tenant: string) {
+    if (
+      this.connection?.tenant !== tenant ||
+      !this.connection.customerParentId ||
+      !this.client
+    )
+      throw Error("Time customer sync is not enabled");
+    return {
+      root: this.store.db.doc(`tenants/${safeId(tenant)}`),
+      account: this.connection.account,
+      parent: this.connection.customerParentId,
+      catalog: this.catalogKey(),
+    };
+  }
+  // Operator-only setup. No API route accepts an enrollment command or customer ID.
+  async verifyCustomer(tenant: string, apply = false) {
+    const { root, parent, catalog } = this.customer(tenant);
+    await this.store.db.runTransaction((tx) => timeTenantRevision(tx, root));
+    const signal = workSignal();
+    const client = await this.provider(signal);
+    const tree = await client.customerTree(parent);
+    if (tree.root.name.normalize("NFC") !== customerName)
+      throw Error("Time customer name does not match the approved setup");
+    let verifiedProjects = 0;
+    for (const job of tree.jobs)
+      if ((await this.metadata(client, job)).state === "verified")
+        verifiedProjects++;
+    if (apply) {
+      const ref = timeRun(root, catalog);
+      await this.store.db.runTransaction(async (tx) => {
+        const revision = await timeTenantRevision(tx, root);
+        const existing = (await tx.get(ref)).data();
+        if (existing?.customerBound === true) return;
+        signal.throwIfAborted();
+        tx.set(
+          ref,
+          { customerBound: true, boundAt: new Date(this.now()).toISOString() },
+          { merge: true },
+        );
+        this.audit(
+          tx,
+          root,
+          timeSystemActor,
+          catalog,
+          "time-customer-bound",
+          revision,
+        );
+      });
+    }
+    return {
+      verified: true,
+      applied: apply,
+      workOrders: tree.jobs.length,
+      verifiedProjects,
+    };
+  }
+  // Invocation is authorized by Cloud Run Jobs IAM and the verified named staging runtime.
+  async daily(tenant: string) {
+    const { root, account, parent, catalog } = this.customer(tenant);
+    const ref = timeRun(root, catalog);
+    const run = randomUUID();
+    const started = this.now();
+    const syncDay = reginaDay.format(started);
+    const signal = AbortSignal.timeout(dailyBudgetMs);
+    const acquired = await this.store.db.runTransaction(async (tx) => {
+      await timeTenantRevision(tx, root);
+      const previous = (await tx.get(ref)).data();
+      if (previous?.customerBound !== true)
+        throw Error("Time customer setup required");
+      if ((previous.expires ?? 0) > this.now()) throw Error("Time sync busy");
+      if (previous.completedDay === syncDay) return false;
+      tx.update(ref, {
+        run,
+        expires: started + dailyBudgetMs + 2 * 60_000,
+        status: "running",
+        lastAttempt: new Date(started).toISOString(),
+      });
+      return true;
+    }, singleAttempt);
+    if (!acquired)
+      return { skipped: true, changed: 0, registered: 0, failed: 0 };
+    let changed = 0,
+      registered = 0,
+      failed = 0;
+    let stage: "discovery" | "entries" | "timers" = "discovery";
+    let running: Awaited<ReturnType<TimeClient["running"]>> | undefined;
+    let runningFailed = false;
+    try {
+      const client = await this.provider(signal);
+      const { jobs } = await client.customerTree(parent);
+      const verified: CatalogJob[] = [];
+      for (const job of jobs)
+        verified.push({ ...job, metadata: await this.metadata(client, job) });
+      registered = await reconcileTimeCatalog(
+        this.store.db,
+        root,
+        account,
+        catalog,
+        verified,
+        run,
+        this.now,
+        signal,
+      );
+      stage = "entries";
+      const queue = [...verified];
+      const cutoff = new Date(
+        Math.floor((started - 60_000) / 1000) * 1000,
+      ).toISOString();
+      while (queue.length) {
+        if (signal.aborted) {
+          failed += queue.length;
+          break;
+        }
+        const job = queue.shift()!;
+        try {
+          const checkpoint = (await this.checkpoint(root, job.id).get()).data();
+          if (checkpoint?.through && checkpoint.through >= cutoff) continue;
+          const slice = workSignal(signal);
+          const result = await this.syncJob(tenant, undefined, job.id, slice, {
+            client: await client.session(slice),
+            job,
+            descendants: this.descendants(verified, job.id),
+          });
+          changed += result.changed;
+          if (result.through < cutoff) queue.push(job);
+        } catch {
+          failed++;
+        }
+      }
+      if (this.connection!.onClock && !signal.aborted) {
+        if (!failed) stage = "timers";
+        try {
+          const observed = this.now();
+          running = await client.running(
+            parent,
+            new Set(jobs.map((job) => job.id)),
+            new Date(Date.parse(this.connection!.from)).toISOString(),
+            observed,
+          );
+        } catch {
+          runningFailed = true;
+          if (!failed) failed++;
+        }
+      }
+    } catch {
+      failed++;
+    }
+    const at = new Date(this.now()).toISOString();
+    await this.store.db.runTransaction(async (tx) => {
+      const state = (await tx.get(ref)).data();
+      if (state?.run !== run || state.expires <= this.now())
+        throw Error("Time sync busy");
+      tx.update(ref, {
+        run: null,
+        expires: 0,
+        status: failed ? "failed" : "complete",
+        errorStage: failed ? stage : null,
+        failedCount: failed,
+        ...(failed ? {} : { lastSuccess: at, completedDay: syncDay }),
+        runningFailed,
+        ...(running ? { running } : {}),
+      });
+    }, singleAttempt);
+    return { skipped: false, changed, registered, failed };
+  }
+  private async syncJob(
+    tenant: string,
+    who: VerifiedIdentity | undefined,
+    job: string,
+    signal: AbortSignal,
+    verified?: VerifiedJob,
+  ) {
     const run = randomUUID();
     const { root, mapping, checkpoint, since, before, previous } =
       await this.store.db.runTransaction(async (tx) => {
-        const { root, staff } = await this.store.access(tx, tenant, who);
-        if (!staff) throw Error("Forbidden");
+        const root = this.store.db.doc(`tenants/${safeId(tenant)}`);
+        await this.authorize(tx, root, who);
+        if (
+          this.connection!.customerParentId &&
+          (await tx.get(timeRun(root, this.catalogKey()))).data()
+            ?.customerBound !== true
+        )
+          throw Error("Time customer setup required");
         const checkpoint = this.checkpoint(root, job);
         const [mapped, state] = await tx.getAll(
           this.mapping(root, job),
           checkpoint,
         );
         if (!mapped.exists) throw Error("Forbidden");
-        const mapping = mapped.data() as Mapping;
+        const entry = mapped.data() as TimeMappingRecord;
+        if (
+          this.connection!.customerParentId &&
+          (entry.catalog !== this.catalogKey() ||
+            entry.sourceJob?.missing !== false)
+        )
+          throw Error("Forbidden");
+        const mapping = {
+          ...entry,
+          projectId: safeId(entry.scopeProjectId ?? entry.projectId),
+        } as ActiveMapping;
         if (
           mapping.account !== this.connection!.account ||
           mapping.jobcodeId !== job
@@ -288,11 +709,11 @@ export class TimeSync {
           previous: lease?.through,
         };
       }, singleAttempt);
+    let completedThrough = before;
     const finish = (sourceProject?: TimeProjectMetadata) =>
       this.store.db.runTransaction(async (tx) => {
         if (sourceProject) {
-          const { staff } = await this.store.access(tx, tenant, who);
-          if (!staff) throw Error("Forbidden");
+          await this.authorize(tx, root, who);
         }
         const state = (await tx.get(checkpoint)).data();
         if (state?.run !== run || state.through !== previous)
@@ -314,31 +735,76 @@ export class TimeSync {
           failed: !sourceProject,
           ...(sourceProject
             ? {
-                through: before,
+                through: completedThrough,
                 lastSuccess: new Date(this.now()).toISOString(),
               }
             : {}),
         });
       }, singleAttempt);
     try {
-      const client = await this.client!.session(signal);
-      await client.verifyActor(
-        this.connection!.clientUrl,
-        this.connection!.userId,
-        this.connection!.account,
-      );
-      await client.verifyJobcode(job);
-      const sourceProject = await client.projectMetadata(job);
+      const client = verified?.client ?? (await this.provider(signal));
+      let descendants = verified?.descendants;
+      if (this.connection!.customerParentId) {
+        if (!verified) {
+          const tree = await client.customerTree(
+            this.connection!.customerParentId,
+          );
+          const exact = tree.jobs.find((candidate) => candidate.id === job);
+          if (!exact) throw Error("Time catalog scope mismatch");
+          verified = {
+            client,
+            job: { ...exact, metadata: await this.metadata(client, exact) },
+            descendants: this.descendants(tree.jobs, job),
+          };
+          descendants = verified.descendants;
+        }
+        const exact = await client.customerJobcode(job);
+        if (exact.parentId !== verified.job.parentId)
+          throw Error("Time catalog scope mismatch");
+      } else {
+        await client.verifyJobcode(job);
+      }
+      const sourceProject =
+        verified?.job.metadata ?? (await client.projectMetadata(job));
       if (
         sourceProject.state === "verified" &&
         mapping.verifiedSourceProjectId &&
         sourceProject.id !== mapping.verifiedSourceProjectId
       )
         throw Error("Time project scope mismatch");
-      const rows = [
-        ...(await client.read(job, since, before, false)),
-        ...(await client.read(job, since, before, true)),
-      ];
+      let rows: TimeRow[];
+      for (;;) {
+        try {
+          rows = [
+            ...(await client.read(
+              job,
+              since,
+              completedThrough,
+              false,
+              descendants,
+            )),
+            ...(await client.read(
+              job,
+              since,
+              completedThrough,
+              true,
+              descendants,
+            )),
+          ];
+          break;
+        } catch (error) {
+          const low = Date.parse(previous ?? since),
+            high = Date.parse(completedThrough);
+          if (
+            !(error instanceof TimePageCapacityError) ||
+            high - low <= 120_000
+          )
+            throw error;
+          completedThrough = new Date(
+            Math.floor((low + (high - low) / 2) / 1000) * 1000,
+          ).toISOString();
+        }
+      }
       const unique = new Map<string, TimeRow>();
       for (const row of rows) {
         const id = key(row.id, row.modifiedAt, String(row.deleted));
@@ -358,7 +824,7 @@ export class TimeSync {
           await this.apply(root, checkpoint, run, mapping, row, who, signal),
         );
       await finish(sourceProject);
-      return { changed, through: before };
+      return { changed, through: completedThrough };
     } catch {
       await finish().catch(() => {});
       throw Error("Time synchronization failed");
@@ -368,9 +834,9 @@ export class TimeSync {
     root: DocumentReference,
     checkpoint: DocumentReference,
     run: string,
-    mapping: Mapping,
+    mapping: ActiveMapping,
     row: TimeRow,
-    who: VerifiedIdentity,
+    who: VerifiedIdentity | undefined,
     signal: AbortSignal,
   ) {
     signal.throwIfAborted();
@@ -385,8 +851,7 @@ export class TimeSync {
       String(row.deleted),
     );
     return this.store.db.runTransaction(async (tx) => {
-      const { staff, meta } = await this.store.access(tx, root.id, who);
-      if (!staff) throw Error("Forbidden");
+      const revisionBefore = await this.authorize(tx, root, who);
       const [lock, prior, allocation, target] = await tx.getAll(
         checkpoint,
         source,
@@ -401,6 +866,17 @@ export class TimeSync {
         target.data()!.schemaVersion !== 2
       )
         throw Error("Time scope mismatch");
+      if (this.connection!.customerParentId) {
+        const scoped = (
+          await tx.get(this.mapping(root, row.jobcodeId))
+        ).data() as TimeMappingRecord | undefined;
+        if (
+          scoped?.catalog !== this.catalogKey() ||
+          scoped?.sourceJob?.missing !== false ||
+          scoped.scopeProjectId !== mapping.projectId
+        )
+          throw Error("Time catalog scope mismatch");
+      }
       const old = prior.data();
       if (
         old &&
@@ -409,6 +885,20 @@ export class TimeSync {
           old.record.tenantId !== root.id)
       )
         throw Error("Time source conflict");
+      if (
+        old &&
+        this.connection!.customerParentId &&
+        old.record.sourceWorkOrderId !== row.jobcodeId
+      ) {
+        const previousJob = (
+          await tx.get(this.mapping(root, old.record.sourceWorkOrderId))
+        ).data();
+        if (
+          previousJob?.catalog !== this.catalogKey() ||
+          previousJob.scopeProjectId !== old.scopeProjectId
+        )
+          throw Error("Time source conflict");
+      }
       if (
         old &&
         (old.record.revision === revision ||
@@ -491,10 +981,10 @@ export class TimeSync {
       this.audit(
         tx,
         root,
-        who.subject,
+        who?.subject ?? timeSystemActor,
         id,
         row.deleted ? "time-deleted" : old ? "time-corrected" : "time-imported",
-        meta.revision,
+        revisionBefore,
       );
       return true;
     }, singleAttempt);

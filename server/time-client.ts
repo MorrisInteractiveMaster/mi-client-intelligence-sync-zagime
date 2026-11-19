@@ -20,6 +20,44 @@ export function workDate(value: unknown): string {
   return value;
 }
 export type TimeToken = (signal?: AbortSignal) => Promise<string>;
+export const timeCatalogLimit = 100;
+
+export interface TimeJobcode {
+  id: string;
+  parentId: string | null;
+  name: string;
+  active: boolean;
+}
+
+function jobcode(key: string, value: unknown): TimeJobcode {
+  const row = object(value);
+  const id = timeId(row.id);
+  if (
+    id !== key ||
+    row.type !== "regular" ||
+    typeof row.active !== "boolean" ||
+    typeof row.name !== "string" ||
+    !row.name.trim() ||
+    row.name.length > 200
+  )
+    throw Error("Invalid Time jobcode");
+  return {
+    id,
+    parentId:
+      row.parent_id === 0 || row.parent_id === "0"
+        ? null
+        : timeId(row.parent_id),
+    name: row.name.trim(),
+    active: row.active,
+  };
+}
+
+export class TimePageCapacityError extends Error {
+  constructor() {
+    super("Time page capacity exceeded");
+  }
+}
+
 export interface TimeRow {
   id: string;
   jobcodeId: string;
@@ -39,7 +77,10 @@ function rows(reply: JsonObject, collection: string): [string, unknown][] {
   if (Array.isArray(value) && value.length === 0) return [];
   return Object.entries(object(value));
 }
-export async function readTimeJson(response: Response, maxBytes = 2 * 1024 * 1024) {
+export async function readTimeJson(
+  response: Response,
+  maxBytes = 2 * 1024 * 1024,
+) {
   const reader = response.body?.getReader();
   if (!reader) throw Error("Invalid Time response");
   const parts: Buffer[] = [];
@@ -75,8 +116,10 @@ export class TimeClient {
   constructor(
     private token: TimeToken,
     private request = fetch,
-    private wait: (ms: number, signal?: AbortSignal) => Promise<unknown> =
-      (ms, signal) => sleep(ms, undefined, { signal }),
+    private wait: (ms: number, signal?: AbortSignal) => Promise<unknown> = (
+      ms,
+      signal,
+    ) => sleep(ms, undefined, { signal }),
     private pacing = { next: 0 },
     private signal?: AbortSignal,
   ) {}
@@ -92,7 +135,12 @@ export class TimeClient {
     );
   }
   private async get(
-    path: "jobcodes" | "timesheets" | "timesheets_deleted" | "current_user" | "projects",
+    path:
+      | "jobcodes"
+      | "timesheets"
+      | "timesheets_deleted"
+      | "current_user"
+      | "projects",
     query: Record<string, string>,
   ) {
     const token = await this.token(this.signal);
@@ -113,7 +161,9 @@ export class TimeClient {
           {
             method: "GET",
             redirect: "error",
-            signal: this.signal ? AbortSignal.any([this.signal, timeout]) : timeout,
+            signal: this.signal
+              ? AbortSignal.any([this.signal, timeout])
+              : timeout,
             headers: {
               Authorization: "Bearer " + token,
               Accept: "application/json",
@@ -160,7 +210,8 @@ export class TimeClient {
     const reply = (await this.get("current_user", {}))!;
     const users = rows(reply, "users");
     const [id, value] = users[0] ?? [];
-    if (users.length !== 1 || id !== userId) throw Error("Time account mismatch");
+    if (users.length !== 1 || id !== userId)
+      throw Error("Time account mismatch");
     const user = object(value);
     if (
       timeId(user.id) !== userId ||
@@ -197,6 +248,112 @@ export class TimeClient {
     if (children.more !== false || rows(children, "jobcodes").length)
       throw Error("Time jobcode must be a verified leaf");
   }
+  async customerJobcode(id: string) {
+    const reply = (await this.get("jobcodes", {
+      ids: timeId(id),
+      type: "regular",
+      active: "both",
+      supplemental_data: "no",
+      limit: "1",
+    }))!;
+    const jobs = rows(reply, "jobcodes");
+    if (reply.more !== false || jobs.length !== 1 || jobs[0][0] !== id)
+      throw Error("Time customer ID unavailable");
+    return jobcode(...jobs[0]);
+  }
+
+  async customerTree(rootId: string) {
+    const root = await this.customerJobcode(rootId);
+    const seen = new Set([rootId]);
+    const jobs: TimeJobcode[] = [];
+    let parents = [rootId];
+    for (let depth = 0; parents.length; depth++) {
+      if (depth > 8) throw Error("Time catalog depth exceeded");
+      const children: string[] = [];
+      for (let start = 0; start < parents.length; start += 20) {
+        const group = new Set(parents.slice(start, start + 20));
+        for (let page = 1; ; page++) {
+          const reply = (await this.get("jobcodes", {
+            parent_ids: [...group].join(","),
+            type: "regular",
+            active: "both",
+            supplemental_data: "no",
+            limit: "50",
+            page: String(page),
+          }))!;
+          const batch = rows(reply, "jobcodes");
+          if (
+            typeof reply.more !== "boolean" ||
+            batch.length > 50 ||
+            (reply.more && !batch.length)
+          )
+            throw Error("Invalid Time pagination");
+          for (const pair of batch) {
+            const job = jobcode(...pair);
+            if (!job.parentId || !group.has(job.parentId) || seen.has(job.id))
+              throw Error("Time catalog scope mismatch");
+            if (jobs.length >= timeCatalogLimit)
+              throw Error("Time catalog capacity exceeded");
+            seen.add(job.id);
+            jobs.push(job);
+            children.push(job.id);
+          }
+          if (!reply.more) break;
+          if (page >= 5) throw new TimePageCapacityError();
+        }
+      }
+      parents = children;
+    }
+    return { root, jobs };
+  }
+
+  async running(
+    parentId: string,
+    jobs: ReadonlySet<string>,
+    from: string,
+    now: number,
+  ) {
+    const counts: Record<string, { count: number; seconds: number }> = {};
+    const seen = new Set<string>();
+    for (let page = 1; page <= 5; page++) {
+      const reply = (await this.get("timesheets", {
+        jobcode_ids: timeId(parentId),
+        jobcode_type: "regular",
+        on_the_clock: "yes",
+        modified_since: vendorTimestamp(from),
+        supplemental_data: "no",
+        limit: "50",
+        page: String(page),
+      }))!;
+      const batch = rows(reply, "timesheets");
+      if (
+        typeof reply.more !== "boolean" ||
+        batch.length > 50 ||
+        (reply.more && !batch.length)
+      )
+        throw Error("Invalid Time pagination");
+      for (const [key, value] of batch) {
+        const row = object(value);
+        const id = timeId(row.id);
+        const job = timeId(row.jobcode_id);
+        if (id !== key || (!jobs.has(job) && job !== parentId) || seen.has(id))
+          throw Error("Time timer scope mismatch");
+        seen.add(id);
+        if (job === parentId) continue;
+        const seconds = Math.floor(
+          (now - Date.parse(timestamp(row.start))) / 1000,
+        );
+        if (row.type !== "regular" || row.end !== "" || seconds < 0)
+          throw Error("Invalid Time timer");
+        const total = (counts[job] ??= { count: 0, seconds: 0 });
+        total.count++;
+        total.seconds += seconds;
+      }
+      if (!reply.more)
+        return { observedAt: new Date(now).toISOString(), jobs: counts };
+    }
+    throw new TimePageCapacityError();
+  }
   async projectMetadata(jobcodeId: string): Promise<TimeProjectMetadata> {
     const reply = await this.get("projects", {
       jobcode_ids: timeId(jobcodeId),
@@ -218,7 +375,9 @@ export class TimeClient {
       typeof project.name !== "string" ||
       !project.name.trim() ||
       project.name.length > 512 ||
-      (project.status !== "not_started" && project.status !== "in_progress" && project.status !== "complete")
+      (project.status !== "not_started" &&
+        project.status !== "in_progress" &&
+        project.status !== "complete")
     )
       throw Error("Invalid Time project metadata");
     return {
@@ -238,6 +397,7 @@ export class TimeClient {
     since: string,
     before: string,
     deleted: boolean,
+    descendants: ReadonlySet<string> = new Set(),
   ): Promise<TimeRow[]> {
     const path = deleted ? "timesheets_deleted" : "timesheets";
     const result: TimeRow[] = [];
@@ -259,8 +419,10 @@ export class TimeClient {
       for (const [key, value] of batch) {
         const row = object(value);
         const id = timeId(row.id);
-        if (id !== key || timeId(row.jobcode_id) !== jobcodeId)
+        const job = timeId(row.jobcode_id);
+        if (id !== key || (job !== jobcodeId && !descendants.has(job)))
           throw Error("Time scope mismatch");
+        if (job !== jobcodeId) continue;
         if (
           !Number.isSafeInteger(row.duration) ||
           Number(row.duration) < 0 ||
@@ -288,6 +450,6 @@ export class TimeClient {
       }
       if (!reply.more) return result;
     }
-    throw Error("Time page capacity exceeded");
+    throw new TimePageCapacityError();
   }
 }
