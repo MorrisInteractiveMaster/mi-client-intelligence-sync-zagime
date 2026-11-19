@@ -1,11 +1,13 @@
 import { ProjectStaffWorkspace } from "./ProjectWorkspace";
-import type { ProjectWorkspace, ProjectReport } from "../projects/model";
+import type { ProjectWorkspace } from "../projects/model";
 import "./secure.css";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Auth } from "firebase/auth";
 import { SecuredApiClient } from "./client";
-import { hours } from "../reporting/model";
+import { branding, brandAsset } from "../config/branding";
+import { ProjectClientReport } from "./ProjectClientReport";
+import { today } from "./dashboard-format";
 import "../reporting/nordic.css";
 const enabled = import.meta.env.VITE_ENABLE_SECURE_API === "true";
 export function SecureDashboard() {
@@ -17,10 +19,9 @@ export function SecureDashboard() {
   const [subject, setSubject] = useState<string | null>(null);
   const signedIn = subject !== null;
   const [workspace, setWorkspace] = useState<ProjectWorkspace>();
-  const [view, setView] = useState<ProjectReport>();
-  const [publishedSearch, setPublishedSearch] = useState("");
+  const [retry, setRetry] = useState(0);
   const [error, setError] = useState("");
-  const [month, setMonth] = useState("2026-10");
+  const [month, setMonth] = useState(() => today().slice(0, 7));
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     if (!enabled) return;
@@ -64,7 +65,6 @@ export function SecureDashboard() {
       if (active) {
         setAuth(a);
         unsubscribe = sdk.onAuthStateChanged(a, (u) => {
-          setView(undefined);
           setWorkspace(undefined);
           setSubject(u?.uid ?? null);
         });
@@ -123,36 +123,11 @@ export function SecureDashboard() {
       active = false;
       abort.abort();
     };
-  }, [client]);
-  useEffect(() => {
-    if (!client || workspace?.role !== "client") return;
-    const abort = new AbortController();
-    let active = true;
-    setLoading(true);
-    setView(undefined);
-    client
-      .call<ProjectReport>(
-        import.meta.env.VITE_SECURE_TENANT_ID ?? "",
-        "report?month=" + month,
-        { signal: abort.signal },
-      )
-      .then((v) => {
-        if (active) {
-          setView(v);
-          setError("");
-        }
-      })
-      .catch((e) => {
-        if (active) setError(e.message);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-      abort.abort();
-    };
-  }, [client, workspace, month]);
+  }, [client, retry]);
+  const onDenied = useCallback(() => {
+    setWorkspace(undefined);
+    setError("Access changed. Sign out and sign in again.");
+  }, []);
   if (!enabled)
     return (
       <section>
@@ -192,19 +167,50 @@ export function SecureDashboard() {
       setError("Sign-in was not completed.");
     }
   }
-  const matchingProjects =
-    view?.projects.filter((p) =>
-      p.name
-        .normalize("NFKC")
-        .toLowerCase()
-        .includes(publishedSearch.trim().normalize("NFKC").toLowerCase()),
-    ) ?? [];
   return (
     <section className="nordic secure-shell">
-      <h1>Morris protected workspace</h1>
-      <Link to="/">Synthetic demonstration</Link>
+      <header className="secure-masthead">
+        <div className="secure-brandmarks">
+          {branding.clientLogo && (
+            <img
+              src={brandAsset(branding.clientLogo)}
+              alt={branding.clientName}
+            />
+          )}
+          {branding.partnerLogo && (
+            <img
+              src={brandAsset(branding.partnerLogo)}
+              alt={branding.partnerName}
+            />
+          )}
+        </div>
+        <div className="secure-identity">
+          <h1>
+            {workspace?.role === "client"
+              ? "Client intelligence dashboard"
+              : "Morris protected workspace"}
+          </h1>
+          {!signedIn && <Link to="/">Synthetic demonstration</Link>}
+        </div>
+        {signedIn && (
+          <button
+            className="secure-secondary"
+            onClick={async () => {
+              if (auth) {
+                const sdk = await import("firebase/auth");
+                await sdk.signOut(auth);
+                setMicrosoftProof(undefined);
+                setWorkspace(undefined);
+                setError("");
+              }
+            }}
+          >
+            Sign out
+          </button>
+        )}
+      </header>
       {!signedIn ? (
-        <>
+        <section className="secure-sign-in" aria-label="Sign in">
           <button disabled={!auth} onClick={() => void signIn("google")}>
             Sign in with Google
           </button>
@@ -243,35 +249,27 @@ export function SecureDashboard() {
             Morris staff use their Microsoft work account. Client accounts have
             read-only access to approved publications.
           </p>
-        </>
+        </section>
       ) : (
-        <>
-          <button
-            onClick={async () => {
-              if (auth) {
-                const sdk = await import("firebase/auth");
-                await sdk.signOut(auth);
-                setMicrosoftProof(undefined);
-                setView(undefined);
-                setWorkspace(undefined);
-              }
-            }}
-          >
-            Sign out
-          </button>
+        <div className="secure-period">
           <label>
             Reporting month
             <input
               type="month"
               value={month}
               onChange={(e) => {
-                if (e.target.value) setMonth(e.target.value);
+                if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value))
+                  setMonth(e.target.value);
               }}
             />
           </label>
-        </>
+        </div>
       )}
-      {loading && <p role="status">Loading approved reporting…</p>}
+      {loading && (
+        <p className="secure-empty" role="status">
+          Loading your protected workspace…
+        </p>
+      )}
       {error && <p role="alert">{error}</p>}
       {workspace && workspace.role !== "client" && client && (
         <ProjectStaffWorkspace
@@ -280,50 +278,22 @@ export function SecureDashboard() {
           tenant={import.meta.env.VITE_SECURE_TENANT_ID ?? ""}
           workspace={workspace}
           month={month}
-          onDenied={() => {
-            setWorkspace(undefined);
-            setView(undefined);
-            setError("Access changed. Sign out and sign in again.");
-          }}
+          onDenied={onDenied}
         />
       )}
-      {view && (
-        <>
-          <h2>{view.tenant.name}</h2>
-          <p>
-            {hours(view.totalSeconds)} h delivered in {view.month}
-          </p>
-          {view.projects.length > 0 && (
-            <label>
-              Search published projects
-              <input
-                type="search"
-                maxLength={120}
-                value={publishedSearch}
-                onChange={(event) => setPublishedSearch(event.target.value)}
-              />
-            </label>
-          )}
-          {matchingProjects.map((p) => (
-            <article key={p.id}>
-              <h3>{p.name}</h3>
-              <p>{p.description}</p>
-              <p>
-                {p.status} · {p.progress}% progress
-              </p>
-              <p>
-                {hours(p.seconds)} h this month · {hours(p.lifetimeSeconds)} h
-                lifetime
-              </p>
-            </article>
-          ))}
-          {view.projects.length > 0 && !matchingProjects.length && (
-            <p>No published projects match.</p>
-          )}
-          {!view.projects.length && (
-            <p>No approved projects are available for this period.</p>
-          )}
-        </>
+      {workspace?.role === "client" && client && (
+        <ProjectClientReport
+          key={subject}
+          client={client}
+          tenant={import.meta.env.VITE_SECURE_TENANT_ID ?? ""}
+          month={month}
+          onDenied={onDenied}
+        />
+      )}
+      {signedIn && !workspace && error && !loading && (
+        <button onClick={() => setRetry((value) => value + 1)}>
+          Retry workspace
+        </button>
       )}
     </section>
   );

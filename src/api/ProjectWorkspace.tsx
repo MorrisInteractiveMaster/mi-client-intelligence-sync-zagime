@@ -3,14 +3,31 @@ import { ApiError, type SecuredApiClient } from "./client";
 import type {
   Project,
   ProjectPage,
-  ProjectView,
+  ProjectMilestone,
+  ProjectUpdate,
+  StaffProjectSummary,
   ProjectWorkspace,
 } from "../projects/model";
 import type { StaffSource, HistoryRow } from "./types";
 import type { Allocation } from "../reporting/model";
 import { hoursToSeconds } from "../projects/duration";
 import { TimeConnectionPanel } from "./TimeConnectionPanel";
-const h = (s: number) => String(s / 3600);
+import { ProjectTimelineFields } from "./ProjectTimelineFields";
+import {
+  projectStatus,
+  reportDay,
+  reportHours,
+  reportMonth,
+  reportTimestamp,
+} from "./dashboard-format";
+
+const sections = {
+  projects: "Projects",
+  hours: "Hours & allocations",
+  activity: "Audit history",
+  integrations: "Integrations",
+};
+type Area = keyof typeof sections;
 export function ProjectStaffWorkspace({
   client,
   tenant,
@@ -33,24 +50,46 @@ export function ProjectStaffWorkspace({
   const [audits, setAudits] = useState<ProjectPage["audits"]>();
   const [auditCursor, setAuditCursor] = useState<string>();
   const [editing, setEditing] = useState<Project | "new">();
+  const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
+  const [milestones, setMilestones] = useState<ProjectMilestone[]>([]);
+  const [area, setArea] = useState<Area>("projects");
+  const areaHeading = useRef<HTMLHeadingElement>(null);
+  const editorHeading = useRef<HTMLHeadingElement>(null);
+  const allocationHeading = useRef<HTMLHeadingElement>(null);
   const [selected, setSelected] = useState<StaffSource>();
   const [portions, setPortions] = useState<Allocation[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>();
   const [historyCursor, setHistoryCursor] = useState<string>();
   const [error, setError] = useState("");
+  const [listError, setListError] = useState(false);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [epoch, setEpoch] = useState(0);
   const [search, setSearch] = useState("");
-  const [selectedProject, setSelectedProject] = useState<{
-    id: string;
-    name: string;
-  }>();
+  const [draftSearch, setDraftSearch] = useState("");
+  const [selectedProject, setSelectedProject] = useState<StaffProjectSummary>();
   const lock = useRef(false);
   const scope = tenant + "|" + month + "|" + search;
   const latestScope = useRef(scope);
   latestScope.current = scope;
   const creation = useRef<string | undefined>(undefined);
+  const changeArea = (next: Area) => {
+    if (area === next) return;
+    if (next !== "projects" && next !== "hours") {
+      setSearch("");
+      setDraftSearch("");
+    }
+    setArea(next);
+  };
+  useEffect(() => {
+    areaHeading.current?.focus();
+  }, [area]);
+  useEffect(() => {
+    if (editing) editorHeading.current?.focus();
+  }, [editing]);
+  useEffect(() => {
+    if (selected) allocationHeading.current?.focus();
+  }, [selected]);
   const query = (cursor?: string) =>
     `month=${month}&limit=25${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
   const projectQuery = (cursor?: string) =>
@@ -58,11 +97,16 @@ export function ProjectStaffWorkspace({
   const failed = (e: unknown) => {
     if (e instanceof ApiError && [401, 403].includes(e.status)) onDenied();
     setError(
-      e instanceof Error ? e.message : "The request could not be completed.",
+      e instanceof ApiError && e.status === 413
+        ? "The project is too large to save. Shorten the description, notes, or updates."
+        : e instanceof Error
+          ? e.message
+          : "The request could not be completed.",
     );
   };
   useEffect(() => {
     const abort = new AbortController();
+    setListError(false);
     setPage({ revision: 0, projects: [] });
     setSources(undefined);
     setAudits(undefined);
@@ -79,11 +123,13 @@ export function ProjectStaffWorkspace({
       .then((p) => {
         if (!abort.signal.aborted) {
           setPage(p);
-          setError("");
         }
       })
       .catch((e) => {
-        if (!abort.signal.aborted) failed(e);
+        if (!abort.signal.aborted) {
+          setListError(true);
+          failed(e);
+        }
       });
     return () => abort.abort();
   }, [client, tenant, month, epoch, search]);
@@ -92,6 +138,7 @@ export function ProjectStaffWorkspace({
     lock.current = true;
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       await work();
     } catch (e) {
@@ -145,474 +192,770 @@ export function ProjectStaffWorkspace({
   }
   return (
     <section className="secure-staff" aria-label="Project administration">
-      <h2>Projects</h2>
-      <form
-        className="secure-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setSearch(
-            String(
-              new FormData(event.currentTarget).get("projectSearch"),
-            ).trim(),
-          );
-          setSelectedProject(undefined);
-        }}
-      >
-        <label>
-          Search projects
-          <input
-            name="projectSearch"
-            type="search"
-            maxLength={120}
-            placeholder="Project name or reference"
-          />
-        </label>
-        <button type="submit" disabled={busy}>
-          Search
-        </button>
-        {search && (
-          <button type="reset" disabled={busy} onClick={() => setSearch("")}>
-            Clear search
+      <div className="secure-hero secure-staff-hero">
+        <div>
+          <p className="secure-eyebrow">
+            Morris administration · {reportMonth(month)}
+          </p>
+          <h2>{workspace.tenant.name}</h2>
+        </div>
+      </div>
+      <nav aria-label="Morris workspace sections" className="secure-tabs">
+        {Object.entries(sections).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={area === key}
+            disabled={busy}
+            onClick={() => {
+              setSelectedProject(undefined);
+              if (key === "hours") {
+                setSearch("");
+                setDraftSearch("");
+              }
+              changeArea(key as Area);
+            }}
+          >
+            {label}
           </button>
-        )}
-      </form>
-      <p>Project plans and publication are managed by Morris.</p>
-      <button
-        disabled={busy}
-        onClick={() => {
-          creation.current = `${Date.now()}-${crypto.randomUUID()}`;
-          setEditing("new");
-        }}
-      >
-        Create project
-      </button>
-      <button disabled={busy} onClick={() => setEpoch((x) => x + 1)}>
-        Refresh workspace
-      </button>
-      {error && <p role="alert">{error}</p>}
-      {notice && <p role="status">{notice}</p>}
-      {page.revision === 0 && <p role="status">Loading projects…</p>}
-      {page.revision > 0 && !page.projects?.length && (
-        <p>
-          {search
-            ? page.nextCursor
-              ? "No matches on this page. Continue searching to check more projects."
-              : "No matching projects."
-            : "No projects yet. Create one without a work order."}
+        ))}
+      </nav>
+      {error && (
+        <p className="secure-message secure-error" role="alert">
+          {error}
         </p>
       )}
-      {page.projects?.map((p) => (
-        <article className="secure-card" key={p.id}>
-          <h3>{p.name}</h3>
-          <p>
-            {p.status} · {p.progress}% progress ·{" "}
-            {p.published ? "Published" : "Unpublished"}
-          </p>
-          <p>
-            {h(p.seconds)} h in {month} · {h(p.lifetimeSeconds)} h lifetime ·{" "}
-            {h(p.plan.targetSeconds)} h {p.plan.basis} plan
-          </p>
-          <a
-            href="#project-time-hours"
-            onClick={(event) => {
-              event.preventDefault();
-              setSelectedProject({ id: p.id, name: p.name });
-              document.getElementById("project-time-hours")?.focus();
-            }}
-          >
-            View hours for {p.name}
-          </a>
-          <button
-            disabled={busy}
-            onClick={() =>
-              void perform(async () => {
-                const d = await client.call<{
-                  revision: number;
-                  project: Project;
-                }>(tenant, `projects/${p.id}`);
-                if (d.revision !== page.revision)
-                  throw Error("Refresh the workspace before editing.");
-                setEditing(d.project);
-              })
-            }
-          >
-            Edit {p.name}
-          </button>
-          <button
-            disabled={busy}
-            onClick={() =>
-              void perform(async () => {
-                await client.call(tenant, `projects/${p.id}/publication`, {
-                  method: "PATCH",
-                  body: {
-                    expectedRevision: page.revision,
-                    published: !p.published,
-                  },
-                });
-                refresh();
-              })
-            }
-          >
-            {p.published ? "Unpublish" : "Publish"} {p.name}
-          </button>
-        </article>
-      ))}
-      {page.nextCursor && (
-        <button disabled={busy} onClick={() => void perform(moreProjects)}>
-          {search ? "Continue searching" : "More projects"}
-        </button>
+      {notice && (
+        <p className="secure-message" role="status">
+          {notice}
+        </p>
       )}
-      {editing && (
+      {busy && (
+        <p className="secure-muted" role="status">
+          Working…
+        </p>
+      )}
+      <section hidden={area !== "projects"} aria-labelledby="staff-projects">
+        <div className="secure-section-heading">
+          <div>
+            <h2
+              tabIndex={-1}
+              ref={area === "projects" ? areaHeading : undefined}
+              id="staff-projects"
+            >
+              Projects
+            </h2>
+            <p>Manage progress, plans and what the client can see.</p>
+          </div>
+          <div className="secure-actions">
+            <button
+              disabled={busy || page.revision === 0}
+              onClick={() => {
+                creation.current = `${Date.now()}-${crypto.randomUUID()}`;
+                setUpdates([]);
+                setMilestones([]);
+                setEditing("new");
+              }}
+            >
+              Create project
+            </button>
+            <button
+              className="secure-secondary"
+              disabled={busy}
+              onClick={() => {
+                setError("");
+                setNotice("");
+                setEpoch((x) => x + 1);
+              }}
+            >
+              Refresh workspace
+            </button>
+          </div>
+        </div>
         <form
-          className="secure-form"
-          key={editing === "new" ? "new" : editing.id}
-          onSubmit={(e) => {
-            e.preventDefault();
-            const f = new FormData(e.currentTarget);
-            void perform(async () => {
-              const original = editing === "new" ? undefined : editing;
-              const planHours = String(f.get("hours"));
-              const patch = {
-                name: String(f.get("name")),
-                status: String(f.get("status")),
-                progress: Number(f.get("progress")),
-                description: String(f.get("description")),
-                internalNotes: String(f.get("notes")),
-                workOrderReference: String(f.get("workOrder")),
-                plan: {
-                  basis: String(f.get("basis")),
-                  targetSeconds:
-                    original && planHours === h(original.plan.targetSeconds)
-                      ? original.plan.targetSeconds
-                      : hoursToSeconds(planHours),
-                },
-              };
-              await client.call(
-                tenant,
-                original ? `projects/${original.id}` : "projects",
-                {
-                  method: original ? "PATCH" : "POST",
-                  ...(original ? {} : { key: creation.current }),
-                  body: original
-                    ? { expectedRevision: page.revision, patch }
-                    : patch,
-                },
-              );
-              creation.current = undefined;
-              refresh();
-            });
+          className="secure-form secure-search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSearch(draftSearch.trim());
+            setSelectedProject(undefined);
           }}
         >
-          <h3>{editing === "new" ? "New project" : "Edit project"}</h3>
           <label>
-            Project name
+            Search projects
             <input
-              name="name"
-              required
-              maxLength={200}
-              defaultValue={editing === "new" ? "" : editing.name}
-            />
-          </label>
-          <label>
-            Status
-            <select
-              name="status"
-              defaultValue={editing === "new" ? "planned" : editing.status}
-            >
-              {["planned", "active", "paused", "completed"].map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Progress (%)
-            <input
-              name="progress"
-              type="number"
-              min={0}
-              max={100}
-              required
-              defaultValue={editing === "new" ? 0 : editing.progress}
-            />
-          </label>
-          <label>
-            Plan basis
-            <select
-              name="basis"
-              defaultValue={editing === "new" ? "fixed" : editing.plan.basis}
-            >
-              <option value="fixed">Lifetime target</option>
-              <option value="monthly">Monthly target</option>
-            </select>
-          </label>
-          <label>
-            Planned hours
-            <input
-              name="hours"
-              inputMode="decimal"
-              required
-              defaultValue={
-                editing === "new" ? "0" : h(editing.plan.targetSeconds)
-              }
-            />
-          </label>
-          <label>
-            Client description
-            <textarea
-              name="description"
-              maxLength={4000}
-              defaultValue={editing === "new" ? "" : editing.description}
-            />
-          </label>
-          <label>
-            Internal notes
-            <textarea
-              name="notes"
-              maxLength={4000}
-              defaultValue={editing === "new" ? "" : editing.internalNotes}
-            />
-          </label>
-          <label>
-            Work-order reference (optional)
-            <input
-              name="workOrder"
+              name="projectSearch"
+              value={draftSearch}
+              onChange={(event) => setDraftSearch(event.target.value)}
+              type="search"
               maxLength={120}
-              defaultValue={
-                editing === "new" ? "" : (editing.workOrderReference ?? "")
-              }
+              placeholder="Name, work-order reference or project ID"
             />
           </label>
-          <p>
-            A reporting reference does not connect or change a QuickBooks
-            project.
-          </p>
-          <p>
-            New projects stay unpublished until you explicitly publish them.
-          </p>
-          <button disabled={busy || page.revision === 0}>Save project</button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setEditing(undefined)}
-          >
-            Cancel
+          <button type="submit" disabled={busy}>
+            Search
           </button>
+          {search && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setDraftSearch("");
+                setSearch("");
+                setSelectedProject(undefined);
+              }}
+            >
+              Clear search
+            </button>
+          )}
         </form>
-      )}
-      <h2 id="project-time-hours" tabIndex={-1}>
-        Project hours{selectedProject ? " · " + selectedProject.name : ""}
-      </h2>
-      {selectedProject && (
-        <button onClick={() => setSelectedProject(undefined)}>
-          Show hours for all projects
-        </button>
-      )}
-      <TimeConnectionPanel
-        client={client}
-        tenant={tenant}
-        month={month}
-        projectId={selectedProject?.id}
-        refreshVersion={epoch}
-        projects={page.projects ?? []}
-        busy={busy}
-        run={perform}
-        onChanged={() => setEpoch((x) => x + 1)}
-      />
-      <h3>Recorded time available for allocation</h3>
-      {!sources && (
-        <button
-          disabled={busy || page.revision === 0}
-          onClick={() => void perform(() => loadSources())}
-        >
-          Load authorized time
-        </button>
-      )}
-      {sources?.length === 0 && <p>No source time is available.</p>}
-      {sources?.map((s) => (
-        <article className="secure-card" key={s.id}>
-          <h3>
-            {s.date} · {h(s.seconds)} h recorded
-          </h3>
-          <p>{s.description}</p>
-          <p>Approval: {s.approval ?? "unknown"}</p>
-          {s.modifiedAt && (
-            <p>
-              Source updated {s.modifiedAt}
-              {s.deleted ? " · Deleted in QuickBooks Time" : ""}
-            </p>
-          )}
-          {s.needsReview && !s.deleted && (
-            <p role="status">
-              Source changed. Review the prior split before saving a new
-              allocation.
-            </p>
-          )}
-          <p>
-            {h(s.unallocatedSeconds)} h unallocated
-            {s.conflict
-              ? " · Source conflict: review required before changing allocations."
-              : ""}
+        {page.revision === 0 && !listError && (
+          <p className="secure-empty" role="status">
+            Loading projects…
           </p>
-          <button
-            disabled={busy || s.conflict}
-            onClick={() => {
-              setSelected(s);
-              setPortions(s.portions);
-              setHistory(undefined);
-              setHistoryCursor(undefined);
+        )}
+        {page.revision > 0 && !page.projects?.length && (
+          <p className="secure-empty">
+            {search
+              ? page.nextCursor
+                ? "No matches on this page. Continue searching to check more projects."
+                : "No matching projects."
+              : "No projects yet. Create one without a work order."}
+          </p>
+        )}
+        {editing && (
+          <form
+            className="secure-form secure-project-editor"
+            key={editing === "new" ? "new" : editing.id}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const f = new FormData(e.currentTarget);
+              void perform(async () => {
+                const original = editing === "new" ? undefined : editing;
+                const planHours = String(f.get("hours"));
+                const patch = {
+                  name: String(f.get("name")),
+                  updates,
+                  milestones,
+                  status: String(f.get("status")),
+                  progress: Number(f.get("progress")),
+                  description: String(f.get("description")),
+                  internalNotes: String(f.get("notes")),
+                  workOrderReference: String(f.get("workOrder")),
+                  plan: {
+                    basis: String(f.get("basis")),
+                    targetSeconds:
+                      original &&
+                      planHours === String(original.plan.targetSeconds / 3600)
+                        ? original.plan.targetSeconds
+                        : hoursToSeconds(planHours),
+                  },
+                };
+                await client.call(
+                  tenant,
+                  original ? `projects/${original.id}` : "projects",
+                  {
+                    method: original ? "PATCH" : "POST",
+                    ...(original ? {} : { key: creation.current }),
+                    body: original
+                      ? { expectedRevision: page.revision, patch }
+                      : patch,
+                  },
+                );
+                creation.current = undefined;
+                refresh();
+              });
             }}
           >
-            Allocate recorded hours
-          </button>
-          <button
-            disabled={busy}
-            onClick={() =>
-              void perform(async () => {
-                setSelected(s);
-                setPortions(s.portions);
-                await loadHistory(s);
-              })
-            }
-          >
-            Allocation history
-          </button>
-        </article>
-      ))}
-      {sourceCursor && (
-        <button
-          disabled={busy}
-          onClick={() => void perform(() => loadSources(sourceCursor))}
-        >
-          More recorded time
-        </button>
-      )}
-      {selected && (
-        <section aria-label="Time allocation">
-          <h3>Allocate {h(selected.seconds)} recorded hours</h3>
-          {portions.map((p, i) => (
-            <div key={i}>
+            <h3 ref={editorHeading} tabIndex={-1}>
+              {editing === "new" ? "New project" : "Edit project"}
+            </h3>
+            <fieldset className="secure-editor-grid" disabled={busy}>
               <label>
-                Delivery project
+                Project name
+                <input
+                  name="name"
+                  required
+                  maxLength={200}
+                  defaultValue={editing === "new" ? "" : editing.name}
+                />
+              </label>
+              <label>
+                Status
                 <select
-                  aria-label="Delivery project"
-                  value={p.projectId}
-                  onChange={(e) =>
-                    setPortions((old) =>
-                      old.map((v, n) =>
-                        n === i ? { ...v, projectId: e.target.value } : v,
-                      ),
-                    )
-                  }
+                  name="status"
+                  defaultValue={editing === "new" ? "planned" : editing.status}
                 >
-                  <option value="">Choose project</option>
-                  {!page.projects?.some((v) => v.id === p.projectId) &&
-                    p.projectId && (
-                      <option value={p.projectId}>
-                        Existing project {p.projectId}
-                      </option>
-                    )}
-                  {page.projects?.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name}
+                  {Object.entries(projectStatus).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
                     </option>
                   ))}
                 </select>
               </label>
               <label>
-                Allocated seconds
+                Progress (%)
                 <input
+                  name="progress"
                   type="number"
                   min={0}
-                  step={1}
-                  value={p.seconds}
-                  onChange={(e) =>
-                    setPortions((old) =>
-                      old.map((v, n) =>
-                        n === i ? { ...v, seconds: Number(e.target.value) } : v,
-                      ),
-                    )
+                  max={100}
+                  required
+                  defaultValue={editing === "new" ? 0 : editing.progress}
+                />
+              </label>
+              <label>
+                Plan basis
+                <select
+                  name="basis"
+                  defaultValue={
+                    editing === "new" ? "fixed" : editing.plan.basis
+                  }
+                >
+                  <option value="fixed">Lifetime target</option>
+                  <option value="monthly">Monthly target</option>
+                </select>
+              </label>
+              <label>
+                Planned hours
+                <input
+                  name="hours"
+                  inputMode="decimal"
+                  required
+                  defaultValue={
+                    editing === "new"
+                      ? "0"
+                      : String(editing.plan.targetSeconds / 3600)
                   }
                 />
               </label>
-              <span>{h(p.seconds)} h</span>
+              <label className="secure-field-wide">
+                Client description
+                <textarea
+                  name="description"
+                  maxLength={4000}
+                  defaultValue={editing === "new" ? "" : editing.description}
+                />
+              </label>
+              <label className="secure-field-wide">
+                Internal notes
+                <textarea
+                  name="notes"
+                  maxLength={4000}
+                  defaultValue={editing === "new" ? "" : editing.internalNotes}
+                />
+              </label>
+              <label>
+                Work-order reference (optional)
+                <input
+                  name="workOrder"
+                  maxLength={120}
+                  defaultValue={
+                    editing === "new" ? "" : (editing.workOrderReference ?? "")
+                  }
+                />
+              </label>
+            </fieldset>
+            <ProjectTimelineFields
+              {...{ updates, milestones, setUpdates, setMilestones }}
+              disabled={busy}
+            />
+            <p>
+              {editing !== "new" && editing.published
+                ? "Saving updates the published project and its client-visible content."
+                : "This project stays private until you publish it."}
+            </p>
+            <div className="secure-actions">
+              <button type="submit" disabled={busy || page.revision === 0}>
+                Save project
+              </button>
               <button
+                type="button"
                 disabled={busy}
-                onClick={() =>
-                  setPortions((old) => old.filter((_, n) => n !== i))
-                }
+                onClick={() => setEditing(undefined)}
               >
-                Remove split
+                Cancel
               </button>
             </div>
+          </form>
+        )}
+        <div className="secure-project-grid">
+          {page.projects?.map((p) => (
+            <article className="secure-card" key={p.id}>
+              <div className="secure-card-flags">
+                <p className="secure-badge" data-status={p.status}>
+                  {projectStatus[p.status]}
+                </p>
+                <p
+                  className="secure-badge"
+                  data-status={p.published ? "published" : "private"}
+                >
+                  {p.published ? "Published" : "Unpublished"}
+                </p>
+              </div>
+              <h3>{p.name}</h3>
+              {p.workOrderReference && (
+                <p className="secure-project-reference">
+                  {p.workOrderReference}
+                </p>
+              )}
+              <div className="secure-progress">
+                <span>{p.progress}% progress</span>
+                <progress
+                  aria-label={p.name + " progress"}
+                  max={100}
+                  value={p.progress}
+                />
+              </div>
+              <dl className="secure-project-hours">
+                <div>
+                  <dt>Allocated in {month}</dt>
+                  <dd>{reportHours(p.seconds)} h</dd>
+                </div>
+                <div>
+                  <dt>Lifetime allocated</dt>
+                  <dd>{reportHours(p.lifetimeSeconds)} h</dd>
+                </div>
+                <div>
+                  <dt>
+                    {p.plan.basis === "monthly" ? "Monthly" : "Lifetime"} target
+                  </dt>
+                  <dd>{reportHours(p.plan.targetSeconds)} h</dd>
+                </div>
+              </dl>
+              <div className="secure-actions">
+                <a
+                  href="#project-time-hours"
+                  aria-label={`View hours for ${p.name}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setSelectedProject(p);
+                    changeArea("hours");
+                  }}
+                >
+                  View hours
+                </a>
+                <button
+                  disabled={busy}
+                  aria-label={`Edit ${p.name}`}
+                  onClick={() =>
+                    void perform(async () => {
+                      const d = await client.call<{
+                        revision: number;
+                        project: Project;
+                      }>(tenant, `projects/${p.id}`);
+                      if (
+                        d.revision !== page.revision ||
+                        latestScope.current !== scope
+                      )
+                        throw Error("Refresh the workspace before editing.");
+                      setUpdates(d.project.updates ?? []);
+                      setMilestones(d.project.milestones ?? []);
+                      setEditing(d.project);
+                    })
+                  }
+                >
+                  Edit
+                </button>
+                <button
+                  className="secure-secondary"
+                  disabled={busy}
+                  aria-label={`${p.published ? "Unpublish" : "Publish"} ${p.name}`}
+                  onClick={() =>
+                    void perform(async () => {
+                      await client.call(
+                        tenant,
+                        `projects/${p.id}/publication`,
+                        {
+                          method: "PATCH",
+                          body: {
+                            expectedRevision: page.revision,
+                            published: !p.published,
+                          },
+                        },
+                      );
+                      refresh();
+                    })
+                  }
+                >
+                  {p.published ? "Unpublish" : "Publish"}
+                </button>
+              </div>
+            </article>
           ))}
-          <p>
-            3600 seconds = 1 hour. Splits change reporting only; recorded source
-            time is unchanged.
+        </div>
+        {page.nextCursor && (
+          <button disabled={busy} onClick={() => void perform(moreProjects)}>
+            {search ? "Continue searching" : "More projects"}
+          </button>
+        )}
+      </section>
+      <section hidden={area !== "hours"} aria-labelledby="project-time-hours">
+        <h2
+          id="project-time-hours"
+          ref={area === "hours" ? areaHeading : undefined}
+          tabIndex={-1}
+        >
+          Project hours{selectedProject ? " · " + selectedProject.name : ""}
+        </h2>
+        {selectedProject && (
+          <button
+            onClick={() => {
+              setSelectedProject(undefined);
+              setSearch("");
+              setDraftSearch("");
+            }}
+          >
+            Show hours for all projects
+          </button>
+        )}
+        {selectedProject &&
+          page.projects
+            ?.filter((project) => project.id === selectedProject.id)
+            .map((project) => (
+              <dl
+                className="secure-metrics"
+                aria-label="Morris allocated reporting hours"
+                key={project.id}
+              >
+                <div>
+                  <dt>Allocated to project · {reportMonth(month)}</dt>
+                  <dd>{reportHours(project.seconds)} h</dd>
+                </div>
+                <div>
+                  <dt>Allocated to project · lifetime</dt>
+                  <dd>{reportHours(project.lifetimeSeconds)} h</dd>
+                </div>
+              </dl>
+            ))}
+        {area === "hours" && (
+          <TimeConnectionPanel
+            client={client}
+            tenant={tenant}
+            month={month}
+            projectId={selectedProject?.id}
+            refreshVersion={epoch}
+            projects={page.projects ?? []}
+            busy={busy}
+            run={perform}
+            onChanged={() => setEpoch((x) => x + 1)}
+            onDenied={onDenied}
+            manage={false}
+          />
+        )}
+        <h3>Recorded time across projects</h3>
+        <p>
+          Splits change reporting hours. The original source entry stays intact.
+        </p>
+        {search && (
+          <button
+            className="secure-secondary"
+            disabled={busy}
+            onClick={() => {
+              setSearch("");
+              setDraftSearch("");
+            }}
+          >
+            Show all project choices
+          </button>
+        )}
+        {page.nextCursor && (
+          <button disabled={busy} onClick={() => void perform(moreProjects)}>
+            More project choices
+          </button>
+        )}
+        {!sources && (
+          <button
+            disabled={busy || page.revision === 0}
+            onClick={() => void perform(() => loadSources())}
+          >
+            Load authorized time
+          </button>
+        )}
+        {sources?.length === 0 && (
+          <p className="secure-empty">
+            No source time is available for {reportMonth(month)}.
           </p>
-          <button
-            disabled={busy || portions.length >= 10 || selected.conflict}
-            onClick={() =>
-              setPortions((old) => [
-                ...old,
-                { projectId: "", seconds: 0, description: "" },
-              ])
-            }
-          >
-            Add split
-          </button>
-          <button
-            disabled={busy || selected.conflict}
-            onClick={() =>
-              void perform(async () => {
-                await client.call(tenant, `allocations/${selected.id}`, {
-                  method: "PATCH",
-                  body: { expectedRevision: page.revision, portions },
-                });
-                refresh();
-              })
-            }
-          >
-            Save allocation
-          </button>
-          {history?.map((r) => (
-            <p key={r.revision}>
-              Revision {r.revision} · {r.at} ·{" "}
-              {r.portions.reduce((n, p) => n + p.seconds, 0)} allocated seconds
+        )}
+        {sources?.map((s) => (
+          <article className="secure-card" key={s.id}>
+            <h3>
+              {reportDay(s.date)} · {reportHours(s.seconds)} h recorded
+            </h3>
+            <p>{s.description}</p>
+            <p>Approval: {s.approval ?? "unknown"}</p>
+            {s.modifiedAt && (
+              <p>
+                Source updated {reportTimestamp(s.modifiedAt)}
+                {s.deleted ? " · Deleted in QuickBooks Time" : ""}
+              </p>
+            )}
+            {s.needsReview && !s.deleted && (
+              <p role="status">
+                Source changed. Review the prior split before saving a new
+                allocation.
+              </p>
+            )}
+            <p>
+              {!s.deleted && (
+                <>
+                  {reportHours(s.seconds - s.unallocatedSeconds)} h allocated
+                  ·{" "}
+                </>
+              )}
+              {reportHours(s.unallocatedSeconds)} h unallocated
+              {s.conflict
+                ? " · Source conflict: review required before changing allocations."
+                : ""}
             </p>
-          ))}
-          {historyCursor && (
+            <button
+              disabled={busy || s.conflict}
+              onClick={() => {
+                setSelected(s);
+                setPortions(s.portions);
+                setHistory(undefined);
+                setHistoryCursor(undefined);
+              }}
+            >
+              Allocate recorded hours
+            </button>
             <button
               disabled={busy}
               onClick={() =>
-                void perform(() => loadHistory(selected, historyCursor))
+                void perform(async () => {
+                  setSelected(s);
+                  setPortions(s.portions);
+                  await loadHistory(s);
+                })
               }
             >
-              More allocation history
+              Allocation history
             </button>
-          )}
-        </section>
-      )}
-      <h2>Audit history</h2>
-      {!audits && (
-        <button
-          disabled={busy || page.revision === 0}
-          onClick={() => void perform(() => loadAudits())}
+          </article>
+        ))}
+        {sourceCursor && (
+          <button
+            disabled={busy}
+            onClick={() => void perform(() => loadSources(sourceCursor))}
+          >
+            More recorded time
+          </button>
+        )}
+        {selected && (
+          <section
+            className="secure-card secure-allocation"
+            aria-label="Time allocation"
+          >
+            <h3 ref={allocationHeading} tabIndex={-1}>
+              Allocate {reportHours(selected.seconds)} recorded hours
+            </h3>
+            {portions.map((p, i) => (
+              <div className="secure-split" key={i}>
+                <label>
+                  Delivery project
+                  <select
+                    aria-label="Delivery project"
+                    value={p.projectId}
+                    onChange={(e) =>
+                      setPortions((old) =>
+                        old.map((v, n) =>
+                          n === i ? { ...v, projectId: e.target.value } : v,
+                        ),
+                      )
+                    }
+                  >
+                    <option value="">Choose project</option>
+                    {!page.projects?.some((v) => v.id === p.projectId) &&
+                      p.projectId && (
+                        <option value={p.projectId}>
+                          Existing project {p.projectId}
+                        </option>
+                      )}
+                    {page.projects?.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Allocated seconds
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={p.seconds}
+                    onChange={(e) =>
+                      setPortions((old) =>
+                        old.map((v, n) =>
+                          n === i
+                            ? { ...v, seconds: Number(e.target.value) }
+                            : v,
+                        ),
+                      )
+                    }
+                  />
+                </label>
+                <span>{reportHours(p.seconds)} h</span>
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    setPortions((old) => old.filter((_, n) => n !== i))
+                  }
+                >
+                  Remove split
+                </button>
+              </div>
+            ))}
+            <p>
+              {reportHours(
+                portions.reduce((sum, portion) => sum + portion.seconds, 0),
+              )}{" "}
+              h in this split · {reportHours(selected.seconds)} h recorded.
+              Enter split durations in seconds (1 h = 3,600 seconds).
+            </p>
+            <button
+              disabled={busy || portions.length >= 10 || selected.conflict}
+              onClick={() =>
+                setPortions((old) => [
+                  ...old,
+                  { projectId: "", seconds: 0, description: "" },
+                ])
+              }
+            >
+              Add split
+            </button>
+            <button
+              disabled={
+                busy ||
+                selected.conflict ||
+                portions.some(
+                  (p) =>
+                    !p.projectId ||
+                    !Number.isSafeInteger(p.seconds) ||
+                    p.seconds <= 0,
+                ) ||
+                new Set(portions.map((p) => p.projectId)).size !==
+                  portions.length ||
+                portions.reduce((sum, p) => sum + p.seconds, 0) >
+                  selected.seconds
+              }
+              onClick={() =>
+                void perform(async () => {
+                  await client.call(tenant, `allocations/${selected.id}`, {
+                    method: "PATCH",
+                    body: { expectedRevision: page.revision, portions },
+                  });
+                  refresh();
+                })
+              }
+            >
+              Save allocation
+            </button>
+            <button
+              className="secure-secondary"
+              disabled={busy}
+              onClick={() => setSelected(undefined)}
+            >
+              Close allocation
+            </button>
+            {history?.length === 0 && <p>No allocation revisions yet.</p>}
+            {history?.map((r) => (
+              <p key={r.revision}>
+                Revision {r.revision} · {reportTimestamp(r.at)} ·{" "}
+                {reportHours(r.portions.reduce((n, p) => n + p.seconds, 0))} h
+                allocated
+              </p>
+            ))}
+            {historyCursor && (
+              <button
+                disabled={busy}
+                onClick={() =>
+                  void perform(() => loadHistory(selected, historyCursor))
+                }
+              >
+                More allocation history
+              </button>
+            )}
+          </section>
+        )}
+      </section>
+      <section hidden={area !== "activity"} aria-labelledby="staff-audits">
+        <h2
+          id="staff-audits"
+          ref={area === "activity" ? areaHeading : undefined}
+          tabIndex={-1}
         >
-          Load audit history
-        </button>
-      )}
-      {audits?.map((a) => (
-        <p key={a.id}>
-          {a.at} · {a.action} · {a.actor}
+          Audit history
+        </h2>
+        <p>
+          Project, publication, and allocation changes across the workspace.
         </p>
-      ))}
-      {auditCursor && (
-        <button
-          disabled={busy}
-          onClick={() => void perform(() => loadAudits(auditCursor))}
-        >
-          More audit history
-        </button>
+        {!audits && (
+          <button
+            disabled={busy || page.revision === 0}
+            onClick={() => void perform(() => loadAudits())}
+          >
+            Load audit history
+          </button>
+        )}
+        {audits?.length === 0 && (
+          <p className="secure-empty">No activity has been recorded.</p>
+        )}
+        {audits && (
+          <ol className="secure-timeline secure-audits">
+            {audits.map((a) => (
+              <li key={a.id}>
+                <b>{a.action}</b>
+                <time dateTime={a.at}>{reportTimestamp(a.at)}</time>
+                <p>
+                  Record {a.entityId} · Revision {a.revision}
+                </p>
+                <p>Actor {a.actor}</p>
+              </li>
+            ))}
+          </ol>
+        )}
+        {auditCursor && (
+          <button
+            disabled={busy}
+            onClick={() => void perform(() => loadAudits(auditCursor))}
+          >
+            More audit history
+          </button>
+        )}
+      </section>
+      {area === "integrations" && (
+        <section aria-labelledby="staff-integrations">
+          <h2 id="staff-integrations" ref={areaHeading} tabIndex={-1}>
+            Integrations
+          </h2>
+          <article className="secure-card">
+            <h3>QuickBooks Online Accounting</h3>
+            <p>Disconnected</p>
+          </article>
+          <article className="secure-card">
+            <h3>QuickBooks Time</h3>
+            {page.nextCursor && (
+              <button
+                disabled={busy}
+                onClick={() => void perform(moreProjects)}
+              >
+                More project choices
+              </button>
+            )}
+            <TimeConnectionPanel
+              client={client}
+              tenant={tenant}
+              month={month}
+              refreshVersion={epoch}
+              projects={page.projects ?? []}
+              busy={busy}
+              run={perform}
+              onChanged={() => setEpoch((value) => value + 1)}
+              onDenied={onDenied}
+            />
+          </article>
+        </section>
       )}
     </section>
   );

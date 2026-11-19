@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  approvedProjectContent,
   managedProject,
   projectView,
   publicProject,
@@ -135,4 +136,32 @@ test("executable refuses production and unnamed emulator startup before database
       assert.match(result.stderr, /Explicit company staging identity required/);
     }
   }
+});
+
+test("bounded project updates and milestones use explicit visibility and nested allowlists", () => {
+  const one = { id: "u1", title: "Synthetic update", body: "Public text", date: "2026-11-19", visible: true };
+  const two = { id: "m1", title: "Synthetic milestone", date: "2026-12-01", visible: true, completed: false };
+  const normalized = managedProject({ ...managed, updates: [one, { ...one, id: "u2", body: "private draft", visible: false }], milestones: [two] });
+  for (const updates of [
+    [one, one],
+    [{ ...one, visible: "true" }],
+    [{ ...one, date: "2026-11-31" }],
+    [{ ...one, privateNote: "injected" }],
+    Array.from({ length: 9 }, (_, n) => ({ ...one, id: String(n) })),
+  ])
+    assert.throws(() => managedProject({ ...managed, updates }), /Invalid project timeline/);
+
+  const p = { ...normalized, schemaVersion: 2, tenantId: "tenant", id: "project", published: true } as const;
+  const content = approvedProjectContent({ ...p, source: null, createdAt: "", updatedAt: "", createdBy: "", updatedBy: "" });
+  const report = publicProject({
+    ...projectView(p, 0),
+    ...content,
+    updates: [
+      { ...content.updates[0], internal: "private extra field" },
+      { ...one, id: "unexpected", visible: false, body: "private draft" },
+    ] as unknown as typeof content.updates,
+  }, 0);
+  assert.deepEqual(report.updates, [{ id: "u1", title: "Synthetic update", date: "2026-11-19", body: "Public text" }]);
+  assert.deepEqual(report.milestones, [{ id: "m1", title: "Synthetic milestone", date: "2026-12-01", completed: false }]);
+  assert.ok(!JSON.stringify(report).includes("private"));
 });

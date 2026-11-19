@@ -17,6 +17,7 @@ import { requestIdentity, rememberIdentity } from "./request-identity";
 import { creationKey } from "./idempotency";
 import { FirestoreTenantStore, key } from "./firestore-store";
 import {
+  approvedProjectContent,
   managedProject,
   projectView,
   publicProject,
@@ -170,6 +171,8 @@ export class ProjectStore {
                     ? {}
                     : { workOrderReference: old.workOrderReference }),
                   plan: old.plan,
+                  ...(managed.updates === undefined ? {} : { updates: old.updates ?? [] }),
+                  ...(managed.milestones === undefined ? {} : { milestones: old.milestones ?? [] }),
                 }),
                 managed,
               )
@@ -211,7 +214,10 @@ export class ProjectStore {
         const revision = a.meta.revision + 1;
         if (!Number.isSafeInteger(revision)) throw Error("Invalid revision");
         tx.set(ref, p);
-        tx.set(viewRef, projectView(p, view?.data()?.lifetimeSeconds ?? 0));
+        tx.set(viewRef, {
+          ...projectView(p, view?.data()?.lifetimeSeconds ?? 0),
+          ...approvedProjectContent(p),
+        });
         const auditId = randomUUID();
         tx.create(a.root.collection("audits").doc(auditId), {
           id: auditId,
@@ -445,6 +451,7 @@ export class ProjectStore {
               views[i].data()!.lifetimeSeconds,
             ),
             seconds: periodSeconds(periods[i], d.id, query.month),
+            ...(d.data().workOrderReference ? { workOrderReference: String(d.data().workOrderReference) } : {}),
           };
         });
       } else if (resource === "sources") {
