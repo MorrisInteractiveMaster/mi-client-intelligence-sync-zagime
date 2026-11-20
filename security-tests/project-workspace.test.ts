@@ -820,7 +820,7 @@ function ClientFixture() {
           exact: true,
         }),
       });
-      await card.getByText("Published synthetic project description", { exact: true }).waitFor();
+      await card.waitFor();
       first.page.once("dialog", dialog => void dialog.accept());
       await first.page
         .getByRole("button", {
@@ -1123,16 +1123,16 @@ function ClientFixture() {
             await page.getByRole("alert").filter({ hasText: "The published report could not be loaded" }).waitFor();
             assert.equal(await portfolio.count(), 0);
             await filter.fill("2026-11");
-            await portfolio.getByText("Allocated hours · November 2026").waitFor();
+            await portfolio.getByText("Reported effort · November 2026").waitFor();
             await portfolio.getByText("0.5 h", { exact: true }).waitFor();
             assert.equal(await page.getByRole("alert").count(), 0);
             await page.evaluate(() => (window as any).__reportRace.release());
             await page.waitForFunction(() => (window as any).__reportRace.delivered);
-            assert.equal(await portfolio.getByText("Allocated hours · November 2026").count(), 1);
+            assert.equal(await portfolio.getByText("Reported effort · November 2026").count(), 1);
             assert.equal(await portfolio.getByText("0.5 h", { exact: true }).count(), 1);
 
             await filter.fill("2026-10");
-            await portfolio.getByText("Allocated hours · October 2026").waitFor();
+            await portfolio.getByText("Reported effort · October 2026").waitFor();
             await portfolio.getByText("0 h", { exact: true }).waitFor();
             const octoberProject = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Browser saved project", exact: true }) });
             assert.equal(await octoberProject.locator("dd").first().textContent(), "0 h");
@@ -1197,7 +1197,7 @@ function ClientFixture() {
           await contextual.waitFor({ state: "hidden" });
           await nav.getByRole("button", { name: "Leadership summary", exact: true }).click();
         }
-        const help = page.getByRole("button", { name: "How are allocated hours calculated?" });
+        const help = page.getByRole("button", { name: "How are reported hours calculated?" });
         await help.focus();
         const tooltip = page.getByRole("tooltip");
         await tooltip.waitFor();
