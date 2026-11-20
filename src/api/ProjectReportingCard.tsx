@@ -74,8 +74,10 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
             <dd>{reportHours(project.plan.targetSeconds)} h</dd>
           </div>
         )}
-        {delivery?.monthlyCap !== undefined && <div><dt>Monthly cap</dt><dd>{reportHours(delivery.monthlyCap)} h</dd></div>}
-        {delivery?.lifetimeCap !== undefined && <div><dt>Lifetime cap</dt><dd>{reportHours(delivery.lifetimeCap)} h</dd></div>}
+        {delivery?.monthlyCap !== undefined && <div><dt>Monthly cap</dt><dd>{delivery.monthlyCapUsed === undefined ? reportHours(delivery.monthlyCap) + " h" :
+          reportHours(delivery.monthlyCapUsed) + " of " + reportHours(delivery.monthlyCap) + " h used"}</dd></div>}
+        {delivery?.lifetimeCap !== undefined && <div><dt>Lifetime cap</dt><dd>{delivery.lifetimeCapUsed === undefined ? reportHours(delivery.lifetimeCap) + " h" :
+          reportHours(delivery.lifetimeCapUsed) + " of " + reportHours(delivery.lifetimeCap) + " h used"}</dd></div>}
         {descendantTotals && descendantTotals.descendants > 0 && <div><dt>Allocated including approved descendants</dt><dd>{reportHours(descendantTotals.monthly)} h monthly · {reportHours(descendantTotals.lifetime)} h lifetime</dd></div>}
       </dl>
       {team.length > 0 && <div className="exec-project-team">

@@ -4,11 +4,12 @@ import { ContextHelp } from "./ContextHelp";
 import { chartKinds, DotChart, DotField, dotScale, type ChartKind } from "./DotAnalytics";
 import { reportDay, reportHours, reportMonth, reportTimestamp } from "./dashboard-format";
 
-export function ExecutiveOverview({ report, onPresentation, onLink, onChart }: {
+export function ExecutiveOverview({ report, onPresentation, onLink, onChart, platform }: {
   report: ProjectReport;
   onPresentation: () => void;
   onLink: (view: string, month?: string) => void;
   onChart: (kind: ChartKind) => void;
+  platform?: boolean;
 }) {
   const { portfolio, projects } = report;
   const period = reportMonth(report.month);
@@ -21,12 +22,15 @@ export function ExecutiveOverview({ report, onPresentation, onLink, onChart }: {
   const change = lastMonth && report.totalSeconds - lastMonth.seconds;
   const ceiling = Math.max(1, report.totalSeconds, lastMonth?.seconds ?? 0);
   return <>
-    <section className="intel-hero" aria-labelledby="executive-title">
+    <section className={"intel-hero" + (platform ? " platform-client-hero" : "")} aria-labelledby="executive-title">
       <div className="intel-hero-copy">
         <span className="exec-kicker">{period}</span>
-        <h2 id="executive-title">Leadership<br />summary</h2>
+        <h2 id="executive-title">Leadership{platform ? " " : <br />}summary</h2>
         <p>{report.tenant.name}</p>
-        <button className="exec-hero-action" type="button" onClick={onPresentation}><Presentation size={18} aria-hidden="true" /> At a Glance</button>
+        <div className="platform-client-actions">
+          <button className="exec-hero-action" type="button" onClick={onPresentation}><Presentation size={18} aria-hidden="true" /> {platform ? "Open presentation" : "At a Glance"}</button>
+          {platform && <button className="exec-hero-action" type="button" onClick={() => onLink("engagements")}>Browse engagements <ArrowUpRight size={16} aria-hidden="true" /></button>}
+        </div>
       </div>
       <div className="intel-hero-delivery" aria-label="Published portfolio summary">
         <div className="intel-hero-label">Allocated hours · {period}<ContextHelp label="How are allocated hours calculated?">Only reporting allocations approved for the projects you can see contribute to this figure.</ContextHelp></div>
@@ -42,6 +46,10 @@ export function ExecutiveOverview({ report, onPresentation, onLink, onChart }: {
         </button>)}
       {report.sourceUpdatedAt && <p className="intel-freshness">Source updated <time dateTime={report.sourceUpdatedAt}>{reportTimestamp(report.sourceUpdatedAt)}</time></p>}
     </section>
+    {platform && (portfolio?.narrative || portfolio?.action) && <aside className="platform-client-update" aria-label="Published leadership update">
+      <div><h3>Leadership update</h3><p>{portfolio.narrative || portfolio.action}</p></div>
+      <button className="exec-text-button" type="button" onClick={() => onLink("notes")}>Read approved updates <ArrowUpRight size={16} aria-hidden="true" /></button>
+    </aside>}
     <section className="intel-analysis" aria-label="Delivery analysis">
       {chartKinds.map(kind => <DotChart key={kind} report={report} kind={kind} onLink={onLink} onOpen={() => onChart(kind)} />)}
     </section>

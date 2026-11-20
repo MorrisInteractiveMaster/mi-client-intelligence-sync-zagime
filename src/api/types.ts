@@ -1,4 +1,5 @@
 import type { Allocation, DeliveryProject } from "../reporting/model";
+import type { TimeGrouping, TimePeriod, TimeSortOrder, TimeWindow } from "../projects/time-history";
 export interface Workspace {
   corporateStaff?: true;
   role: "administrator" | "editor" | "client";
@@ -36,6 +37,7 @@ export interface StaffSource {
   workOrderName?: string;
   sourcePersonId?: string;
   consultantName?: string;
+  wordpressProfile?: { id: number; name: string; title?: string; photo?: string; alt?: string };
   annotations?: AllocationAnnotations;
   sourceRevision: string;
   allocationRevision: number;
@@ -53,6 +55,22 @@ export interface SourceFilters {
   from?: string;
   through?: string;
   status?: SourceStatus | "queue";
+  period?: TimePeriod;
+  start?: string;
+  end?: string;
+  order?: TimeSortOrder;
+  group?: TimeGrouping;
+  entry?: string;
+}
+export interface SourceHours {
+  recordedSeconds: number;
+  allocatedSeconds: number;
+  unallocatedSeconds: number;
+}
+export interface SourceHoursGroup extends SourceHours {
+  id: string | null;
+  label: string;
+  wordpressProfile?: StaffSource["wordpressProfile"];
 }
 export interface SourceSummary {
   monthTotal: number;
@@ -60,6 +78,12 @@ export interface SourceSummary {
   counts: Record<SourceStatus, number> & { total: number; remaining: number };
   workOrders: { id: string; label: string }[];
   consultants: { id: string; label: string }[];
+  period: TimeWindow;
+  hours: SourceHours & {
+    byConsultant: SourceHoursGroup[];
+    byWorkOrder: SourceHoursGroup[];
+    byPeriod: SourceHoursGroup[];
+  };
 }
 export function sourceStatus(source: Pick<StaffSource, "deleted" | "needsReview" | "conflict" | "unallocatedSeconds" | "seconds">): SourceStatus {
   if (source.deleted) return "deleted";

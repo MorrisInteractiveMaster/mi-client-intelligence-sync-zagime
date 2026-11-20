@@ -1,6 +1,8 @@
 export const MAX_DELIVERY_PROJECTS = 600;
 export const MAX_PROJECT_DEPTH = 24;
 export const engagementTypes = ["hourly", "fixed-fee", "training"] as const;
+export const deliveryKinds = ["engagement", "service-area", "project"] as const;
+export const deliveryKindNames = { engagement: "Parent engagement", "service-area": "Service area", project: "Delivery project" };
 export const milestoneStatuses = ["not-started", "in-progress", "blocked", "completed", "waived"] as const;
 export type MilestoneStatus = typeof milestoneStatuses[number];
 export interface Delivery {
@@ -8,10 +10,14 @@ export interface Delivery {
   areaId?: string;
   groupId?: string;
   workOrderIds?: string[];
-  kind: "engagement" | "project";
+  /** Older projects retain their historical structure until staff deliberately convert them. */
+  structure?: 2;
+  kind: typeof deliveryKinds[number];
   type: typeof engagementTypes[number];
   monthlyCap?: number;
   lifetimeCap?: number;
+  countAgainstParentCap?: boolean;
+  allowDirectAllocation?: boolean;
   manualCompletion?: number;
   start?: string;
   deadline?: string;
@@ -44,8 +50,11 @@ export function calendarDate(value: unknown): value is string {
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 }
 export function parseDelivery(input: unknown): Delivery {
-  const v = object(input, ["parentId", "areaId", "groupId", "kind", "type", "monthlyCap", "lifetimeCap", "manualCompletion", "start", "deadline", "publishSummary", "managerIds", "teamIds", "training", "workOrderIds"]);
-  if (v.kind !== "engagement" && v.kind !== "project") return invalid();
+  const v = object(input, ["parentId", "areaId", "groupId", "structure", "kind", "type", "monthlyCap", "lifetimeCap", "manualCompletion", "start", "deadline", "publishSummary", "managerIds", "teamIds", "training", "workOrderIds", "countAgainstParentCap", "allowDirectAllocation"]);
+  if (!deliveryKinds.some(kind => kind === v.kind) || (v.structure !== undefined && v.structure !== 2)) return invalid();
+  if (v.kind === "service-area" && v.structure !== 2) return invalid();
+  if ((v.countAgainstParentCap !== undefined && (v.kind !== "project" || typeof v.countAgainstParentCap !== "boolean")) ||
+      (v.allowDirectAllocation !== undefined && (v.kind !== "engagement" || typeof v.allowDirectAllocation !== "boolean"))) return invalid();
   if (!engagementTypes.some(type => type === v.type)) return invalid();
   const number = (value: unknown, limit: number) => {
     if (value === undefined) return;
@@ -67,12 +76,14 @@ export function parseDelivery(input: unknown): Delivery {
     training = { days, dates: [...t.dates].sort(), facilitatorIds: uniqueIds(t.facilitatorIds),
       ...compact("preparation", date(t.preparation)), ...compact("followUp", date(t.followUp)), ...compact("completion", date(t.completion)) };
   }
-  return { kind: v.kind, type: v.type as Delivery["type"], managerIds: uniqueIds(v.managerIds), teamIds: uniqueIds(v.teamIds),
+  return { kind: v.kind as Delivery["kind"], type: v.type as Delivery["type"], managerIds: uniqueIds(v.managerIds), teamIds: uniqueIds(v.teamIds),
+    ...compact("structure", v.structure),
     ...compact("parentId", optionalId(v.parentId)), ...compact("areaId", optionalId(v.areaId)), ...compact("groupId", optionalId(v.groupId)),
     ...compact("workOrderIds", workOrderIds),
     ...compact("monthlyCap", number(v.monthlyCap, 3_600_000_000)), ...compact("lifetimeCap", number(v.lifetimeCap, 3_600_000_000)),
     ...compact("manualCompletion", number(v.manualCompletion, 100)), ...compact("start", start), ...compact("deadline", deadline),
-    ...compact("publishSummary", v.publishSummary), ...compact("training", training) };
+    ...compact("publishSummary", v.publishSummary), ...compact("training", training),
+    ...compact("countAgainstParentCap", v.countAgainstParentCap), ...compact("allowDirectAllocation", v.allowDirectAllocation) };
 }
 
 export function checkHierarchy(nodes: Map<string, string | undefined>) {
@@ -85,6 +96,35 @@ export function checkHierarchy(nodes: Map<string, string | undefined>) {
       current = nodes.get(current);
     }
   }
+}
+
+/** Validate explicit new structures while continuing to read existing classifications and placements. */
+export function checkDeliveryStructure(nodes: Map<string, Delivery | undefined>) {
+  checkHierarchy(new Map([...nodes].map(([id, value]) => [id, value?.parentId])));
+  for (const node of nodes.values()) {
+    const parent = node?.parentId && nodes.get(node.parentId);
+    if (!node) continue;
+    if (node.structure !== 2) {
+      // An existing project may retain its legacy shape. It cannot make a strict delivery leaf a parent.
+      if (parent && parent.structure === 2 && parent.kind === "project") throw Error("Invalid project hierarchy");
+      let ancestor = parent || undefined;
+      for (let depth = 2; ancestor; depth++, ancestor = ancestor.parentId ? nodes.get(ancestor.parentId) : undefined) {
+        if (ancestor.structure === 2 && depth > 3) throw Error("Invalid project hierarchy");
+      }
+      continue;
+    }
+    if (node.kind === "engagement" && !node.parentId && !node.areaId) continue;
+    if (node.kind === "service-area" && node.areaId && parent && parent.kind === "engagement" && !parent.parentId) continue;
+    if (node.kind === "project" && parent && (
+      parent.kind === "engagement" && !parent.parentId && !node.areaId ||
+      parent.kind === "service-area" && parent.structure === 2 && parent.areaId === node.areaId
+    )) continue;
+    throw Error("Invalid project hierarchy");
+  }
+}
+
+export function canAllocateToDelivery(delivery?: Delivery) {
+  return delivery?.kind !== "service-area" && (delivery?.kind !== "engagement" || delivery.allowDirectAllocation !== false);
 }
 
 export type DeliveryMilestone = { completed: boolean; status?: MilestoneStatus; weight?: number; date: string };
@@ -124,6 +164,29 @@ export function rollup<T extends { id: string; seconds: number; lifetimeSeconds:
       total.lifetime += project.lifetimeSeconds;
       total.descendants++;
       parent = direct.get(parent)?.delivery?.parentId;
+    }
+  }
+  return totals;
+}
+
+/** Projects can opt out of their engagement's budget without changing effort or service-area totals. */
+export function capRollup<T extends { id: string; seconds: number; lifetimeSeconds: number; delivery?: Delivery }>(projects: T[]) {
+  const totals = rollup(projects);
+  const byId = new Map(projects.map(project => [project.id, project]));
+  for (const project of projects) {
+    if (project.delivery?.countAgainstParentCap !== false) continue;
+    const seen = new Set([project.id]);
+    let parentId = project.delivery.parentId;
+    while (parentId && !seen.has(parentId) && seen.size < MAX_PROJECT_DEPTH) {
+      const parent = byId.get(parentId);
+      if (!parent) break;
+      seen.add(parentId);
+      if (parent.delivery?.kind === "engagement") {
+        const total = totals.get(parentId)!;
+        total.monthly -= project.seconds;
+        total.lifetime -= project.lifetimeSeconds;
+      }
+      parentId = parent.delivery?.parentId;
     }
   }
   return totals;

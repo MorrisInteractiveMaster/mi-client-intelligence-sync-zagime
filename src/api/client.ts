@@ -90,7 +90,7 @@ export class SecuredApiClient {
     if (
       !/^[-a-zA-Z0-9_]{1,128}$/.test(tenant) ||
       (!/^(report|workspace|projects|sources|allocations|audits|time|portfolio)([/?].*)?$/.test(path) &&
-        !(this.workflow === "projects" && /^(client-preview(?:\/scopes|\?.*)?|directory\/wordpress-sync)$/.test(path)))
+        !(this.workflow === "projects" && /^(control|client-preview(?:\/scopes|\?.*)?|directory\/(?:wordpress-sync|employee-mappings(?:\?.*)?))$/.test(path)))
     )
       throw Error("Invalid reporting scope");
     const token = await this.token();
@@ -127,8 +127,14 @@ export class SecuredApiClient {
           ? "Morris WordPress is temporarily unavailable. Stored profiles and assignments are still available."
           : code === "source_month_too_large"
           ? "This month exceeds the supported size for exact search and counts."
+          : code === "source_period_too_large"
+          ? "This period contains too many entries for an exact summary. Choose a shorter date range."
           : code === "project_draft_pending"
           ? "Publish or discard the saved draft before unpublishing this project."
+          : code === "employee_profile_already_linked"
+          ? "That WordPress profile is already linked to another QuickBooks Time employee."
+          : code === "publication_approval_required"
+          ? "Your draft is available. Ask an authorized platform administrator to publish or unpublish it."
           : r.status === 401
           ? "Please sign in again."
           : r.status === 403

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { deliveryDefaults, engagementTypes, MAX_DELIVERY_PROJECTS, measureDelivery, rollup, type Delivery } from "../projects/delivery";
+import { capRollup, deliveryDefaults, deliveryKindNames, engagementTypes, MAX_DELIVERY_PROJECTS, measureDelivery, rollup, type Delivery } from "../projects/delivery";
 import { hoursToSeconds } from "../projects/duration";
 import type { Project, ProjectPage, StaffProjectSummary } from "../projects/model";
 import type { DirectoryEntry, Portfolio, ProjectPlacement } from "../projects/portfolio";
@@ -25,14 +25,20 @@ export async function projectCatalog(client: SecuredApiClient, tenant: string, m
   return projects;
 }
 
-function PeoplePicker({ name, label, people, defaults }: { name: string; label: string; people: DirectoryEntry[]; defaults: string[] }) {
+export function PeoplePicker({ name, label, people, defaults, onSelectionChange }: {
+  name: string; label: string; people: DirectoryEntry[]; defaults: string[]; onSelectionChange?: (ids: string[]) => void;
+}) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(defaults);
   const filtered = people.filter(p => selected.includes(p.id) || (p.active && (p.name + " " + (p.profile?.title || p.role)).toLowerCase().includes(search.trim().toLowerCase())));
   return <fieldset className="delivery-people"><legend>{label} · {selected.length} selected</legend>
     <label>Search {label.toLowerCase()}<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
     <div className="delivery-people-list">{filtered.map(person => <label key={person.id}>
-      <input type="checkbox" name={name} value={person.id} checked={selected.includes(person.id)} onChange={e => setSelected(before => e.target.checked ? [...before, person.id] : before.filter(id => id !== person.id))} />
+      <input type="checkbox" name={name} value={person.id} checked={selected.includes(person.id)} onChange={e => {
+        const next = e.target.checked ? [...selected, person.id] : selected.filter(id => id !== person.id);
+        setSelected(next);
+        onSelectionChange?.(next);
+      }} />
       <PersonPhoto name={person.name} photo={person.profile?.photo} alt={person.profile?.alt} /><span>{person.name}<small>{person.profile?.title || person.role}</small></span></label>)}</div>
     {!filtered.length && <p>No people match. Use Team Directory to add or sync profiles.</p>}
     {selected.filter(id => !people.some(p => p.id === id)).map(id => <input type="hidden" key={id} name={name} value={id} />)}
@@ -48,12 +54,20 @@ export function readDeliveryForm(form: FormData, original?: Project, placement?:
     return value === String(old === undefined ? "" : old / 3600) ? old : hoursToSeconds(value);
   };
   const type = get("deliveryType") as Delivery["type"];
+  const kind = get("deliveryKind") as Delivery["kind"];
+  const structured = form.get("structuredDelivery") === "on";
   const days = Number(get("trainingDays"));
   const trainingDates = get("trainingDates").split(/[\s,]+/).filter(Boolean);
   const hasTraining = type === "training" && (days > 0 || trainingDates.length > 0 || get("trainingPreparation") || get("trainingFollowUp") || get("trainingCompletion") || form.has("facilitatorIds"));
   return {
-    kind: get("deliveryKind") as Delivery["kind"], type,
-    parentId: optional("parentId"), areaId: optional("deliveryArea"), groupId: optional("deliveryGroup"),
+    kind, type,
+    ...(structured && { structure: 2 as const }),
+    parentId: optional("parentId"), areaId: optional("deliveryArea"),
+    groupId: original?.delivery?.groupId ?? placement?.engagementId,
+    ...(kind === "project" && (structured || original?.delivery?.countAgainstParentCap !== undefined)
+      && { countAgainstParentCap: get("countAgainstParentCap") !== "no" }),
+    ...(kind === "engagement" && (structured || original?.delivery?.allowDirectAllocation !== undefined)
+      && { allowDirectAllocation: get("allowDirectAllocation") !== "no" }),
     workOrderIds: form.has("workOrdersLoaded") ? form.getAll("deliveryWorkOrders").map(String) : original?.delivery?.workOrderIds,
     monthlyCap: cap("monthlyCap"), lifetimeCap: cap("lifetimeCap"),
     manualCompletion: get("progress") ? Number(get("progress")) : undefined,
@@ -75,22 +89,39 @@ export function DeliveryFields({ project, projects, portfolio, mappings }: {
     start: oldPlacement?.start, deadline: oldPlacement?.target, managerIds: oldPlacement?.leadId ? [oldPlacement.leadId] : [], teamIds: oldPlacement?.teamIds ?? [] };
   const [projectSearch, setProjectSearch] = useState("");
   const [type, setType] = useState(d.type);
+  const [kind, setKind] = useState(d.kind);
+  const [structured, setStructured] = useState(d.structure === 2);
   const [parent, setParent] = useState(d.parentId ?? "");
-  const list = projects.filter(p => p.id !== project?.id && (p.id === parent || p.name.toLowerCase().includes(projectSearch.trim().toLowerCase())));
+  const validParent = (p: StaffProjectSummary) => !structured || (p.delivery?.kind === "engagement" && !p.delivery.parentId ||
+    kind === "project" && p.delivery?.kind === "service-area" && p.delivery.structure === 2);
+  const list = projects.filter(p => p.id !== project?.id && (p.id === parent || validParent(p) && p.name.toLowerCase().includes(projectSearch.trim().toLowerCase())));
+  const assignedArea = projects.find(p => p.id === parent && p.delivery?.kind === "service-area")?.delivery?.areaId;
   const hourText = (value?: number) => value === undefined ? "" : String(value / 3600);
   return <div className="delivery-fields">
     <fieldset className="secure-editor-grid"><legend>Client and project hierarchy</legend>
-      <label>Project type<select name="deliveryKind" defaultValue={d.kind}><option value="project">Delivery project</option><option value="engagement">Parent engagement</option></select></label>
-      <label>Find parent projects<input type="search" value={projectSearch} onChange={e => setProjectSearch(e.target.value)} /></label>
-      <label>Parent project<select name="parentId" value={parent} onChange={e => setParent(e.target.value)}><option value="">Client root</option>
+      {d.structure === 2 ? <input name="structuredDelivery" type="hidden" value="on" /> :
+        <label className="secure-check secure-field-wide"><input name="structuredDelivery" type="checkbox" checked={structured} onChange={e => {
+          setStructured(e.target.checked);
+          if (!e.target.checked) {
+            setKind(d.kind);
+            setParent(d.parentId ?? "");
+          }
+        }} /> Use the three-level project structure</label>}
+      {!structured && <input name="parentId" type="hidden" value={d.parentId ?? ""} />}
+      <label>Project type<select name="deliveryKind" value={kind} onChange={e => {
+        setKind(e.target.value as Delivery["kind"]);
+        if (structured) setParent("");
+      }}>{Object.entries(deliveryKindNames).filter(([key]) => structured || key !== "service-area").map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
+      {structured && kind !== "engagement" && <><label>Find parent projects<input type="search" value={projectSearch} onChange={e => setProjectSearch(e.target.value)} /></label>
+      <label>Parent project<select name="parentId" required value={parent} onChange={e => setParent(e.target.value)}><option value="">Choose a location</option>
         {parent && !list.some(p => p.id === parent) && <option value={parent}>Current parent</option>}
-        {list.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+        {list.map(p => <option key={p.id} value={p.id}>{p.name}{p.delivery?.kind === "service-area" ? " · Service area" : ""}</option>)}</select></label></>}
+      {!structured && d.parentId && <p className="secure-field-wide">Current parent · {projects.find(p => p.id === d.parentId)?.name ?? "Existing relationship"}. Use the three-level structure to move this project.</p>}
     </fieldset>
-    <details className="delivery-details"><summary>Department, group and work orders</summary><div className="secure-editor-grid">
-      <label>Service area<select name="deliveryArea" defaultValue={d.areaId ?? ""}><option value="">Unclassified</option>
-        {!portfolio && d.areaId && <option value={d.areaId}>Current department</option>}{portfolio?.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-      <label>Reporting group<select name="deliveryGroup" defaultValue={d.groupId ?? ""}><option value="">None</option>
-        {!portfolio && d.groupId && <option value={d.groupId}>Current group</option>}{portfolio?.engagements.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</select></label>
+    <details className="delivery-details"><summary>Service area and work orders</summary><div className="secure-editor-grid">
+      {(!structured || kind === "service-area") && <label>Service area<select name="deliveryArea" required={structured} defaultValue={d.areaId ?? ""}><option value="">Unclassified</option>
+        {!portfolio && d.areaId && <option value={d.areaId}>Current department</option>}{portfolio?.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
+      {structured && kind === "project" && assignedArea && <input name="deliveryArea" value={assignedArea} type="hidden" />}
       {mappings && <fieldset className="secure-field-wide"><legend>Verified QuickBooks Time work orders</legend><input type="hidden" name="workOrdersLoaded" value="1" />
         <p>Linking a work order here leaves recorded time and historical allocations in place.</p>
         {mappings.map(m => <label className="secure-check" key={m.jobcodeId}><input type="checkbox" name="deliveryWorkOrders" value={m.jobcodeId} defaultChecked={d.workOrderIds?.includes(m.jobcodeId)} /> {m.sourceName ?? m.jobcodeId}</label>)}
@@ -101,6 +132,15 @@ export function DeliveryFields({ project, projects, portfolio, mappings }: {
       <label>Engagement type<select name="deliveryType" value={type} onChange={e => setType(e.target.value as Delivery["type"])}>{engagementTypes.map(t => <option value={t} key={t}>{t === "fixed-fee" ? "Fixed fee" : t === "training" ? "Training or workshop" : "Hourly"}</option>)}</select></label>
       <label>Monthly cap (hours)<input name="monthlyCap" inputMode="decimal" defaultValue={hourText(d.monthlyCap)} placeholder="No cap" /></label>
       <label>Lifetime cap (hours)<input name="lifetimeCap" inputMode="decimal" defaultValue={hourText(d.lifetimeCap)} placeholder="No cap" /></label>
+      {kind === "project" && (structured || d.countAgainstParentCap !== undefined) && <label>
+        Count toward the parent engagement’s cap
+        <select name="countAgainstParentCap" defaultValue={d.countAgainstParentCap === false ? "no" : "yes"}><option value="yes">Yes</option><option value="no">No</option></select>
+        <small>Allocated effort stays visible either way.</small>
+      </label>}
+      {kind === "engagement" && (structured || d.allowDirectAllocation !== undefined) && <label>
+        Allow allocation directly to this engagement
+        <select name="allowDirectAllocation" defaultValue={d.allowDirectAllocation === false ? "no" : "yes"}><option value="yes">Yes</option><option value="no">No</option></select>
+      </label>}
       <label>Start date<input name="deliveryStart" type="date" defaultValue={d.start} /></label>
       <label>Deadline<input name="deliveryDeadline" type="date" defaultValue={d.deadline} /></label>
       <label className="secure-check"><input name="publishSummary" type="checkbox" defaultChecked={d.publishSummary} /> Share caps, dates and delivery completion with authorized clients</label>
@@ -124,7 +164,8 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
   client: SecuredApiClient; tenant: string; portfolio?: Portfolio; revision: number; onSaved: () => void; onDenied: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<string>();
+  const selected = usePortalLocation().get("person");
+  const setSelected = (person: string | null) => portalNavigate({ person });
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -159,7 +200,7 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
         setNotice("Contact settings saved.");
       });
     }}>
-      <div className="delivery-section-heading"><h3>{person.name}</h3><button type="button" className="secure-secondary" onClick={() => setSelected(undefined)}>Close profile</button></div>
+      <div className="delivery-section-heading"><h3>{person.name}</h3><button type="button" className="secure-secondary" onClick={() => setSelected(null)}>Close profile</button></div>
       {person.profile?.url && <a href={person.profile.url} rel="noreferrer">Public Morris profile</a>}
       <div className="secure-editor-grid">
         <label>Email<input name="email" type="email" defaultValue={person.email} maxLength={255} /></label>
@@ -174,33 +215,34 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
   </section>;
 }
 
-export function DeliveryPreview({ client, tenant, month }: { client: SecuredApiClient; tenant: string; month: string }) {
+export function DeliveryPreview({ client, tenant, month, standalone = false }: { client: SecuredApiClient; tenant: string; month: string; standalone?: boolean }) {
   const [profiles, setProfiles] = useState<{id: string; label: string}[]>();
-  const [scope, setScope] = useState("");
   const location = usePortalLocation();
+  const requestedScope = location.get("previewScope");
+  const scope = requestedScope && profiles?.some(profile => profile.id === requestedScope) ? requestedScope : profiles?.length === 1 ? profiles[0].id : "";
   const mode = location.get("previewMode") === "draft" ? "draft" : "published";
   const previewProject = location.get("previewProject");
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     client.call<{id: string; label: string}[]>(tenant, "client-preview/scopes", { signal: controller.signal }).then(value => {
-      if (!controller.signal.aborted) { setProfiles(value); if (value.length === 1) setScope(value[0].id); }
+      if (!controller.signal.aborted) setProfiles(value);
     }).catch(() => { if (!controller.signal.aborted) setError("Client access profiles are temporarily unavailable."); });
     return () => controller.abort();
   }, [client, tenant]);
   const entitled = mode === "draft" || Boolean(scope);
   return <section aria-label="Preview as client">
     <div className="delivery-section-heading"><div><h3>Preview as client</h3><p>Published preview follows the selected client access profile. Draft preview includes saved changes and private projects.</p></div>
-      <button type="button" className="secure-secondary" onClick={() => portalNavigate({
+      {!standalone && <button type="button" className="secure-secondary" onClick={() => portalNavigate({
         staff: previewProject ? "projects" : "overview", editor: previewProject, previewProject: null, previewMode: null,
         view: null, q: null, status: null, present: null, chart: null,
-      })}>{previewProject ? "Back to project" : "Back to overview"}</button></div>
+      })}>{previewProject ? "Back to project" : "Back to overview"}</button>}</div>
     <div className="delivery-filters">
       <label>Preview mode<select value={mode} onChange={e => { setError(""); portalNavigate({
         previewMode: e.target.value === "draft" ? "draft" : null,
-        view: previewProject ? "project:" + previewProject : null, q: null, present: null, chart: null,
+        view: previewProject ? "project:" + previewProject : location.get("view"), q: null, present: null, chart: null,
       }, true); }}><option value="published">Live published view</option><option value="draft">Staff-only draft preview</option></select></label>
-      {mode === "published" && <label>Client access profile<select value={scope} onChange={e => { setScope(e.target.value); setError(""); }}><option value="">Select an approved profile</option>{profiles?.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>}
+      {mode === "published" && <label>Client access profile<select value={scope} onChange={e => { portalNavigate({ previewScope: e.target.value || null }); setError(""); }}><option value="">Select an approved profile</option>{profiles?.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>}
     </div>
     {error && <p role="alert">{error}</p>}
     {entitled && <div className="delivery-preview-frame"><p className="delivery-watermark">{mode === "draft" ? "DRAFT PREVIEW · MORRIS STAFF ONLY" : "LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW"}</p>
@@ -218,6 +260,7 @@ export function DeliveryHealth({ projects, portfolio, healthOnly = false, onOpen
   const [group, setGroup] = useState("");
   const index = new Map(projects.map(p => [p.id, p]));
   const totals = rollup(projects);
+  const caps = capRollup(projects);
   const asOf = today();
   const descendants = new Map<string, StaffProjectSummary[]>();
   for (const project of projects) {
@@ -272,23 +315,27 @@ export function DeliveryHealth({ projects, portfolio, healthOnly = false, onOpen
       <th scope="col">Project / parent</th><th scope="col">Department / type</th><th scope="col">Managers</th><th scope="col">Allocated effort</th><th scope="col">Remaining cap</th><th scope="col">Completion and health</th><th scope="col">Publication</th>
     </tr></thead><tbody>{rows.map(({ p, trail, area }) => {
       const sum = totals.get(p.id)!;
-      const result = measureDelivery({ ...p, milestones: p.deliveryMilestones ?? p.milestones }, sum, asOf);
+      const cap = caps.get(p.id)!;
+      const result = measureDelivery({ ...p, milestones: p.deliveryMilestones ?? p.milestones }, cap, asOf);
       const managers = p.delivery?.managerIds ?? (placements.get(p.id)?.leadId ? [placements.get(p.id)!.leadId] : []);
       const branch = descendants.get(p.id) ?? [];
-      const active = branch.filter(child => child.status === "active").length;
-      const completed = branch.filter(child => child.status === "completed").length;
+      const projectsBelow = branch.filter(child => child.delivery?.kind !== "service-area");
+      const active = projectsBelow.filter(child => child.status === "active").length;
+      const completed = projectsBelow.filter(child => child.status === "completed").length;
       const departments = new Set(branch.map(child => child.delivery?.areaId ?? placements.get(child.id)?.areaId).filter(Boolean)).size;
       const upcoming = branch.flatMap(child => [child.delivery?.deadline, ...(child.deliveryMilestones ?? [])
         .filter(m => !m.completed && m.status !== "waived").map(m => m.date)]).filter((date): date is string => Boolean(date && date >= asOf)).sort()[0];
       return <tr key={p.id}><th scope="row"><button type="button" className="exec-text-button" style={{ marginInlineStart: layout === "tree" ? Math.min(trail.length, 5) * 12 : 0 }} onClick={() => onOpen(p.id)}>{p.name}</button>
-        <small>{trail.length ? trail.join(" / ") : "Client root"}{sum.descendants ? " · " + sum.descendants + " descendant projects" : ""}</small>
+        <small>{trail.length ? trail.join(" / ") : "Client root"}{projectsBelow.length ? " · " + projectsBelow.length + (projectsBelow.length === 1 ? " descendant project" : " descendant projects") : ""}</small>
         {!!branch.length && <small>{departments} {departments === 1 ? "department" : "departments"} · {active} active · {completed} completed</small>}</th>
-        <td>{portfolio?.areas.find(a => a.id === area)?.name ?? "Unclassified"}<small>{p.delivery?.type ?? "Engagement type not configured"}</small></td>
+        <td>{portfolio?.areas.find(a => a.id === area)?.name ?? "Unclassified"}<small>{p.delivery?.kind ? deliveryKindNames[p.delivery.kind] : "Legacy project"} · {p.delivery?.type ?? "Engagement type not configured"}</small></td>
         <td>{managers.map(id => people.get(id)).filter(Boolean).join(", ") || "Unassigned"}</td>
         <td>{reportHours(sum.monthly)} h monthly<small>{reportHours(sum.lifetime)} h lifetime</small></td>
         <td>{result.monthlyRemaining === undefined ? "No monthly cap" : reportHours(result.monthlyRemaining) + " h monthly"}
-          <small>{result.lifetimeRemaining === undefined ? "No lifetime cap" : reportHours(result.lifetimeRemaining) + " h lifetime"}</small></td>
-        <td>{result.completion === undefined ? "Not configured" : result.completion + "% complete"}<small>{result.health}{result.upcoming ? " · " + reportDay(result.upcoming) : ""}</small>
+          <small>{result.lifetimeRemaining === undefined ? "No lifetime cap" : reportHours(result.lifetimeRemaining) + " h lifetime"}</small>
+          {p.delivery?.monthlyCap !== undefined && <small>{reportHours(cap.monthly)} of {reportHours(p.delivery.monthlyCap)} h used monthly</small>}
+          {p.delivery?.lifetimeCap !== undefined && <small>{reportHours(cap.lifetime)} of {reportHours(p.delivery.lifetimeCap)} h used lifetime</small>}</td>
+        <td>{result.completion === undefined ? "Progress not configured" : result.completion + "% complete"}<small>{result.health}{result.upcoming ? " · " + reportDay(result.upcoming) : ""}</small>
           {upcoming && <small>Next child deadline {reportDay(upcoming)}</small>}</td>
         <td>{p.published ? "Published" : "Private draft"}<small>{projectStatus[p.status]}</small></td></tr>;
     })}</tbody></table></div>}
@@ -303,8 +350,10 @@ export function DeliveryMilestones({ client, tenant, projects, onSaved, onOpen }
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [completed, setCompleted] = useState<Set<string>>(new Set());
+  const selected = usePortalLocation().get("milestone");
   const milestones = projects.flatMap(p => (p.deliveryMilestones ?? []).map(m => ({ p, m, key: p.id + ":" + m.id })))
-    .filter(({ m, key }) => filter === "all" || (!m.completed && m.status !== "waived" && !completed.has(key)))
+    .filter(({ p, m, key }) => selected ? selected === key || selected === p.id :
+      filter === "all" || (!m.completed && m.status !== "waived" && !completed.has(key)))
     .sort((a, b) => (a.m.date || "9999").localeCompare(b.m.date || "9999"));
   async function complete(projectId: string, milestoneId: string) {
     const key = projectId + ":" + milestoneId;
@@ -327,11 +376,13 @@ export function DeliveryMilestones({ client, tenant, projects, onSaved, onOpen }
   }
   return <section aria-label="Delivery milestones">
     <div className="delivery-section-heading"><div><h3>Delivery milestones</h3><p>Review due dates and close completed work.</p></div>
-      <label>Show<select value={filter} onChange={e => setFilter(e.target.value)}><option value="open">Open milestones</option><option value="all">All milestones</option></select></label></div>
+      {selected ? <button type="button" className="secure-secondary" onClick={() => portalNavigate({ milestone: null })}>Back to all milestones</button> :
+        <label>Show<select value={filter} onChange={e => setFilter(e.target.value)}><option value="open">Open milestones</option><option value="all">All milestones</option></select></label>}</div>
     {message && <p role="status">{message}</p>}{error && <p role="alert">{error}</p>}
     {!milestones.length && <p className="secure-empty">No milestones match. Add milestones from a project’s editor.</p>}
     <ul className="delivery-milestones">{milestones.map(({ p, m, key }) => <li key={key}>
-      <div><b>{m.title}</b><small>{p.name} · {reportDay(m.date)} · {m.completed || completed.has(key) ? "Completed" : m.status?.replaceAll("-", " ") ?? "Not started"}</small></div>
+      <div><button type="button" className="exec-text-button" onClick={() => portalNavigate({ milestone: key })}>{m.title}</button>
+        <small>{p.name} · {m.date ? reportDay(m.date) : "No due date"} · {m.completed || completed.has(key) ? "Completed" : m.status?.replaceAll("-", " ") ?? "Not started"}</small></div>
       <button type="button" className="exec-text-button" onClick={() => onOpen(p.id)}>Open project</button>
       {!m.completed && m.status !== "waived" && !completed.has(key) && <button type="button" className="secure-secondary" disabled={Boolean(saving)} onClick={() => void complete(p.id, m.id)}>Mark complete</button>}
     </li>)}</ul>

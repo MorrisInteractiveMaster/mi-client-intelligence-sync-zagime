@@ -109,14 +109,19 @@ export interface ProjectWorkspace {
   revision: number;
   tenant: { id: string; name: string };
   integrations?: { accounting: "disabled"; time: "disabled" };
+  platformAdmin?: true;
 }
 export interface ProjectReport {
   month: string;
   tenant: { id: string; name: string };
   totalSeconds: number;
   sourceUpdatedAt?: string;
+  presentationTitle?: string;
   portfolio?: PublishedPortfolio;
-  hierarchy?: Record<string, { parentId?: string; type?: Delivery["type"]; completion?: number; start?: string; deadline?: string; monthlyCap?: number; lifetimeCap?: number; managerIds?: string[] }>;
+  hierarchy?: Record<string, {
+    parentId?: string; kind?: Delivery["kind"]; type?: Delivery["type"]; completion?: number; start?: string; deadline?: string;
+    monthlyCap?: number; lifetimeCap?: number; monthlyCapUsed?: number; lifetimeCapUsed?: number; managerIds?: string[];
+  }>;
   projects: (Omit<
     ProjectView,
     "published" | "tenantId" | "updates" | "milestones"

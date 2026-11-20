@@ -138,6 +138,9 @@ async function observe(context, page) {
           path: "/?utm_source=chatgpt.com#/secure",
           heading: "Morris protected workspace",
         },
+        { path: "/workspace/projects/new", heading: "Sign in to your workspace", protected: true },
+        { path: "/control/branding", heading: "Sign in to your workspace", protected: true },
+        { path: "/clients/zagime/present?chapter=3&month=2026-11", heading: "Sign in to your workspace", protected: true },
       ];
   for (const width of broken ? [1440] : [1440, 390]) {
     for (const [i, item] of cases.entries()) {
@@ -168,7 +171,7 @@ async function observe(context, page) {
             name: new RegExp(item.heading.replace(/\./g, "\\.")),
           });
           await heading.waitFor({ state: "visible", timeout: 10000 });
-          if (item.path.includes("secure")) {
+          if (item.path.includes("secure") || item.protected) {
             await page
               .getByRole("button", {
                 name: "Sign in with Microsoft",

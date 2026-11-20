@@ -54,6 +54,64 @@ const uniqueJobs = (sources: Source[]) => [...new Set(sources.map(source => sour
 const liveSources = (scanned: QueryDocumentSnapshot[], account: string) =>
   scanned.flatMap(doc => selectSource(doc, account) ?? []);
 
+export async function inventoryTimeDetails(scope: Scope, after?: string) {
+  const { root, account, catalog } = scope;
+  const context = key(root.id, account, catalog, "details-inventory");
+  let query = root.collection("rawTime").where("schemaVersion", "==", 2)
+    .orderBy("record.date").orderBy(FieldPath.documentId());
+  if (after) {
+    try {
+      if (after.length > 400 || !/^[a-zA-Z0-9_-]+$/.test(after)) throw invalidCursor();
+      const cursor = JSON.parse(Buffer.from(after, "base64url").toString());
+      if (cursor.context !== context || typeof cursor.id !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(cursor.id)) throw invalidCursor();
+      query = query.startAfter(workDate(cursor.date), cursor.id);
+    } catch { throw invalidCursor(); }
+  }
+  return root.firestore.runTransaction(async tx => {
+    await timeTenantRevision(tx, root);
+    if ((await tx.get(timeRun(root, catalog))).data()?.customerBound !== true) throw Error("Time customer setup required");
+    const result = await tx.get(query.limit(scanLimit + 1));
+    const scanned = result.docs.slice(0, scanLimit);
+    const sources = liveSources(scanned, account);
+    const jobs = uniqueJobs(sources);
+    const refs = jobs.map(job => timeMapping(root, account, job));
+    const mappings = refs.length ? await tx.getAll(...refs) : [];
+    const byJob = new Map(jobs.map((job, index) => [job, mappings[index].data() as TimeMappingRecord | undefined]));
+    const active = sources.filter(source => !source.deleted && mapped(byJob.get(source.jobcode), scope, source));
+    const details = active.length ? await tx.getAll(...active.map(source => timeDetailsRef(source.ref, source.sourceRevision))) : [];
+    const bySource = new Map(active.map((source, index) => [
+      source.id, readTimeDetails(details[index].data(), source.sourceRevision, source.sourceModifiedAt),
+    ]));
+    const months = new Map<string, {
+      month: string; recordedSeconds: number; active: number; deleted: number; outsideCurrentMapping: number;
+      missingCurrentDetails: number; missingConsultantId: number; missingConsultantName: number; missingOriginalNotes: number;
+    }>();
+    for (const source of sources) {
+      const month = source.date.slice(0, 7);
+      const counts = months.get(month) ?? {
+        month, recordedSeconds: 0, active: 0, deleted: 0, outsideCurrentMapping: 0,
+        missingCurrentDetails: 0, missingConsultantId: 0, missingConsultantName: 0, missingOriginalNotes: 0,
+      };
+      months.set(month, counts);
+      if (source.deleted) { counts.deleted++; continue; }
+      counts.recordedSeconds += source.seconds;
+      counts.active++;
+      if (!bySource.has(source.id)) { counts.outsideCurrentMapping++; continue; }
+      const saved = bySource.get(source.id);
+      if (!saved || (!saved.personId && !saved.notes)) counts.missingCurrentDetails++;
+      if (!saved?.personId) counts.missingConsultantId++;
+      if (!saved?.consultantName) counts.missingConsultantName++;
+      if (!saved?.notes) counts.missingOriginalNotes++;
+    }
+    const last = scanned.at(-1);
+    const nextCursor = result.size > scanLimit && last
+      ? Buffer.from(JSON.stringify({ context, date: last.get("record.date"), id: last.id })).toString("base64url")
+      : undefined;
+    return { scanned: scanned.length, outsideAccount: scanned.length - sources.length, months: [...months.values()],
+      ...(nextCursor ? { nextCursor } : {}) };
+  }, { readOnly: true });
+}
+
 export async function enrichTimeDetails(scope: Scope, client: TimeClient, jobsByDescendants: ReadonlyMap<string, ReadonlySet<string>>, options: Options,
   signal: AbortSignal, now: () => number) {
   const { root, account, catalog } = scope;

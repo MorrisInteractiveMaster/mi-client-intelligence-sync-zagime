@@ -106,6 +106,12 @@ test("Time detail enrichment preserves the named database ledger, even for corre
       batch.set(historicalVersion(id), value);
     }
     await batch.commit();
+    const inventory = await sync.inventoryDetails(tenant);
+    assert.deepEqual(inventory, { scanned: 6, outsideAccount: 0, months: [{ month, recordedSeconds: 18000, active: 5,
+      deleted: 1, outsideCurrentMapping: 1, missingCurrentDetails: 4, missingConsultantId: 4,
+      missingConsultantName: 4, missingOriginalNotes: 4 }] });
+    assert.deepEqual(requested, []);
+    await assert.rejects(sync.inventoryDetails(tenant, "invalid"), /Invalid Time details cursor/);
 
     const dryRun = await sync.enrichDetails(tenant, { month });
     assert.deepEqual(dryRun, { month, applied: false, scanned: 6, deleted: 1, outsideScope: 1, eligible: 4, unchanged: 0, unavailable: 1, notCurrent: 2, conflicts: 0, wouldWrite: 1, written: 0 });
@@ -119,6 +125,10 @@ test("Time detail enrichment preserves the named database ledger, even for corre
     assert.equal(saved?.observedAt, checkedAt);
     assert.equal(saved?.retrievedVia, "exact-id-lookup");
     assert.equal(saved?.email, undefined);
+    const afterInventory = (await sync.inventoryDetails(tenant)).months[0];
+    assert.equal(afterInventory.recordedSeconds, inventory.months[0].recordedSeconds);
+    assert.equal(afterInventory.missingCurrentDetails, inventory.months[0].missingCurrentDetails - 1);
+    assert.equal(afterInventory.missingConsultantName, inventory.months[0].missingConsultantName - 1);
     const after = await sync.enrichDetails(tenant, { month, apply: true });
     assert.equal(after.unchanged, 1);
     assert.equal(after.written, 0);

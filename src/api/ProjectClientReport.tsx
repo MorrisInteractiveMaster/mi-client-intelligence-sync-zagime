@@ -12,7 +12,7 @@ import { ArrowUpRight, CalendarDays, ChartNoAxesColumnIncreasing, ChevronLeft, C
 import { ProjectReportingCard } from "./ProjectReportingCard";
 import { ExecutiveOverview } from "./ExecutiveOverview";
 import { chartKinds, DotChart, DotChartDialog, DotField, dotScale, type ChartKind } from "./DotAnalytics";
-import { closePortalOverlay, portalNavigate, usePortalLocation } from "./portal-location";
+import { closePortalOverlay, portalNavigate, usePlatformRoute, usePortalLocation } from "./portal-location";
 import { PersonPhoto } from "./PersonPhoto";
 import { deliveryDefaults, rollup } from "../projects/delivery";
 import "./executive.css";
@@ -46,6 +46,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   }>();
   const [epoch, setEpoch] = useState(0);
   const location = usePortalLocation();
+  const nativeClient = usePlatformRoute()?.kind === "client";
   const view = location.get("view") || "overview";
   const search = location.get("q")?.slice(0, 120) || "";
   const status = location.get("status") || "all";
@@ -108,20 +109,21 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   const report = current?.report;
   const [kind, id, itemId] = view.split(":");
   const area = kind === "area" ? report?.portfolio?.areas.find(a => a.id === id) : undefined;
-  const engagement = kind === "group" ? report?.portfolio?.engagements.find(group => group.id === id) : undefined;
+  const engagementProject = kind === "group" && report?.hierarchy?.[id]?.kind === "engagement" ? report.projects.find(p => p.id === id) : undefined;
+  const engagement = kind === "group" ? engagementProject ?? report?.portfolio?.engagements.find(group => group.id === id) : undefined;
   const project = ["project", "timeline", "milestone"].includes(kind) ? report?.projects.find(p => p.id === id) : undefined;
   const contact = kind === "contact" ? report?.portfolio?.directory.find(p => p.id === id) : undefined;
   const milestone = kind === "milestone" ? project?.milestones?.find(m => m.id === itemId) : undefined;
   const labels: Record<string, string> = { overview: "Leadership summary", projects: "Projects", directory: "MI Directory",
-    history: "Reporting history", milestones: "Milestones", notes: "Executive notes" };
+    history: "Reporting history", milestones: "Milestones", notes: "Executive notes", engagements: "Engagements", areas: "Service Areas" };
   const standardTitle = Object.hasOwn(labels, view) ? labels[view] : undefined;
   const title = area?.name ?? engagement?.name ?? contact?.name ?? milestone?.title ?? (project && kind === "timeline" ? "Project timeline" : project?.name) ?? standardTitle ?? "Report unavailable";
   useEffect(() => {
     if (!report) return;
     const previous = document.title;
-    document.title = title + " · Client Intelligence";
+    document.title = (presenting ? "Presentation · " : "") + title + " · Client Intelligence";
     return () => { document.title = previous; };
-  }, [report, title]);
+  }, [report, title, presenting]);
   if (current && !current.report)
     return (
       <section className="secure-empty">
@@ -157,8 +159,20 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   const children = project ? visible.filter(p => hierarchy[p.id]?.parentId === project.id) : [];
   const selectedArea = area;
   const placements = new Map(portfolio?.placements.map(p => [p.id, p]));
+  const isWithin = (projectId: string, root: string) => {
+    let next: string | undefined = projectId;
+    const visited = new Set<string>();
+    while (next && !visited.has(next) && visited.size < 24) {
+      if (next === root) return true;
+      visited.add(next); next = hierarchy[next]?.parentId;
+    }
+    return false;
+  };
+  const parentEngagements = visible.filter(p => hierarchy[p.id]?.kind === "engagement");
+  const approvedGroups = portfolio?.engagements ?? [];
   const scoped = selectedArea ? visible.filter(p => placements.get(p.id)?.areaId === selectedArea.id)
-    : engagement ? visible.filter(p => placements.get(p.id)?.engagementId === engagement.id) : visible;
+    : engagementProject ? visible.filter(p => isWithin(p.id, engagementProject.id))
+      : engagement ? visible.filter(p => placements.get(p.id)?.engagementId === engagement.id) : visible;
   const displayStatus = (project: ProjectReport["projects"][number]) => placements.get(project.id)?.archived ? "archived" : project.status;
   const matching = scoped.filter(project => searchText(project.name).includes(searchText(search)) && (status === "all" || displayStatus(project) === status));
   const groupName = (id: string) => portfolio?.engagements.find(e => e.id === id)?.name ?? "Independent delivery projects";
@@ -192,15 +206,20 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
         </div>
         <nav aria-label="Client workspace" id="client-portal-nav">
           <button type="button" aria-label="Leadership summary" aria-current={view === "overview" ? "page" : undefined} onClick={() => choose("overview")}><LayoutGrid size={18} /><span>Leadership summary</span></button>
+          {nativeClient && <>
+            <button type="button" aria-current={view === "engagements" ? "page" : undefined} onClick={() => choose("engagements")}><FolderKanban size={18} aria-hidden="true" />Engagements</button>
+            <button type="button" aria-current={view === "areas" ? "page" : undefined} onClick={() => choose("areas")}><span className="exec-nav-dot" aria-hidden="true" />Service Areas</button>
+          </>}
           <button type="button" aria-label="Projects" aria-current={view === "projects" ? "page" : undefined} onClick={() => choose("projects")}><FolderKanban size={18} /><span>Projects</span></button>
           <button type="button" aria-label="Reporting history" aria-current={view === "history" ? "page" : undefined} onClick={() => choose("history")}><ChartNoAxesColumnIncreasing size={18} /><span>Reporting history</span></button>
           <button type="button" aria-label="Milestones" aria-current={view === "milestones" ? "page" : undefined} onClick={() => choose("milestones")}><CalendarDays size={18} /><span>Milestones</span></button>
           {portfolio?.areas.map(area => <button type="button" key={area.id} aria-label={area.name} aria-current={view === "area:" + area.id ? "page" : undefined} onClick={() => choose("area:" + area.id)}><span className="exec-nav-dot" aria-hidden="true" /><span>{area.name}</span></button>)}
           <button type="button" aria-label="MI Directory" aria-current={view === "directory" ? "page" : undefined} onClick={() => choose("directory")}><UsersRound size={18} /><span>MI Directory</span></button>
+          {nativeClient && <button type="button" aria-current={presenting ? "page" : undefined} onClick={() => openOverlay("present", "1")}><PresentationIcon size={18} aria-hidden="true" />Presentation</button>}
         </nav>
       </aside>
       <div className="exec-content" tabIndex={-1} ref={page}>
-        {view === "overview" && <ExecutiveOverview report={report} onLink={choose} onChart={type => openOverlay("chart", type)}
+        {view === "overview" && <ExecutiveOverview report={report} platform={nativeClient} onLink={choose} onChart={type => openOverlay("chart", type)}
           onPresentation={() => openOverlay("present", "1")} />}
         {view !== "overview" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
           <button type="button" className="exec-text-button" onClick={() => choose("overview")}><ChevronLeft size={16} /> Leadership summary</button>
@@ -223,6 +242,26 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
           <summary>Project hierarchy</summary><ul className="delivery-client-tree">{visible.filter(p => hierarchy[p.id]?.parentId).map(p =>
             <li key={p.id}>{projectLookup.get(hierarchy[p.id].parentId!)?.name} <span aria-hidden="true">›</span> <button className="exec-text-button" type="button" onClick={() => choose("project:" + p.id)}>{p.name}</button></li>)}</ul>
         </details>}
+        {(view === "engagements" || view === "areas") && <section className="platform-report-directory" aria-label={title}>
+          {view === "engagements" && <>
+            {parentEngagements.map(engagement => <button type="button" key={engagement.id} className="platform-report-link" onClick={() => choose("group:" + engagement.id)}>
+              <b>{engagement.name}</b><span>{visible.filter(p => isWithin(p.id, engagement.id)).length} published projects and engagements</span>
+              <ArrowUpRight aria-hidden="true" size={18} />
+            </button>)}
+            {approvedGroups.filter(group => !parentEngagements.some(project => project.id === group.id)).map(group =>
+              <button type="button" key={group.id} className="platform-report-link" onClick={() => choose("group:" + group.id)}>
+                <b>{group.name}</b><span>Published engagement</span><ArrowUpRight aria-hidden="true" size={18} />
+              </button>)}
+            {!parentEngagements.length && !approvedGroups.length && <p>No engagements have been published for this period.</p>}
+          </>}
+          {view === "areas" && <>
+            {portfolio?.areas.map(group => <button type="button" key={group.id} className="platform-report-link" onClick={() => choose("area:" + group.id)}>
+              <b>{group.name}</b><span>{visible.filter(project => placements.get(project.id)?.areaId === group.id).length} published projects</span>
+              <ArrowUpRight aria-hidden="true" size={18} />
+            </button>)}
+            {!portfolio?.areas.length && <p>No service areas have visible projects for this period.</p>}
+          </>}
+        </section>}
         {unavailable && <p className="intel-empty" role="status">This link is unavailable for your approved report.</p>}
         {isPortfolio && (
       <section aria-labelledby="published-projects">
@@ -330,7 +369,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
       {chart && !presenting && !unavailable && <DotChartDialog report={contextScoped ? presentReport : report} kind={chart}
         onLink={choose} onClose={() => closePortalOverlay("chart")} />}
       {presenting && !unavailable && <Suspense fallback={<p role="status">Opening presentation…</p>}>
-        <Presentation report={presentReport} scope={view} scopeTitle={title} onLink={choose} onClose={() => closePortalOverlay("present")} draft={preview?.mode === "draft"} />
+        <Presentation report={presentReport} scope={view} scopeTitle={title} onLink={choose} onClose={() => closePortalOverlay("present")}
+          draft={preview?.mode === "draft"} linked={nativeClient} />
       </Suspense>}
     </div>
   );

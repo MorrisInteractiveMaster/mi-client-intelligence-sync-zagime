@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Maximize, Pause, Play, RotateCcw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize, Pause, Play, Printer, RotateCcw, X } from "lucide-react";
 import type { ProjectReport } from "../projects/model";
 import { areaHours } from "../projects/portfolio";
 import { brandAsset } from "../config/branding";
 import { reportHours, reportMonth } from "./dashboard-format";
 import { chartRows, dotScale, DotField } from "./DotAnalytics";
+import { portalNavigate, usePortalLocation } from "./portal-location";
+import { PresentationContent, publishedChapters } from "./PresentationChapters";
 
 const dotCount = 84;
 function dotPosition(index: number, chapter: number) {
@@ -19,12 +21,15 @@ function dotPosition(index: number, chapter: number) {
   return { left: (6 + column * 8) + "%", top: (14 + row * 12 + offset) + "%" };
 }
 
-export default function ExecutivePresentation({ report, onClose, scope = "overview", scopeTitle, onLink, draft }: {
-  report: ProjectReport; onClose: () => void; scope?: string; scopeTitle?: string; onLink?: (view: string) => void; draft?: boolean;
+export default function ExecutivePresentation({ report, onClose, scope = "overview", scopeTitle, onLink, draft, linked }: {
+  report: ProjectReport; onClose: () => void; scope?: string; scopeTitle?: string;
+  onLink?: (view: string, month?: string) => void; draft?: boolean; linked?: boolean;
 }) {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [fullscreenError, setFullscreenError] = useState(false);
+  const location = usePortalLocation();
+  const requestedChapter = Number(location.get("chapter") ?? "1") - 1;
   const dialog = useRef<HTMLDialogElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -64,8 +69,11 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
     { label: "Team", title: "Project team", value: "",
       rows: (report.portfolio?.directory ?? []).filter(person => person.projectIds.some(id => projects.some(p => p.id === id))).map(person => person.name + " · " + person.role) },
   ];
-  const end = scenes.length - 1;
-  const scene = scenes[Math.min(index, end)];
+  const chapters = linked ? publishedChapters(report) : undefined;
+  const end = (chapters?.length ?? scenes.length) - 1;
+  const current = linked && Number.isSafeInteger(requestedChapter) ? Math.min(end, Math.max(0, requestedChapter)) : Math.min(index, end);
+  const scene = scenes[Math.min(current, scenes.length - 1)];
+  const chapter = chapters?.[current];
   const groups = areaHours(projects, report.portfolio).filter(row => row.seconds > 0);
   const markers = groups.map((row, i) => groups.slice(0, i + 1).reduce((sum, value) => sum + value.seconds, 0) / Math.max(1, report.totalSeconds));
   useEffect(() => {
@@ -84,59 +92,77 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
   useEffect(() => {
     if (!playing) return;
     const timer = window.setTimeout(() => {
-      if (index < end) setIndex(index + 1);
+      if (current < end) go(current + 1);
       else setPlaying(false);
     }, 7000);
     return () => window.clearTimeout(timer);
-  }, [playing, index, end]);
-  function go(next: number) { setIndex(Math.min(end, Math.max(0, next))); }
-  return <dialog ref={dialog} className="exec-presentation" aria-labelledby="presentation-title"
+  }, [playing, current, end, linked]);
+  function go(next: number) {
+    const target = Math.min(end, Math.max(0, next));
+    if (linked) portalNavigate({ chapter: String(target + 1) }, true);
+    else setIndex(target);
+  }
+  return <dialog ref={dialog} className={"exec-presentation" + (linked ? " platform-presentation" : "")} aria-labelledby="presentation-title"
     onCancel={event => { event.preventDefault(); closeRef.current(); }}
     onKeyDown={event => {
       if (event.target instanceof HTMLSelectElement) return;
       if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-        event.preventDefault(); go(index + (event.key === "ArrowRight" ? 1 : -1));
+        event.preventDefault(); go(current + (event.key === "ArrowRight" ? 1 : -1));
       }
     }}>
-    <div className="exec-presentation-stage intel-presentation-stage" data-chapter={index} ref={stage}>
+    <div className="exec-presentation-stage intel-presentation-stage" data-chapter={current} ref={stage}>
     <header className="exec-presentation-top">
       <img src={brandAsset("branding/zagime/zagime-main-logo.png")} alt="Zagimē Anishinabēk" />
       {draft && <strong className="delivery-watermark">DRAFT · MORRIS STAFF ONLY</strong>}
       <button className="exec-icon" type="button" aria-label="Close presentation" onClick={onClose}><X size={20} /></button>
     </header>
     <div className="exec-presentation-body">
-      {(index === 2 && scope === "overview") || (index === 1 && scope !== "overview") ?
+      {chapter ? <div className="platform-chapter" key={current} aria-live={playing ? "off" : "polite"}>
+        <span className="exec-kicker">{period} · {current + 1} / {chapters?.length}</span>
+        <h2 id="presentation-title">{chapter.title}</h2>
+        {chapter.text && <p>{chapter.text}</p>}
+        <PresentationContent chapter={chapter} onLink={onLink} />
+        {onLink && <button className="intel-report-link" type="button" onClick={() => onLink(chapter.link)}>Open live report</button>}
+      </div> : <>
+      {(current === 2 && scope === "overview") || (current === 1 && scope !== "overview") ?
         <div className="intel-presentation-data"><DotField value={report.totalSeconds} unit={dotScale(Math.max(1, report.totalSeconds), 80)} capacity={80} /></div>
         : <div className="exec-dot-field" aria-hidden="true">
-        {Array.from({ length: dotCount }, (_, i) => <i key={i} data-tone={index === 3 && markers.length ? markers.findIndex(marker => i / dotCount < marker) % 5 : undefined}
-          data-lit={(i * 7 + index * 11) % 29 < 12}
-          style={dotPosition(i, index)} />)}
+        {Array.from({ length: dotCount }, (_, i) => <i key={i} data-tone={current === 3 && markers.length ? markers.findIndex(marker => i / dotCount < marker) % 5 : undefined}
+          data-lit={(i * 7 + current * 11) % 29 < 12}
+          style={dotPosition(i, current)} />)}
       </div>}
-      <div className="exec-scene" key={index} aria-live={playing ? "off" : "polite"}>
-        <span className="exec-kicker">{period} · {index + 1} / {scenes.length}</span>
+      <div className="exec-scene" key={current} aria-live={playing ? "off" : "polite"}>
+        <span className="exec-kicker">{period} · {current + 1} / {scenes.length}</span>
         <h2 id="presentation-title">{scene.title}</h2>
         {scene.value && <p className="exec-scene-value">{scene.value}</p>}
         {scene.rows.length ? <ul>{scene.rows.map((row, i) => <li key={i}>{row}</li>)}</ul> : <p>No published allocations for this chapter.</p>}
         {onLink && <button className="intel-report-link" type="button"
-          onClick={() => onLink(scope === "overview" ? (["overview", "history", "projects", "history", "projects:active", "milestones", "projects:completed", "projects:planned", "notes"][index] ?? "overview") : scope)}>
+          onClick={() => onLink(scope === "overview" ? (["overview", "history", "projects", "history", "projects:active", "milestones", "projects:completed", "projects:planned", "notes"][current] ?? "overview") : scope)}>
           Open live report
         </button>}
       </div>
+      </>}
     </div>
     <footer className="exec-presentation-controls">
-      <button className="exec-icon" type="button" aria-label="Previous chapter" disabled={!index} onClick={() => go(index - 1)}><ChevronLeft size={20} /></button>
-      <button className="exec-icon" type="button" aria-label={playing ? "Pause" : "Play"} onClick={() => { if (!playing && index === end) go(0); setPlaying(!playing); }}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
-      <button className="exec-icon" type="button" aria-label="Next chapter" disabled={index === end} onClick={() => go(index + 1)}><ChevronRight size={20} /></button>
+      <button className="exec-icon" type="button" aria-label="Previous chapter" disabled={!current} onClick={() => go(current - 1)}><ChevronLeft size={20} /></button>
+      <button className="exec-icon" type="button" aria-label={playing ? "Pause" : "Play"} onClick={() => { if (!playing && current === end) go(0); setPlaying(!playing); }}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
+      <button className="exec-icon" type="button" aria-label="Next chapter" disabled={current === end} onClick={() => go(current + 1)}><ChevronRight size={20} /></button>
       <button className="exec-icon" type="button" aria-label="Restart presentation" onClick={() => { go(0); setPlaying(false); }}><RotateCcw size={17} /></button>
-      <select aria-label="Presentation chapter" value={index} onChange={event => go(Number(event.target.value))}>
-        {scenes.map(({label}, i) => <option key={label} value={i}>{label}</option>)}
+      <select aria-label="Presentation chapter" value={current} onChange={event => go(Number(event.target.value))}>
+        {(chapters?.map(item => item.title) ?? scenes.map(item => item.label)).map((label, i) => <option key={label} value={i}>{label}</option>)}
       </select>
       {typeof document !== "undefined" && document.fullscreenEnabled && <button className="exec-icon" type="button" aria-label="Toggle fullscreen" onClick={() => {
         const operation = document.fullscreenElement ? document.exitFullscreen() : stage.current?.requestFullscreen();
         void operation?.catch(() => setFullscreenError(true));
       }}><Maximize size={17} /></button>}
+      {linked && <button className="exec-icon" type="button" aria-label={draft ? "Print draft preview" : "Print approved report"} onClick={() => window.print()}><Printer size={17} /></button>}
     </footer>
     {fullscreenError && <p role="status" className="exec-presentation-message">Fullscreen is unavailable. The presentation is still open.</p>}
     </div>
+    {chapters && <article className="platform-print-deck">
+      <h1>{report.tenant.name} · {period}</h1>
+      {draft && <p>Draft preview · Morris staff only</p>}
+      {chapters.map((item, i) => <section key={item.title + i}><h2>{item.title}</h2><PresentationContent chapter={item} /></section>)}
+    </article>}
   </dialog>;
 }

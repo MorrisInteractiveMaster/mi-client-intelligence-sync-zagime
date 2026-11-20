@@ -9,6 +9,7 @@ import { chromium, firefox, webkit, type Browser } from "playwright";
 import { firebaseRuntime, FirebaseIdentityVerifier } from "../server/firebase";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
 import { TimeSync } from "../server/time-sync";
+import { timeDetailsRef } from "../server/time-details";
 import {
   seedProjectSynthetic,
   provisionProjectClient,
@@ -770,12 +771,17 @@ function ClientFixture() {
       await first.page
         .getByLabel("Project name", { exact: true })
         .fill("Browser saved project");
+      const creationForm = first.page.getByRole("form", { name: "Create a project", exact: true });
+      await creationForm.screenshot({ path: join(evidence, "project-creation-wizard.png"), animations: "disabled" });
+      await creationForm.getByRole("button", { name: "Next", exact: true }).click();
+      await creationForm.getByRole("button", { name: "Next", exact: true }).click();
+      await creationForm.getByText("Optional reporting target", { exact: true }).click();
       await first.page
         .getByLabel("Planned hours", { exact: true })
         .fill("1.25");
       await first.page.screenshot({ path: join(evidence, "project-editor.png"), animations: "disabled" });
       await first.page
-        .getByRole("button", { name: "Save project", exact: true })
+        .getByRole("button", { name: "Create parent engagement", exact: true })
         .click();
       await first.page
         .getByRole("heading", { name: "Browser saved project", exact: true })
@@ -850,7 +856,7 @@ function ClientFixture() {
         .getByLabel("Allocated seconds", { exact: true })
         .nth(1)
         .fill("5400");
-      const allocationEditor = first.page.getByRole("region", { name: "Time allocation", exact: true });
+      const allocationEditor = first.page.getByRole("dialog", { name: "Time allocation", exact: true });
       await allocationEditor.scrollIntoViewIfNeeded();
       await first.page.screenshot({ path: join(evidence, "time-allocation-editor.png"), animations: "disabled" });
       await first.page
@@ -868,6 +874,47 @@ function ClientFixture() {
       await first.page.getByRole("button", { name: "Clear filters", exact: true }).click();
       await first.page.getByText("Reviewed delivery preparation", { exact: true }).waitFor();
       await first.page.screenshot({ path: join(evidence, "time-allocation.png"), fullPage: true, animations: "disabled" });
+      const historic = root.collection("rawTime").doc("historical-browser-row");
+      const historicModified = "2025-03-07T17:00:00Z";
+      const historicRevision = "historic-1";
+      await historic.set({
+        schemaVersion: 2, source: "quickbooks-time", sourceCompanyId: "prototype-source", scopeProjectId: "synthetic-planning",
+        modifiedAt: historicModified, deleted: false, approval: "unknown",
+        record: { id: historic.id, tenantId: tenant, sourceWorkOrderId: "987", sourcePersonId: "",
+          date: "2025-03-06", seconds: 18000, revision: historicRevision, description: "QuickBooks Time" },
+      });
+      await timeDetailsRef(historic, historicRevision).set({ provider: "quickbooks-time", sourceRevision: historicRevision,
+        sourceModifiedAt: historicModified, observedAt: historicModified, retrievedVia: "exact-id-lookup",
+        personId: "7909", consultantName: "Avery Morgan", notes: "Review department rollout requirements" });
+      await first.page.getByLabel("Period", { exact: true }).selectOption("all");
+      await first.page.getByRole("button", { name: "Apply period", exact: true }).click();
+      await first.page.getByRole("heading", { name: "Recorded time · All history", exact: true }).waitFor();
+      await first.page.locator("summary").filter({ hasText: /^Hours by consultant$/ }).click();
+      await first.page.getByRole("button", { name: "Avery Morgan", exact: true }).click();
+      await first.page.getByRole("status").filter({ hasText: /Consultant: Avery Morgan.*1 match out of/ }).waitFor();
+      const historicRow = first.page.getByRole("row").filter({ hasText: "Review department rollout requirements" });
+      await historicRow.getByText("Approval not verified", { exact: true }).waitFor();
+      await historicRow.getByText("5 h", { exact: true }).waitFor();
+      await first.page.screenshot({ path: join(evidence, "historical-time.png"), fullPage: true, animations: "disabled" });
+      await first.page.getByRole("button", { name: "Save reporting scope", exact: true }).click();
+      await first.page.getByText("Reporting scope saved on this device.", { exact: true }).waitFor();
+      await first.page.getByLabel("Period", { exact: true }).selectOption("specific");
+      await first.page.getByRole("button", { name: "Apply period", exact: true }).click();
+      await first.page.getByRole("heading", { name: "Recorded time · November 2026", exact: true }).waitFor();
+      await first.page.getByRole("button", { name: "Use saved scope", exact: true }).click();
+      await first.page.getByRole("heading", { name: "Recorded time · All history", exact: true }).waitFor();
+      await historicRow.getByText("5 h", { exact: true }).waitFor();
+      assert.ok(await first.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      const desktopTimeViewport = first.page.viewportSize()!;
+      await first.page.setViewportSize({ width: 390, height: 844 });
+      const mobileTimeWidths = await first.page.getByRole("region", { name: "Recorded time table", exact: true })
+        .evaluate(table => ({
+          document: document.documentElement.scrollWidth, viewport: innerWidth, ledger: table.scrollWidth, tableWidth: table.clientWidth,
+        }));
+      assert.ok(mobileTimeWidths.document <= mobileTimeWidths.viewport, JSON.stringify(mobileTimeWidths));
+      assert.ok(mobileTimeWidths.ledger > mobileTimeWidths.tableWidth, "The ledger should scroll within the mobile Time section.");
+      await first.page.screenshot({ path: join(evidence, "historical-time-mobile.png"), fullPage: true, animations: "disabled" });
+      await first.page.setViewportSize(desktopTimeViewport);
       await first.page.getByRole("navigation").getByRole("button", { name: "Projects", exact: true }).click();
       await card.locator("dd").first().filter({ hasText: /^0\.5 h$/ }).waitFor();
       await first.page.getByRole("button", { name: "Time Allocation", exact: true }).click();
@@ -878,6 +925,7 @@ function ClientFixture() {
         .getByRole("button", { name: "Allocation history", exact: true })
         .click();
       await first.page.getByText(/Revision 2 ·/).waitFor();
+      await first.page.getByRole("button", { name: "Close allocation", exact: true }).click();
       await first.page.getByRole("navigation").getByRole("button", { name: "Audit & Settings", exact: true }).click();
       await first.page
         .getByRole("button", { name: "Load audit history", exact: true })
@@ -1364,20 +1412,28 @@ function ClientFixture() {
       }
       const snapshotRecords = async () => (await root.collection("rawTime").get()).docs.map(doc => [doc.id, doc.data()]);
       const recordsBefore = await snapshotRecords();
-      const baseDelivery = { kind: "project", type: "hourly", managerIds: [], teamIds: [] };
-      const add = async (name: string, delivery: object) => json(await request("projects", "POST", {
+      const baseDelivery = { structure: 2, kind: "project", type: "hourly", managerIds: [], teamIds: [] };
+      const create = (name: string, delivery: object) => request("projects", "POST", {
         name, internalNotes: "", description: "", status: "active", progress: 0, plan: { basis: "monthly", targetSeconds: 0 }, delivery,
-      }, staff.idToken, Date.now() + "-" + crypto.randomUUID()), 201);
-      const parent = await add("Consulting engagement fixture", { ...baseDelivery, kind: "engagement", monthlyCap: 36_000, lifetimeCap: 72_000 });
-      const department = await add("Personnel group fixture", { ...baseDelivery, parentId: parent.id, areaId: "hr" });
-      const nested = await add("Policy assessment fixture", { ...baseDelivery, parentId: department.id, areaId: "hr" });
+      }, staff.idToken, Date.now() + "-" + crypto.randomUUID());
+      const parent = await json(await create("Consulting engagement fixture", { ...baseDelivery, kind: "engagement", monthlyCap: 36_000,
+        lifetimeCap: 72_000, allowDirectAllocation: false, publishSummary: true }), 201);
+      const direct = await json(await create("Direct delivery fixture", { ...baseDelivery, parentId: parent.id }), 201);
+      const department = await json(await create("Personnel group fixture", { ...baseDelivery, kind: "service-area",
+        parentId: parent.id, areaId: "hr", monthlyCap: 25_200, publishSummary: true }), 201);
+      const nested = await json(await create("Policy assessment fixture", { ...baseDelivery, parentId: department.id, areaId: "hr", countAgainstParentCap: false }), 201);
+      assert.equal((await create("Loose leaf fixture", baseDelivery)).status, 400);
+      assert.equal((await create("Too deep fixture", { ...baseDelivery, parentId: nested.id, areaId: "hr" })).status, 400);
+      assert.equal((await create("Wrong area fixture", { ...baseDelivery, parentId: department.id, areaId: "finance" })).status, 400);
+      assert.equal((await create("Unstructured child fixture", { ...baseDelivery, structure: undefined, parentId: department.id })).status, 400);
+      assert.ok(direct.id);
       const historyPrior = (await root.collection("allocationRevisions").get()).docs.map(doc => doc.data());
       const link = async (id: string, config: object) => {
         const { project } = await json(await request("projects/" + id));
         const { name, status, progress, description, internalNotes, plan } = project;
         return request("projects/" + id, "PATCH", { expectedRevision: await revision(), patch: { name, status, progress, description, internalNotes, plan, delivery: config } });
       };
-      assert.equal((await link(nested.id, { ...baseDelivery, parentId: department.id, areaId: "hr", workOrderIds: [fixtureJobs[0]] })).status, 200);
+      assert.equal((await link(nested.id, { ...baseDelivery, parentId: department.id, areaId: "hr", countAgainstParentCap: false, workOrderIds: [fixtureJobs[0]] })).status, 200);
       assert.equal((await link(parent.id, { ...baseDelivery, parentId: nested.id })).status, 400);
       assert.equal((await link(nested.id, { ...baseDelivery, parentId: department.id, workOrderIds: ["999999"] })).status, 400);
       assert.deepEqual(await snapshotRecords(), recordsBefore);
@@ -1428,6 +1484,69 @@ function ClientFixture() {
       assert.deepEqual((await bulkReady.get()).data(), readyEntry);
       await bulkResults.scrollIntoViewIfNeeded();
       await bulkPage.screenshot({ path: join(evidence, "bulk-allocation-results.png"), animations: "disabled" });
+      const splitSource = root.collection("rawTime").doc("five-hour-delivery-split");
+      const fiveHours = bulkFixture(splitSource.id, "23", "Five hours for two projects");
+      fiveHours.record.seconds = 18_000;
+      await splitSource.set(fiveHours);
+      const assignFiveHoursTo = async (id: string) => request("allocations/" + splitSource.id, "PATCH", {
+        expectedRevision: await revision(), portions: [{ projectId: id, seconds: 18_000, description: "" }],
+      });
+      assert.equal((await assignFiveHoursTo(parent.id)).status, 400, "engagement disallows direct allocation");
+      assert.equal((await assignFiveHoursTo(department.id)).status, 400, "service area disallows direct allocation");
+      const split = [
+        { projectId: direct.id, seconds: 10_800, description: "Three hours" },
+        { projectId: nested.id, seconds: 7_200, description: "Two hours" },
+      ];
+      await json(await request("allocations/" + splitSource.id, "PATCH", { expectedRevision: await revision(), portions: split }), 200);
+      assert.deepEqual((await splitSource.get()).data(), fiveHours);
+      assert.deepEqual((await root.collection("allocationHeads").doc(splitSource.id).get()).data()?.portions, split);
+      const hierarchyDraft = await json(await request("client-preview?month=2026-11&mode=draft"));
+      assert.equal(hierarchyDraft.hierarchy[parent.id].monthlyCapUsed, 10_800);
+      assert.equal(hierarchyDraft.hierarchy[department.id].monthlyCapUsed, 7_200 + 1_733);
+      assert.equal(hierarchyDraft.hierarchy[parent.id].completion, undefined);
+      assert.equal(hierarchyDraft.projects.filter((item: { id: string }) => [direct.id, nested.id].includes(item.id))
+        .reduce((total: number, item: { seconds: number }) => total + item.seconds, 0), 18_000 + 1_733);
+      const hierarchyNavigation = bulkPage.getByRole("navigation", { name: "Morris workspace sections" });
+      await hierarchyNavigation.getByRole("button", { name: "Projects", exact: true }).click();
+      await bulkPage.getByRole("button", { name: "Create project", exact: true }).click();
+      const wizard = bulkPage.getByRole("form", { name: "Create a project" });
+      await wizard.getByRole("radio", { name: "Service area", exact: true }).check();
+      await wizard.getByLabel("Project name", { exact: true }).fill("Community planning area fixture");
+      await wizard.getByRole("button", { name: "Next", exact: true }).click();
+      await wizard.getByRole("combobox", { name: "Parent engagement", exact: true }).selectOption(parent.id);
+      await wizard.getByLabel("Service area classification", { exact: true }).selectOption("cfw");
+      await wizard.getByRole("button", { name: "Create service area", exact: true }).click();
+      await bulkPage.getByRole("heading", { name: "Community planning area fixture", exact: true }).waitFor();
+      await bulkPage.getByRole("button", { name: "Create project", exact: true }).click();
+      await wizard.getByRole("radio", { name: "Delivery project", exact: true }).check();
+      await wizard.getByLabel("Project name", { exact: true }).fill("Community readiness fixture");
+      await wizard.getByRole("button", { name: "Next", exact: true }).click();
+      await wizard.getByRole("combobox", { name: "Parent engagement", exact: true }).selectOption(parent.id);
+      await wizard.getByLabel("Service area (optional)", { exact: true }).selectOption({ label: "Community planning area fixture" });
+      await wizard.getByRole("button", { name: "Next", exact: true }).click();
+      await wizard.getByLabel("Budget cap", { exact: true }).selectOption("both");
+      await wizard.getByLabel("Monthly cap (hours)", { exact: true }).fill("20");
+      await wizard.getByLabel("Lifetime cap (hours)", { exact: true }).fill("80");
+      await wizard.getByLabel("Count toward the parent engagement’s cap").selectOption("no");
+      await wizard.getByRole("button", { name: "Next", exact: true }).click();
+      await wizard.getByRole("button", { name: "Save team selection", exact: true }).click();
+      await wizard.getByLabel("Milestone template", { exact: true }).selectOption("CFW");
+      await wizard.getByLabel("Confirm community priorities", { exact: true }).check();
+      await wizard.getByRole("button", { name: "Next", exact: true }).click();
+      await wizard.getByRole("definition").filter({
+        hasText: /^Consulting engagement fixture \/ Community planning area fixture \/ Community readiness fixture$/,
+      }).waitFor();
+      await wizard.screenshot({ path: join(evidence, "project-creation-review.png"), animations: "disabled" });
+      await wizard.getByRole("button", { name: "Save draft", exact: true }).click();
+      await bulkPage.getByRole("heading", { name: "Community readiness fixture", exact: true }).waitFor();
+      const createdDelivery = (await root.collection("projects").where("name", "==", "Community readiness fixture").get()).docs[0].data();
+      assert.equal(createdDelivery.delivery.kind, "project");
+      assert.equal(createdDelivery.delivery.areaId, "cfw");
+      assert.equal(createdDelivery.delivery.monthlyCap, 72_000);
+      assert.equal(createdDelivery.delivery.lifetimeCap, 288_000);
+      assert.equal(createdDelivery.delivery.countAgainstParentCap, false);
+      assert.equal(createdDelivery.milestones[0].date, "");
+      assert.equal(createdDelivery.published, false);
       await hierarchyBrowser.context.close();
       assert.deepEqual(errors, []);
       await writeFile(
@@ -1442,6 +1561,9 @@ function ClientFixture() {
             reload: true,
             independentSession: true,
             publication: true,
+            projectCreationWizard: true,
+            threeLevelHierarchy: true,
+            separateCapConsumption: true,
             approvedClientViewports: [1440, 390],
             clientLayoutWidths: [320, 360, 390, 430, 768, 1024, 1280, 1440, 1920, 2560],
             tooltipCorners: true,

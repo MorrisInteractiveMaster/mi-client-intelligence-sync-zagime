@@ -26,9 +26,11 @@ import { ProjectStore } from "./project-workspace";
 const [operation, fileOrTenant, ...flags] = process.argv.slice(2);
 const productionOperation = operation === "initialize-production" || operation === "provision-production-client";
 const enrichmentOperation = operation === "enrich-time-details";
+const inventoryOperation = operation === "inventory-time-details";
 const timeOperation =
-  enrichmentOperation || operation === "verify-time-customer" || operation === "sync-time-customer";
+  enrichmentOperation || inventoryOperation || operation === "verify-time-customer" || operation === "sync-time-customer";
 const enrichmentOptions = enrichmentOperation ? parseEnrichmentFlags(flags) : undefined;
+const inventoryAfter = inventoryOperation ? parseInventoryFlags(flags) : undefined;
 if (
   (!timeOperation && !productionOperation &&
     ![
@@ -41,7 +43,7 @@ if (
       "inspect-project-migration",
     ].includes(operation)) ||
   !fileOrTenant ||
-  (!enrichmentOperation && flags.some((f) => f !== "--apply"))
+  (!enrichmentOperation && !inventoryOperation && flags.some((f) => f !== "--apply"))
 )
   throw Error(
     "Use bootstrap-admin APPROVAL_FILE [--apply] or prune-idempotency TENANT [--apply]",
@@ -157,6 +159,8 @@ async function runTimeOperation(store: ProjectStore) {
     const sync = configureTime(store, mode!, process.env);
     if (operation === "verify-time-customer")
       return await sync.verifyCustomer(fileOrTenant, flags.includes("--apply"));
+    if (inventoryOperation)
+      return await sync.inventoryDetails(fileOrTenant, inventoryAfter);
     if (enrichmentOptions)
       return await sync.enrichDetails(fileOrTenant, enrichmentOptions);
     const result = await sync.daily(fileOrTenant);
@@ -177,6 +181,12 @@ function parseEnrichmentFlags(flags: string[]) {
       flags.length !== months.length + cursors.length + apply.length)
     throw Error("Use enrich-time-details TENANT --month=YYYY-MM [--after=CURSOR] [--apply]");
   return { month: months[0].slice(8), after: cursors[0]?.slice(8), apply: apply.length === 1 };
+}
+
+function parseInventoryFlags(flags: string[]) {
+  if (flags.length > 1 || (flags[0] && !/^--after=[a-zA-Z0-9_-]{1,400}$/.test(flags[0])))
+    throw Error("Use inventory-time-details TENANT [--after=CURSOR]");
+  return flags[0]?.slice(8);
 }
 
 async function runProductionOperation(runtime: ReturnType<typeof firebaseRuntime>) {
