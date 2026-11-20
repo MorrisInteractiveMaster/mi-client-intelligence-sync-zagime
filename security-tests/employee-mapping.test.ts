@@ -18,6 +18,7 @@ import { ProjectBackend, ProjectStore } from "../server/project-workspace";
 import { timeMapping, timeRun } from "../server/time-catalog";
 import { timeDetailsRef } from "../server/time-details";
 import type { EmployeeMappingChange, EmployeeMappingsPage } from "../src/projects/employee-mapping";
+import type { ProjectPage } from "../src/projects/model";
 import { newPortfolio } from "../src/projects/portfolio";
 
 test("admin links verified Time employees to one unique WordPress profile with reversible audit and browser feedback", { timeout: 90000 }, async () => {
@@ -167,7 +168,8 @@ test("admin links verified Time employees to one unique WordPress profile with r
     assert.deepEqual((await payload()).links.map(link => link.profileId), [705, 705]);
     const hoursResponse = await request(origin + "/api/v2/tenants/" + tenant + "/sources?month=2026-11&workOrder=333");
     assert.equal(hoursResponse.status, 200, await hoursResponse.clone().text());
-    const hours = (await hoursResponse.json()).sourceSummary.hours;
+    const hours = ((await hoursResponse.json()) as ProjectPage).sourceSummary?.hours;
+    assert.ok(hours?.byMorrisProfile);
     assert.equal(hours.byMorrisProfile.length, 1);
     assert.equal(hours.byMorrisProfile[0].recordedSeconds, 36000);
     assert.equal(hours.byConsultant.filter(person => ["9001", "9002"].includes(person.id)).length, 2);
