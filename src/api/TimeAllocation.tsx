@@ -162,6 +162,8 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     draftAnnotations.reportingDescription !== priorAnnotations.reportingDescription ||
     draftAnnotations.internalNote !== priorAnnotations.internalNote || parent !== (priorAnnotations.parentId ?? defaultParent(editor)) ||
     classification !== (priorAnnotations.areaId ?? "")));
+  const notesOnly = Boolean(editor && !editor.needsReview && JSON.stringify(portions) === JSON.stringify(editor.portions) &&
+    parent === (priorAnnotations.parentId ?? defaultParent(editor)) && classification === (priorAnnotations.areaId ?? ""));
   useEffect(() => { onUnsavedChange?.(dirty); return () => { onUnsavedChange?.(false); }; }, [dirty, onUnsavedChange]);
   function edit(source: StaffSource) {
     editButton.current = document.activeElement as HTMLElement;
@@ -244,13 +246,13 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       method: "PATCH", body: { expectedRevision: expected, expectedSourceRevision: source.sourceRevision, portions: parts, annotations: notes },
     });
   }
-  async function save(source: StaffSource, parts: Allocation[], notes: AllocationAnnotations, expected = revision, allowUndo = true) {
+  async function save(source: StaffSource, parts: Allocation[], notes: AllocationAnnotations, expected = revision, allowUndo = true, notesOnlySave = false) {
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await write(source, expected, parts, notes);
       if (!mounted.current) return;
       setUndo(result.changed && allowUndo && !source.needsReview ? { source, revision: result.revision } : undefined);
-      setNotice(result.changed ? allowUndo ? "Allocation saved." : "Previous allocation restored." : "No changes to save.");
+      setNotice(result.changed ? notesOnlySave ? "Notes saved." : allowUndo ? "Allocation saved." : "Previous allocation restored." : "No changes to save.");
       close(true); onSaved(); await load();
     } catch (e) { failed(e); }
     finally { setBusy(false); }
@@ -410,7 +412,9 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       <details open><summary>Original source details</summary><dl>
         {editor.consultantName && <div><dt>Consultant name</dt><dd>{editor.consultantName}</dd></div>}
         {editor.sourcePersonId && <div><dt>Consultant identifier</dt><dd>{editor.sourcePersonId}</dd></div>}
-        {editor.description && <div><dt>Original provider notes</dt><dd>{editor.description}</dd></div>}
+        {editor.description && <div><dt>Original provider notes</dt><dd className="time-original-note">{editor.description}</dd></div>}
+        {!editor.description && editor.originalNotesState === "empty" && <div><dt>Original provider notes</dt><dd>No note was entered.</dd></div>}
+        {!editor.description && editor.originalNotesState === "unavailable" && <div><dt>Original provider notes</dt><dd>QuickBooks Time did not supply a note.</dd></div>}
         <div><dt>Accounting approval</dt><dd>{approvalLabel(editor)}</dd></div>
         <div><dt>Source revision</dt><dd><code>{editor.sourceRevision}</code></dd></div>
         {editor.modifiedAt && <div><dt>Source last modified</dt><dd>{reportTimestamp(editor.modifiedAt)}</dd></div>}
@@ -438,7 +442,9 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       <p>{remaining >= 0 ? reportHours(remaining) + " h will remain at the work order." : "The split exceeds the original recorded time."} One hour equals 3,600 seconds.</p>
       <div className="secure-actions"><button type="button" className="secure-secondary" disabled={busy || editor.conflict || portions.length >= 10} onClick={() => setPortions(old => [...old, { projectId: "", seconds: 0, description: "" }])}>Add split</button>
         {!portions.length && editor.seconds > 0 && <button type="button" className="secure-secondary" disabled={busy || editor.conflict} onClick={() => setPortions([{ projectId: "", seconds: editor.seconds, description: "" }])}>Assign full entry</button>}
-        <button type="button" disabled={busy || editor.conflict || remaining < 0 || new Set(portions.map(p => p.projectId)).size !== portions.length || portions.some(p => !p.projectId || !Number.isSafeInteger(p.seconds) || p.seconds <= 0)} onClick={() => void save(editor, portions, draftAnnotations)}>Save allocation</button></div>
+        <button type="button" disabled={busy || editor.conflict || remaining < 0 || new Set(portions.map(p => p.projectId)).size !== portions.length || portions.some(p => !p.projectId || !Number.isSafeInteger(p.seconds) || p.seconds <= 0)} onClick={() => void save(editor, portions, notesOnly ? {
+          ...priorAnnotations, reportingDescription: annotations.reportingDescription, internalNote: annotations.internalNote,
+        } : draftAnnotations, revision, true, notesOnly)}>{notesOnly ? "Save notes" : "Save allocation"}</button></div>
       {!history && <button type="button" className="secure-secondary" disabled={busy} onClick={() => void revisions(editor)}>Activity History</button>}
       {!linkedId && sourceLink && <PlatformLink href={sourceLink.href(editor.id)}>Link to this entry</PlatformLink>}
       {history?.length === 0 && <p>No allocation revisions yet.</p>}

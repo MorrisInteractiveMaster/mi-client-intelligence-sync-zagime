@@ -147,7 +147,6 @@ test("admin links verified Time employees to one unique WordPress profile with r
     const linked = await payload();
     assert.equal(linked.revision, 1);
     assert.equal(linked.links[0].profileId, 705);
-    assert.equal((await request(api, "owner", { ...target, employeeKey: secondKey, sourceId: source("445").id, expectedRevision: 1 })).status, 409);
     assert.equal((await request(api, "owner", target)).status, 409);
     const profiles = await runtime.db.runTransaction(async tx => readEmployeeProfiles(tx, root, await readPortfolio(tx, root)), { readOnly: true });
     assert.equal(profiles.get(firstKey)?.title, "Consulting Lead");
@@ -163,9 +162,18 @@ test("admin links verified Time employees to one unique WordPress profile with r
     const unlinked = await payload();
     assert.equal(unlinked.revision, 2);
     assert.deepEqual(unlinked.links, []);
+    assert.equal((await request(api, "owner", { ...target, expectedRevision: 2 })).status, 200);
+    assert.equal((await request(api, "owner", { ...target, employeeKey: secondKey, sourceId: source("445").id, expectedRevision: 3 })).status, 200);
+    assert.deepEqual((await payload()).links.map(link => link.profileId), [705, 705]);
+    const hoursResponse = await request(origin + "/api/v2/tenants/" + tenant + "/sources?month=2026-11&workOrder=333");
+    assert.equal(hoursResponse.status, 200, await hoursResponse.clone().text());
+    const hours = (await hoursResponse.json()).sourceSummary.hours;
+    assert.equal(hours.byMorrisProfile.length, 1);
+    assert.equal(hours.byMorrisProfile[0].recordedSeconds, 36000);
+    assert.equal(hours.byConsultant.filter(person => ["9001", "9002"].includes(person.id)).length, 2);
     const events = (await root.collection("audits").get()).docs.map(doc => doc.data()).filter(event => event.entityId === firstKey);
     assert.deepEqual(events.map(event => [event.action, event.previousProfileId, event.nextProfileId]).sort(), [
-      ["time-employee-linked", null, 705], ["time-employee-unlinked", 705, null],
+      ["time-employee-linked", null, 705], ["time-employee-linked", null, 705], ["time-employee-unlinked", 705, null],
     ]);
     assert.deepEqual((await source("444").get()).data(), timeDoc("444"));
     assert.deepEqual((await portfolioRef(root).get()).data(), { portfolio });

@@ -23,6 +23,10 @@ export function TimeHistorySummary({ summary, grouping, busy, onConsultant, onWo
       <HoursTable label="Hours by consultant" rows={hours.byConsultant}
         onSelect={onConsultant} unavailableFilter="unavailable" busy={busy} />
     </details>
+    {!!hours.byMorrisProfile?.length && <details className="delivery-details">
+      <summary>Hours by linked Morris profile</summary>
+      <HoursTable label="Hours by linked Morris profile" rows={hours.byMorrisProfile} busy={busy} />
+    </details>}
     <details className="delivery-details">
       <summary>Hours by work order</summary>
       <HoursTable label="Hours by work order" rows={hours.byWorkOrder}

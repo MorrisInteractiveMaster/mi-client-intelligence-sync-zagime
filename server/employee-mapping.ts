@@ -35,14 +35,13 @@ async function readState(tx: Transaction, root: DocumentReference): Promise<Stat
   if (saved.schemaVersion !== 1 || saved.tenantId !== root.id || !Number.isSafeInteger(saved.revision) || saved.revision < 1 ||
     !Array.isArray(saved.links) || saved.links.length > employeeLimit)
     throw Error("Invalid reporting summary");
-  const seenSources = new Set<string>(), seenTargets = new Set<number>();
+  const seenSources = new Set<string>();
   for (const link of saved.links as StoredLink[]) {
     if (!link || !timePersonId(link.account) || !timePersonId(link.userId) ||
       link.employeeKey !== timeEmployeeKey(link.account, link.userId) || !Number.isSafeInteger(link.profileId) ||
-      link.profileId < 1 || typeof link.updatedAt !== "string" || seenSources.has(link.employeeKey) || seenTargets.has(link.profileId))
+      link.profileId < 1 || typeof link.updatedAt !== "string" || seenSources.has(link.employeeKey))
       throw Error("Invalid reporting summary");
     seenSources.add(link.employeeKey);
-    seenTargets.add(link.profileId);
   }
   return { revision: saved.revision, links: saved.links };
 }
@@ -174,7 +173,6 @@ export async function saveEmployeeMapping(tx: Transaction, access: AdminAccess, 
     const employee = (await candidates(tx, root, [source])).get(input.employeeKey);
     if (!employee || employee.person.sourceRevision !== input.sourceRevision) throw Error("Source conflict");
     if (existing?.profileId === input.profileId) return { revision: state.revision, changed: false, link: linkSummary(existing) };
-    if (state.links.some(old => old.profileId === input.profileId)) throw Error("Employee profile already linked");
     link = { employeeKey: input.employeeKey, userId: employee.person.userId, account: employee.account, profileId: input.profileId, updatedAt: at };
   }
   const links = [...state.links.filter(old => old.employeeKey !== input.employeeKey), ...(link ? [link] : [])];

@@ -39,6 +39,7 @@ export interface StaffSource {
   classifiedSeconds?: number;
   sourcePersonId?: string;
   consultantName?: string;
+  originalNotesState?: "populated" | "empty" | "unavailable" | "not-retrieved";
   wordpressProfile?: { id: number; name: string; title?: string; photo?: string; alt?: string };
   annotations?: AllocationAnnotations;
   sourceRevision: string;
@@ -86,6 +87,7 @@ export interface SourceSummary {
   period: TimeWindow;
   hours: SourceHours & {
     byConsultant: SourceHoursGroup[];
+    byMorrisProfile?: SourceHoursGroup[];
     byWorkOrder: SourceHoursGroup[];
     byPeriod: SourceHoursGroup[];
   };

@@ -73,6 +73,7 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
   const matches: StaffSource[] = [];
   const hours = emptyHours();
   const byConsultant = new Map<string | null, SourceHoursGroup>();
+  const byMorrisProfile = new Map<string | null, SourceHoursGroup>();
   const byWorkOrder = new Map<string | null, SourceHoursGroup>();
   const byPeriod = new Map<string | null, SourceHoursGroup>();
   const grouping: TimeGrouping = filters.group ?? "month";
@@ -102,7 +103,12 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
     addHours(hours, row);
     addGroup(byConsultant, person || null, row.consultantName || person || "Unavailable", row);
     const consultant = byConsultant.get(person || null)!;
-    if (row.wordpressProfile) consultant.wordpressProfile = row.wordpressProfile;
+    if (row.wordpressProfile) {
+      consultant.wordpressProfile = row.wordpressProfile;
+      const profileId = String(row.wordpressProfile.id);
+      addGroup(byMorrisProfile, profileId, row.wordpressProfile.name, row);
+      byMorrisProfile.get(profileId)!.wordpressProfile = row.wordpressProfile;
+    }
     addGroup(byWorkOrder, workOrder || null, row.workOrderName || workOrder || "Unavailable", row);
     const bucket = timeBucket(row.date, grouping);
     addGroup(byPeriod, bucket.id, bucket.label, row);
@@ -113,7 +119,7 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
     .sort((a, b) => b.recordedSeconds - a.recordedSeconds || a.label.localeCompare(b.label) || (a.id ?? "").localeCompare(b.id ?? ""));
   const summary: SourceSummary = { monthTotal: rows.length, matched: matches.length, counts, period,
     workOrders: options(workOrders), consultants: options(consultants),
-    hours: { ...hours, byConsultant: breakdown(byConsultant), byWorkOrder: breakdown(byWorkOrder), byPeriod: [...byPeriod.values()] },
+    hours: { ...hours, byConsultant: breakdown(byConsultant), byMorrisProfile: breakdown(byMorrisProfile), byWorkOrder: breakdown(byWorkOrder), byPeriod: [...byPeriod.values()] },
   };
   return { matches, summary };
 }
@@ -227,7 +233,8 @@ function projectSource(doc: DocumentSnapshot, head: DocumentData | undefined, te
   const description = provider && row.description === "QuickBooks Time" ? "" : row.description ?? "";
   return {
     id: doc.id, date: row.date, seconds: row.seconds,
-    description: sourceDetails?.notes ?? description,
+    description: sourceDetails?.notes ?? (sourceDetails?.notesState === "empty" ? "" : description),
+    ...(provider && { originalNotesState: sourceDetails?.notes ? "populated" : sourceDetails?.notesState ?? "not-retrieved" }),
     sourceWorkOrderId: row.sourceWorkOrderId,
     sourceProjectId: data.scopeProjectId,
     classifiedSeconds: applied.filter(part => {

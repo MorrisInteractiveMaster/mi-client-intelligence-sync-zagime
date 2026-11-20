@@ -129,3 +129,28 @@ python3 scripts/production-time.py monitor
 ## Visual asset
 
 The staff masthead and sign-in use the user-supplied `Original-16-9-cinematic-background-plate.png`, encoded as a 17 KB WebP for the candidate. Logo assets remain the existing approved Morris and Zagimē marks.
+
+## Recover historical consultant names and original notes
+
+Use the independently approved worker image and inventory procedure above. The dashboard image and its release stay separate. Confirm the expected project, named database UID, four work-order associations, current worker digest, pinned regional secret version, and scheduler configuration before running recovery. Take protected same-checkpoint snapshots of source IDs and revisions, recorded seconds, mappings, allocations, checkpoints and publications. Keep them out of the repository.
+
+The coordinator launches the existing named worker with either `inventory-time-details` or `enrich-time-details`. It uses a Cloud Shell state file as the durable cursor, in addition to the worker's exact revision checks. It writes only the verified private metadata during the explicitly approved apply phase. The recovery does not run the scheduled synchronization command.
+
+```bash
+umask 077
+mkdir -p "$HOME/mi-private-recovery"
+STATE="$HOME/mi-private-recovery/zagime-time-details.json"
+node scripts/recover-time-details.mjs review "$STATE" 3
+node scripts/recover-time-details.mjs report "$STATE"
+```
+
+Repeat review until the state reads `awaiting-approval`. It inventories all imported months and performs one dry run for each page. If it stops early, resume with the same state file. Review the `before` and `dryRun` monthly counts. Source revision changes, out-of-scope rows and provider omissions require reconciliation before acceptance. Use one coordinator at a time and avoid the scheduler window.
+
+After the owner approves the reviewed inventory, repeat the next command until the state reads `done`. The worker rechecks the account, jobcode, entry ID and source revision at each apply. A lost receipt leaves the previous cursor in place. Repeating that bounded operation is safe because metadata writes are idempotent.
+
+```bash
+node scripts/recover-time-details.mjs apply "$STATE" 3
+node scripts/recover-time-details.mjs report "$STATE"
+```
+
+The final state contains `before` and `after` coverage, recorded seconds, verified consultant IDs and names, verified notes, verified empty notes and unavailable notes for each month. It also includes provider omissions and revision conflicts from apply. A completed scan may still contain exceptions. Compare the private source, checkpoint and allocation snapshots separately before accepting the result. Archive the state file with the release evidence and use a new state file for a subsequent recovery pass. The worker rollback above restores the verified prior worker image independently of dashboard traffic.
