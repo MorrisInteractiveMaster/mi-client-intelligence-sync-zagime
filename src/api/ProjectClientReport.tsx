@@ -13,6 +13,8 @@ import { ProjectReportingCard } from "./ProjectReportingCard";
 import { ExecutiveOverview } from "./ExecutiveOverview";
 import { chartKinds, DotChart, DotChartDialog, DotField, dotScale, type ChartKind } from "./DotAnalytics";
 import { closePortalOverlay, portalNavigate, usePortalLocation } from "./portal-location";
+import { PersonPhoto } from "./PersonPhoto";
+import { deliveryDefaults, rollup } from "../projects/delivery";
 import "./executive.css";
 import "./intelligence.css";
 const Presentation = lazy(() => import("./ExecutivePresentation"));
@@ -25,18 +27,19 @@ type ReportScope = {
   tenant: string;
   month: string;
   onDenied: () => void;
+  preview?: { mode: "published" | "draft"; scope?: string };
 };
 
 export function ProjectClientReport(props: ReportScope) {
   return (
     <ScopedClientReport
-      key={JSON.stringify([props.tenant, props.month])}
+      key={JSON.stringify([props.tenant, props.month, props.preview?.mode, props.preview?.scope])}
       {...props}
     />
   );
 }
 
-function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
+function ScopedClientReport({ client, tenant, month, onDenied, preview }: ReportScope) {
   const [result, setResult] = useState<{
     client: SecuredApiClient;
     report?: ProjectReport;
@@ -84,7 +87,7 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
   useEffect(() => {
     const abort = new AbortController();
     client
-      .call<ProjectReport>(tenant, "report?month=" + month, {
+      .call<ProjectReport>(tenant, (preview ? "client-preview?" + new URLSearchParams({ month, mode: preview.mode, ...(preview.scope ? { scope: preview.scope } : {}) }) : "report?month=" + month), {
         signal: abort.signal,
       })
       .then((data) => {
@@ -96,11 +99,11 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
       .catch((failure: unknown) => {
         if (abort.signal.aborted) return;
         if (failure instanceof ApiError && [401, 403].includes(failure.status))
-          onDenied();
+          { if (preview) setResult({ client }); onDenied(); }
         else setResult({ client });
       });
     return () => abort.abort();
-  }, [client, tenant, month, epoch, onDenied]);
+  }, [client, tenant, month, epoch, onDenied, preview?.mode, preview?.scope]);
 
   const report = current?.report;
   const [kind, id, itemId] = view.split(":");
@@ -147,6 +150,11 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
     a.name.localeCompare(b.name, "en-CA"),
   );
   const portfolio = report.portfolio;
+  const hierarchy = report.hierarchy ?? {};
+  const projectLookup = new Map(visible.map(p => [p.id, p]));
+  const delegatedTotals = rollup(visible.map(p => ({ ...p, delivery: { ...deliveryDefaults, parentId: hierarchy[p.id]?.parentId } })));
+  const parent = project && hierarchy[project.id]?.parentId ? projectLookup.get(hierarchy[project.id].parentId!) : undefined;
+  const children = project ? visible.filter(p => hierarchy[p.id]?.parentId === project.id) : [];
   const selectedArea = area;
   const placements = new Map(portfolio?.placements.map(p => [p.id, p]));
   const scoped = selectedArea ? visible.filter(p => placements.get(p.id)?.areaId === selectedArea.id)
@@ -211,6 +219,10 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
           {!unavailable && <button className="exec-hero-action" type="button" onClick={() => openOverlay("present", "1")}><PresentationIcon size={16} aria-hidden="true" /> Present this view</button>}
           {selectedArea && <DotField value={presentReport.totalSeconds} unit={dotScale(Math.max(report.totalSeconds, 1))} />}
         </section>}
+        {view === "projects" && Object.values(hierarchy).some(item => item.parentId) && <details className="delivery-details">
+          <summary>Project hierarchy</summary><ul className="delivery-client-tree">{visible.filter(p => hierarchy[p.id]?.parentId).map(p =>
+            <li key={p.id}>{projectLookup.get(hierarchy[p.id].parentId!)?.name} <span aria-hidden="true">›</span> <button className="exec-text-button" type="button" onClick={() => choose("project:" + p.id)}>{p.name}</button></li>)}</ul>
+        </details>}
         {unavailable && <p className="intel-empty" role="status">This link is unavailable for your approved report.</p>}
         {isPortfolio && (
       <section aria-labelledby="published-projects">
@@ -256,7 +268,7 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
           {matching.filter(p => !(view === "projects" || selectedArea) || (placements.get(p.id)?.engagementId ?? "") === group).map((project) => (
             <ProjectReportingCard key={project.id} project={project} period={period}
               placement={placements.get(project.id)}
-              team={directoryFor(project.id)} onLink={choose} />
+              team={directoryFor(project.id)} onLink={choose} delivery={hierarchy[project.id]} />
           ))}
             </div>
           </Group>
@@ -267,10 +279,13 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
           {view === "directory" && (portfolio?.directory.length ?? 0) > 0 && <label className="secure-search-label">Search approved contacts<input type="search" value={search} maxLength={120} onChange={event => setSearch(event.target.value)} /></label>}
         </div>
         {(contact ? [contact] : directory).length ? <div className="intel-directory-grid">{(contact ? [contact] : directory).map(member => <article className="intel-contact" key={member.id}>
-          <div className="intel-avatar" aria-hidden="true">{member.name.split(/\s+/).slice(0, 2).map(part => part[0]).join("")}</div>
+          <PersonPhoto name={member.name} photo={member.photo} alt={member.photoAlt} />
           <div><h3>{member.name}</h3><p>{member.role}</p>
           {member.responsibility && <p className="exec-copy">{member.responsibility}</p>}
           {member.publicContact && <p className="exec-copy">{member.publicContact}</p>}
+          {member.email && <p><a href={"mailto:" + member.email}>{member.email}</a></p>}
+          {member.phone && <p>{member.phone}</p>}
+          {member.profileUrl && <a href={member.profileUrl} rel="noreferrer">Morris profile</a>}
           {!contact && <button className="exec-text-button" onClick={() => choose("contact:" + member.id)}>View contact <ArrowUpRight size={15} aria-hidden="true" /></button>}
           <ul>{member.projectIds.map(id => visible.find(p => p.id === id)).filter(p => p !== undefined).map(p => <li key={p.id}><button className="exec-text-button" onClick={() => choose("project:" + p.id)}>{p.name}</button></li>)}</ul>
           </div>
@@ -283,13 +298,16 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
         {portfolio?.action && <><h3>Next decision</h3><p>{portfolio.action}</p></>}</article>}
       {project && kind === "project" && <article className="intel-detail">
         <div className="intel-detail-links">
+          {parent && <button className="exec-text-button" onClick={() => choose("project:" + parent.id)}>Parent: {parent.name}</button>}
           {placements.get(project.id)?.areaId && <button className="exec-text-button" onClick={() => choose("area:" + placements.get(project.id)!.areaId)}>
             {portfolio?.areas.find(a => a.id === placements.get(project.id)?.areaId)?.name}</button>}
           {placements.get(project.id)?.engagementId && <button className="exec-text-button" onClick={() => choose("group:" + placements.get(project.id)!.engagementId)}>{groupName(placements.get(project.id)!.engagementId)}</button>}
           <button className="exec-text-button" onClick={() => choose("timeline:" + project.id)}>Project timeline</button>
           {report.sourceUpdatedAt && <span>Source updated {reportTimestamp(report.sourceUpdatedAt)}</span>}
         </div>
-        <ProjectReportingCard project={project} period={period} placement={placements.get(project.id)} team={directoryFor(project.id)} onLink={choose} detail />
+        <ProjectReportingCard project={project} period={period} placement={placements.get(project.id)} team={directoryFor(project.id)} onLink={choose}
+          delivery={hierarchy[project.id]} descendantTotals={delegatedTotals.get(project.id)} detail />
+        {!!children.length && <section aria-label="Child projects"><h3>Child projects</h3><ul className="delivery-client-tree">{children.map(child => <li key={child.id}><button type="button" className="exec-text-button" onClick={() => choose("project:" + child.id)}>{child.name}</button></li>)}</ul></section>}
         <DotChart report={presentReport} kind="plan" onLink={choose} onOpen={() => openOverlay("chart", "plan")} />
       </article>}
       {(view === "milestones" || (project && kind === "timeline")) && <article className="intel-detail">
@@ -309,10 +327,10 @@ function ScopedClientReport({ client, tenant, month, onDenied }: ReportScope) {
       {milestone && project && <article className="intel-detail"><h3>{milestone.completed ? "Completed milestone" : "Upcoming milestone"}</h3>
         <p>{reportDay(milestone.date)} · {project.name}</p><button className="exec-text-button" onClick={() => choose("timeline:" + project.id)}>View the project timeline</button></article>}
       </div>
-      {chart && !presenting && <DotChartDialog report={contextScoped ? presentReport : report} kind={chart}
+      {chart && !presenting && !unavailable && <DotChartDialog report={contextScoped ? presentReport : report} kind={chart}
         onLink={choose} onClose={() => closePortalOverlay("chart")} />}
       {presenting && !unavailable && <Suspense fallback={<p role="status">Opening presentation…</p>}>
-        <Presentation report={presentReport} scope={view} scopeTitle={title} onLink={choose} onClose={() => closePortalOverlay("present")} />
+        <Presentation report={presentReport} scope={view} scopeTitle={title} onLink={choose} onClose={() => closePortalOverlay("present")} draft={preview?.mode === "draft"} />
       </Suspense>}
     </div>
   );

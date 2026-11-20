@@ -1,6 +1,8 @@
 import type { PublishedPortfolio } from "./portfolio";
+import { calendarDate, milestoneStatuses, parseDelivery, type Delivery, type MilestoneStatus } from "./delivery";
 
 export const MAX_PROJECT_TIMELINE_ITEMS = 8;
+export const MAX_PROJECT_MILESTONES = 40;
 export const MAX_PROJECT_UPDATE_TEXT = 500;
 
 export interface ProjectMilestone {
@@ -9,6 +11,11 @@ export interface ProjectMilestone {
   date: string;
   completed: boolean;
   visible: boolean;
+  status?: MilestoneStatus;
+  weight?: number;
+  ownerId?: string;
+  body?: string;
+  completedAt?: string;
 }
 export interface ProjectUpdate {
   id: string;
@@ -39,6 +46,7 @@ export interface Project {
   updates?: ProjectUpdate[];
   milestones?: ProjectMilestone[];
   workOrderReference?: string;
+  delivery?: Delivery;
   plan: { basis: "monthly" | "fixed"; targetSeconds: number };
   published: boolean;
   createdAt: string;
@@ -57,6 +65,7 @@ export type ManagedProject = Pick<
   | "workOrderReference"
   | "updates"
   | "milestones"
+  | "delivery"
 >;
 export type ProjectView = Pick<
   Project,
@@ -77,12 +86,24 @@ export type ProjectView = Pick<
 
 export type StaffProjectSummary = ProjectView & {
   seconds: number;
+  draft?: ProjectDraftMetadata;
+  delivery?: Delivery;
+  deliveryMilestones?: ProjectMilestone[];
   workOrderReference?: string;
   reportPreview?: {
     placement?: PublishedPortfolio["placements"][number];
     team: PublishedPortfolio["directory"];
   };
 };
+export interface ProjectDraftMetadata {
+  revision: number;
+  updatedAt: string;
+}
+export interface StaffProjectDetail {
+  revision: number;
+  project: Project;
+  draft?: ProjectDraftMetadata;
+}
 export interface ProjectWorkspace {
   role: "staff" | "client";
   revision: number;
@@ -95,6 +116,7 @@ export interface ProjectReport {
   totalSeconds: number;
   sourceUpdatedAt?: string;
   portfolio?: PublishedPortfolio;
+  hierarchy?: Record<string, { parentId?: string; type?: Delivery["type"]; completion?: number; start?: string; deadline?: string; monthlyCap?: number; lifetimeCap?: number; managerIds?: string[] }>;
   projects: (Omit<
     ProjectView,
     "published" | "tenantId" | "updates" | "milestones"
@@ -108,6 +130,7 @@ export interface ProjectPage {
   revision: number;
   projects?: StaffProjectSummary[];
   sources?: import("../api/types").StaffSource[];
+  sourceSummary?: import("../api/types").SourceSummary;
   history?: import("../api/types").HistoryRow[];
   audits?: {
     id: string;
@@ -126,7 +149,7 @@ export const seconds = (value: unknown): value is number =>
 function timeline(value: unknown, kind: "updates"): ProjectUpdate[];
 function timeline(value: unknown, kind: "milestones"): ProjectMilestone[];
 function timeline(value: unknown, kind: "updates" | "milestones") {
-  if (!Array.isArray(value) || value.length > MAX_PROJECT_TIMELINE_ITEMS)
+  if (!Array.isArray(value) || value.length > (kind === "updates" ? MAX_PROJECT_TIMELINE_ITEMS : MAX_PROJECT_MILESTONES))
     throw Error("Invalid project timeline");
   const ids = new Set<string>();
   return value.map((item) => {
@@ -142,7 +165,7 @@ function timeline(value: unknown, kind: "updates" | "milestones") {
             "title",
             "date",
             "visible",
-            update ? "body" : "completed",
+            ...(update ? ["body"] : ["completed", "status", "weight", "ownerId", "body", "completedAt"]),
           ].includes(key),
       ) ||
       typeof item.id !== "string" ||
@@ -152,9 +175,7 @@ function timeline(value: unknown, kind: "updates" | "milestones") {
       !item.title.trim() ||
       item.title.length > 120 ||
       typeof item.date !== "string" ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(item.date) ||
-      !Number.isFinite(Date.parse(item.date)) ||
-      new Date(item.date).toISOString().slice(0, 10) !== item.date ||
+      (!calendarDate(item.date) && (update || item.date !== "")) ||
       typeof item.visible !== "boolean"
     )
       throw Error("Invalid project timeline entry");
@@ -176,7 +197,14 @@ function timeline(value: unknown, kind: "updates" | "milestones") {
     }
     if (typeof item.completed !== "boolean")
       throw Error("Invalid project milestone");
-    return { ...common, completed: item.completed };
+    if ((item.status !== undefined && (!milestoneStatuses.includes(item.status) || item.completed !== (item.status === "completed"))) ||
+      (item.weight !== undefined && (!Number.isSafeInteger(item.weight) || item.weight < 1 || item.weight > 1000)) ||
+      (item.body !== undefined && (typeof item.body !== "string" || item.body.length > MAX_PROJECT_UPDATE_TEXT)) ||
+      (item.ownerId !== undefined && (typeof item.ownerId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(item.ownerId))) ||
+      (item.completedAt !== undefined && (!item.completed || !calendarDate(item.completedAt))))
+      throw Error("Invalid project milestone");
+    return { ...common, completed: item.completed, ...Object.fromEntries(
+      ["status", "weight", "ownerId", "body", "completedAt"].filter(key => item[key] !== undefined).map(key => [key, item[key]])) };
   });
 }
 
@@ -194,17 +222,20 @@ function milestoneFields({
   title,
   date,
   completed,
+  status,
+  body,
+  completedAt,
 }: Omit<ProjectMilestone, "visible">) {
-  return { id, title, date, completed };
+  return { id, title, date, completed, ...(status && { status }), ...(body && { body }), ...(completedAt && { completedAt }) };
 }
 
-export function approvedProjectContent(p: Project) {
+export function approvedProjectContent(p: Project, includeUndated = true) {
   return {
     updates: (p.updates ?? [])
       .filter((item) => item.visible === true)
       .map((item) => ({ ...updateFields(item), visible: true as const })),
     milestones: (p.milestones ?? [])
-      .filter((item) => item.visible === true)
+      .filter((item) => item.visible === true && (includeUndated || Boolean(item.date)))
       .map((item) => ({ ...milestoneFields(item), visible: true as const })),
   };
 }
@@ -226,6 +257,7 @@ export function managedProject(input: unknown): ManagedProject {
           "workOrderReference",
           "updates",
           "milestones",
+          "delivery",
         ].includes(k),
     )
   )
@@ -259,6 +291,7 @@ export function managedProject(input: unknown): ManagedProject {
     progress: p.progress,
     description: p.description,
     internalNotes: p.internalNotes,
+    ...(p.delivery === undefined ? {} : { delivery: parseDelivery(p.delivery) }),
     ...(p.updates === undefined
       ? {}
       : { updates: timeline(p.updates, "updates") }),

@@ -8,11 +8,15 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 import {
   checkedAllocationSeconds,
   demo,
+  type Allocation,
   type ReportingState,
   type DeliveryProject,
   type ReportingScope,
 } from "../src/reporting/model";
+import type { BulkAllocationEntry } from "../src/projects/bulk-allocation";
+import type { AllocationAnnotations } from "../src/api/types";
 import { approvedMember, canAccessProject } from "./authorization";
+import { readPortfolio } from "./portfolio";
 import {
   safeId,
   type TenantStore,
@@ -22,6 +26,10 @@ import {
 } from "./contracts";
 export const key = (...parts: string[]) =>
   createHash("sha256").update(JSON.stringify(parts)).digest("hex");
+type AllocationReview = { expectedSourceRevision: string; annotations: AllocationAnnotations };
+type AllocationWrite =
+  | { mode: "manual"; expectedRevision: number; portions: Allocation[]; review?: AllocationReview }
+  | { mode: "bulk"; projectId: string; entry: BulkAllocationEntry; receipt: { id: string; hash: string } };
 const empty = (tenant: ReportingState["tenant"]): ReportingState => ({
   ...demo(),
   tenant,
@@ -351,10 +359,19 @@ export class FirestoreTenantStore implements TenantStore {
     subject: string,
     sourceId: string,
     expectedRevision: number,
-    portions: import("../src/reporting/model").Allocation[],
+    portions: Allocation[],
     now: number,
+    review?: AllocationReview,
   ) {
     safeId(sourceId);
+    if (review && (this.expectedSchemaVersion !== 2 || typeof review.expectedSourceRevision !== "string" ||
+      !review.expectedSourceRevision || review.expectedSourceRevision.length > 256 ||
+      !review.annotations || typeof review.annotations !== "object" || Array.isArray(review.annotations) ||
+      Object.keys(review.annotations).some(key => !["reportingDescription", "internalNote", "parentId", "areaId"].includes(key)) ||
+      typeof review.annotations.reportingDescription !== "string" || review.annotations.reportingDescription.length > 1000 ||
+      typeof review.annotations.internalNote !== "string" || review.annotations.internalNote.length > 4000 ||
+      [review.annotations.parentId, review.annotations.areaId].some(value => value !== undefined && (typeof value !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(value)))))
+      throw Error("Invalid allocation annotations");
     if (
       !Array.isArray(portions) ||
       portions.length > 10 ||
@@ -372,13 +389,44 @@ export class FirestoreTenantStore implements TenantStore {
     if (new Set(portions.map((p) => p.projectId)).size !== portions.length)
       throw Error("Invalid duplicate allocation project");
     portions.forEach((p) => safeId(p.projectId));
+    return this.writeAllocation(tenantId, subject, sourceId, now, { mode: "manual", expectedRevision, portions, review });
+  }
+  async allocateBulkEntry(
+    tenantId: string,
+    subject: string,
+    projectId: string,
+    entry: BulkAllocationEntry,
+    receipt: { id: string; hash: string },
+    now: number,
+  ) {
+    if (this.expectedSchemaVersion !== 2) throw Error("Forbidden");
+    safeId(projectId);
+    return this.writeAllocation(tenantId, subject, safeId(entry.sourceId), now, { mode: "bulk", projectId, entry, receipt });
+  }
+  private async writeAllocation(
+    tenantId: string,
+    subject: string,
+    sourceId: string,
+    now: number,
+    input: AllocationWrite,
+  ) {
+    const bulk = input.mode === "bulk" ? input : undefined;
+    const review = input.mode === "manual" ? input.review : undefined;
     return this.db.runTransaction(
       async (tx) => {
         const { root, record } = await this.base(tx, tenantId, subject);
         const m = approvedMember(record, tenantId, subject);
-        if (m.role === "client") throw Error("Forbidden");
-        if (record.revision !== expectedRevision)
+        if (m.role === "client" || ((review || bulk) && m.role !== "administrator")) throw Error("Forbidden");
+        if (input.mode === "manual" && record.revision !== input.expectedRevision)
           throw Error("Revision conflict");
+        const receiptRef = bulk ? root.collection("idempotency").doc(bulk.receipt.id) : undefined;
+        if (receiptRef) {
+          const prior = (await tx.get(receiptRef)).data();
+          if (prior) {
+            if (prior.payloadHash !== bulk!.receipt.hash) throw Error("Idempotency conflict");
+            return { revision: record.revision, changed: false };
+          }
+        }
         const rawRef = root.collection("rawTime").doc(sourceId);
         const headRef = root.collection("allocationHeads").doc(sourceId);
         const [source, headDoc] = await tx.getAll(rawRef, headRef);
@@ -386,18 +434,19 @@ export class FirestoreTenantStore implements TenantStore {
         if (this.expectedSchemaVersion === 2) {
           const envelope = source.data()!;
           if (envelope.schemaVersion !== 2) throw Error("Forbidden");
-          if (envelope.deleted === true) throw Error("Source conflict");
+          if (envelope.deleted === true) throw Error(bulk ? "Bulk entry not eligible" : "Source conflict");
           if (envelope.record?.id !== sourceId || typeof envelope.record?.revision !== "string" || !envelope.record.revision || !/^\d{4}-\d{2}-\d{2}$/.test(envelope.record.date) || new Date(envelope.record.date).toISOString().slice(0, 10) !== envelope.record.date) throw Error("Invalid source");
           const scoped = await tx.get(root.collection("projects").doc(safeId(envelope.scopeProjectId)));
           if (!scoped.exists || scoped.data()!.schemaVersion !== 2 || scoped.data()!.tenantId !== tenantId) throw Error("Forbidden");
         }
         const raw = source.data()!.record;
+        const expectedSourceRevision = bulk?.entry.expectedSourceRevision ?? review?.expectedSourceRevision;
+        if (expectedSourceRevision !== undefined && expectedSourceRevision !== raw.revision) throw Error("Source conflict");
         if (
           raw.tenantId !== tenantId ||
           !/^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(raw.date)
         )
           throw Error("Invalid source");
-        checkedAllocationSeconds(portions, raw.seconds);
         const head = headDoc.data() ?? {
           revision: 0,
           portions: [],
@@ -411,9 +460,26 @@ export class FirestoreTenantStore implements TenantStore {
         )
           throw Error("Source conflict");
         const previous = head.appliedPortions ?? head.portions;
+        if (!Array.isArray(head.portions) || head.portions.length > 10 || !Array.isArray(previous) || previous.length > 10)
+          throw Error("Reporting capacity exceeded");
+        if (bulk && head.revision !== bulk.entry.expectedAllocationRevision) throw Error("Bulk allocation revision conflict");
+        if (bulk && (head.needsReview || head.portions.length || previous.length || raw.seconds === 0)) throw Error("Bulk entry not eligible");
+        const portions: Allocation[] = input.mode === "bulk"
+          ? [{ projectId: input.projectId, seconds: raw.seconds, description: "" }]
+          : input.portions;
+        checkedAllocationSeconds(portions, raw.seconds);
+        const annotations = review?.annotations ?? head.annotations;
+        if (review?.annotations.parentId) {
+          const parent = (await tx.get(root.collection("projects").doc(review.annotations.parentId))).data();
+          if (parent?.schemaVersion !== 2 || parent.tenantId !== tenantId || parent.id !== review.annotations.parentId)
+            throw Error("Invalid allocation parent");
+        }
+        if (review?.annotations.areaId) {
+          const portfolio = await readPortfolio(tx, root);
+          if (!portfolio.areas.some(area => area.id === review.annotations.areaId)) throw Error("Invalid allocation department");
+        }
         if (m.role !== "administrator" && !previous.length)
           throw Error("Forbidden");
-        if (previous.length > 10) throw Error("Reporting capacity exceeded");
         const ids = [
           ...new Set<string>(
             [...previous, ...portions].map((p) => p.projectId),
@@ -424,8 +490,6 @@ export class FirestoreTenantStore implements TenantStore {
               ...ids.map((id) => root.collection("projects").doc(id)),
             )
           : [];
-        if (!Array.isArray(head.portions) || head.portions.length > 10)
-          throw Error("Reporting capacity exceeded");
         const extraIntended = [
           ...new Set<string>(head.portions.map((p: any) => p.projectId)),
         ].filter((id) => !ids.includes(id));
@@ -447,7 +511,9 @@ export class FirestoreTenantStore implements TenantStore {
         if (this.expectedSchemaVersion === 2 && ps.some(d => d.data()!.schemaVersion !== 2 || d.data()!.tenantId !== tenantId || d.data()!.id !== d.id)) throw Error("Forbidden");
         if (
           JSON.stringify(head.portions) === JSON.stringify(portions) &&
-          JSON.stringify(previous) === JSON.stringify(portions)
+          JSON.stringify(previous) === JSON.stringify(portions) &&
+          !head.needsReview &&
+          JSON.stringify(head.annotations) === JSON.stringify(annotations)
         )
           return { revision: record.revision, changed: false };
         const month = raw.date.slice(0, 7);
@@ -476,6 +542,8 @@ export class FirestoreTenantStore implements TenantStore {
             sourceId,
             revision,
             portions,
+            sourceRevision: raw.revision,
+            ...(annotations ? { annotations } : {}),
             actor: subject,
             at: new Date(now).toISOString(),
           },
@@ -485,6 +553,7 @@ export class FirestoreTenantStore implements TenantStore {
           portions,
           appliedPortions: portions,
           sourceRevision: raw.revision,
+          ...(annotations ? { annotations } : {}),
         });
         ids.forEach((id, i) => {
           if (!views[i].exists) throw Error("Invalid reporting summary");
@@ -524,6 +593,15 @@ export class FirestoreTenantStore implements TenantStore {
           revision: nextRevision,
         });
         tx.update(root, { revision: nextRevision });
+        if (receiptRef) {
+          tx.create(receiptRef, {
+            actor: subject,
+            operation: "bulk-allocation-v2",
+            payloadHash: bulk!.receipt.hash,
+            createdAt: Timestamp.fromMillis(now),
+            expiresAt: Timestamp.fromMillis(now + 30 * 86400000),
+          });
+        }
         return { revision: nextRevision, changed: true };
       },
       { maxAttempts: 3 },

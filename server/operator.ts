@@ -25,8 +25,10 @@ import { ProjectStore } from "./project-workspace";
 // Explicit operator process. No public HTTP bootstrap, user creation or provider configuration.
 const [operation, fileOrTenant, ...flags] = process.argv.slice(2);
 const productionOperation = operation === "initialize-production" || operation === "provision-production-client";
+const enrichmentOperation = operation === "enrich-time-details";
 const timeOperation =
-  operation === "verify-time-customer" || operation === "sync-time-customer";
+  enrichmentOperation || operation === "verify-time-customer" || operation === "sync-time-customer";
+const enrichmentOptions = enrichmentOperation ? parseEnrichmentFlags(flags) : undefined;
 if (
   (!timeOperation && !productionOperation &&
     ![
@@ -39,7 +41,7 @@ if (
       "inspect-project-migration",
     ].includes(operation)) ||
   !fileOrTenant ||
-  flags.some((f) => f !== "--apply")
+  (!enrichmentOperation && flags.some((f) => f !== "--apply"))
 )
   throw Error(
     "Use bootstrap-admin APPROVAL_FILE [--apply] or prune-idempotency TENANT [--apply]",
@@ -155,6 +157,8 @@ async function runTimeOperation(store: ProjectStore) {
     const sync = configureTime(store, mode!, process.env);
     if (operation === "verify-time-customer")
       return await sync.verifyCustomer(fileOrTenant, flags.includes("--apply"));
+    if (enrichmentOptions)
+      return await sync.enrichDetails(fileOrTenant, enrichmentOptions);
     const result = await sync.daily(fileOrTenant);
     if (result.failed) process.exitCode = 1;
     return result;
@@ -163,6 +167,16 @@ async function runTimeOperation(store: ProjectStore) {
       "Time customer job did not complete. Check the approved configuration and job status.",
     );
   }
+}
+
+function parseEnrichmentFlags(flags: string[]) {
+  const months = flags.filter(flag => /^--month=\d{4}-(0[1-9]|1[0-2])$/.test(flag));
+  const cursors = flags.filter(flag => /^--after=[a-zA-Z0-9_-]{1,400}$/.test(flag));
+  const apply = flags.filter(flag => flag === "--apply");
+  if (months.length !== 1 || cursors.length > 1 || apply.length > 1 ||
+      flags.length !== months.length + cursors.length + apply.length)
+    throw Error("Use enrich-time-details TENANT --month=YYYY-MM [--after=CURSOR] [--apply]");
+  return { month: months[0].slice(8), after: cursors[0]?.slice(8), apply: apply.length === 1 };
 }
 
 async function runProductionOperation(runtime: ReturnType<typeof firebaseRuntime>) {

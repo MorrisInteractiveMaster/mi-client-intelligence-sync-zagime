@@ -2,6 +2,7 @@ import { useState } from "react";
 import { publicProject, type ProjectReport, type StaffProjectSummary } from "../projects/model";
 import type { PublishedPortfolio } from "../projects/portfolio";
 import { projectStatus, reportDay, reportHours } from "./dashboard-format";
+import { PersonPhoto } from "./PersonPhoto";
 
 type Props = {
   project: ProjectReport["projects"][number];
@@ -10,6 +11,8 @@ type Props = {
   team: PublishedPortfolio["directory"];
   onLink?: (destination: string) => void;
   detail?: boolean;
+  delivery?: NonNullable<ProjectReport["hierarchy"]>[string];
+  descendantTotals?: { monthly: number; lifetime: number; descendants: number };
 };
 
 export function ProjectReportPreview({ project, period }: { project: StaffProjectSummary; period: string }) {
@@ -24,7 +27,8 @@ export function ProjectReportPreview({ project, period }: { project: StaffProjec
   </details>;
 }
 
-export function ProjectReportingCard({ project, period, placement, team, onLink, detail }: Props) {
+export function ProjectReportingCard({ project, period, placement, team, onLink, detail, delivery, descendantTotals }: Props) {
+  const completion = delivery?.completion ?? (!delivery && project.progress > 0 ? project.progress : undefined);
   return (
     <article
       className="secure-card secure-published-project"
@@ -35,18 +39,20 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
       <h3>{project.name}</h3>
       {placement?.start && <p className="secure-muted">Start {reportDay(placement.start)}</p>}
       {placement?.target && <p className="secure-muted">Target {reportDay(placement.target)}</p>}
+      {delivery?.start && <p className="secure-muted">Start {reportDay(delivery.start)}</p>}
+      {delivery?.deadline && <p className="secure-muted">Deadline {reportDay(delivery.deadline)}</p>}
       {project.description && (
         <p className="secure-project-description">
           {project.description}
         </p>
       )}
       <div className="secure-progress">
-        <span>{project.progress}% progress</span>
-        <progress
+        <span>{completion === undefined ? "Delivery completion not configured" : completion + "% progress"}</span>
+        {completion !== undefined && <progress
           aria-label={project.name + " progress"}
           max={100}
-          value={project.progress}
-        />
+          value={completion}
+        />}
       </div>
       <dl className="secure-project-hours">
         <div>
@@ -68,12 +74,16 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
             <dd>{reportHours(project.plan.targetSeconds)} h</dd>
           </div>
         )}
+        {delivery?.monthlyCap !== undefined && <div><dt>Monthly cap</dt><dd>{reportHours(delivery.monthlyCap)} h</dd></div>}
+        {delivery?.lifetimeCap !== undefined && <div><dt>Lifetime cap</dt><dd>{reportHours(delivery.lifetimeCap)} h</dd></div>}
+        {descendantTotals && descendantTotals.descendants > 0 && <div><dt>Allocated including approved descendants</dt><dd>{reportHours(descendantTotals.monthly)} h monthly · {reportHours(descendantTotals.lifetime)} h lifetime</dd></div>}
       </dl>
       {team.length > 0 && <div className="exec-project-team">
         <h4>Project team</h4>
         <ul>{team.map(member => <li key={member.id}>
+          <PersonPhoto name={member.name} photo={member.photo} alt={member.photoAlt} />
           {onLink ? <button className="exec-text-button" onClick={() => onLink("contact:" + member.id)}>{member.name}</button> : member.name}
-          {placement?.leadId === member.id ? " · Lead" : ""}</li>)}</ul>
+          {placement?.managerIds?.includes(member.id) || placement?.leadId === member.id ? " · Project manager" : ""}</li>)}</ul>
       </div>}
       {Boolean(
         project.milestones?.length || project.updates?.length,

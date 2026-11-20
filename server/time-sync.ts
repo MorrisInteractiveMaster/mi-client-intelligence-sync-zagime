@@ -11,6 +11,8 @@ import {
   type TimeTotals,
 } from "./time-totals";
 import type { TimeProjectMetadata, TimeStatus } from "../src/projects/time";
+import { timeDetailsRef, type StoredTimeDetails } from "./time-details";
+import { enrichTimeDetails, timeSourceRevision } from "./time-enrichment";
 import {
   type TimeClient,
   type TimeJobcode,
@@ -538,6 +540,22 @@ export class TimeSync {
       verifiedProjects,
     };
   }
+  async enrichDetails(tenant: string, options: { month: string; after?: string; apply?: boolean }) {
+    const scope = this.customer(tenant);
+    await this.store.db.runTransaction(async (tx) => {
+      await timeTenantRevision(tx, scope.root);
+      const setup = (await tx.get(timeRun(scope.root, scope.catalog))).data();
+      if (setup?.customerBound !== true) throw Error("Time customer setup required");
+      if ((setup.expires ?? 0) > this.now()) throw Error("Time sync busy");
+    });
+    const signal = workSignal();
+    const client = await this.provider(signal);
+    const tree = await client.customerTree(scope.parent);
+    if (tree.root.name.normalize("NFC") !== customerName)
+      throw Error("Time customer name does not match the approved setup");
+    const jobs = new Map(tree.jobs.map((job) => [job.id, this.descendants(tree.jobs, job.id)]));
+    return enrichTimeDetails(scope, client, jobs, options, signal, this.now);
+  }
   // Invocation is authorized by Cloud Run Jobs IAM and the verified named runtime.
   async daily(tenant: string) {
     const { root, account, parent, catalog } = this.customer(tenant);
@@ -791,6 +809,7 @@ export class TimeSync {
               completedThrough,
               false,
               descendants,
+              this.connection!.customerParentId ? mapping.account : undefined,
             )),
             ...(await client.read(
               job,
@@ -818,8 +837,11 @@ export class TimeSync {
       for (const row of rows) {
         const id = key(row.id, row.modifiedAt, String(row.deleted));
         const prior = unique.get(id);
-        if (prior && key(JSON.stringify(prior)) !== key(JSON.stringify(row)))
-          throw Error("Time revision conflict");
+        if (prior) {
+          if (timeSourceRevision(prior) !== timeSourceRevision(row))
+            throw Error("Time revision conflict");
+          continue;
+        }
         unique.set(id, row);
       }
       const ordered = [...unique.values()].sort(
@@ -852,13 +874,7 @@ export class TimeSync {
     const id = sourceRecordId("quickbooks-time", mapping.account, row.id);
     const source = root.collection("rawTime").doc(id);
     const head = root.collection("allocationHeads").doc(id);
-    const revision = key(
-      row.modifiedAt,
-      row.date,
-      String(row.seconds),
-      row.jobcodeId,
-      String(row.deleted),
-    );
+    const revision = timeSourceRevision(row);
     return this.store.db.runTransaction(async (tx) => {
       const revisionBefore = await this.authorize(tx, root, who);
       const [lock, prior, allocation, target] = await tx.getAll(
@@ -978,6 +994,17 @@ export class TimeSync {
         },
       };
       tx.create(source.collection("versions").doc(revision), envelope);
+      if (!row.deleted && row.details) {
+        const details: StoredTimeDetails = {
+          provider: "quickbooks-time",
+          sourceRevision: revision,
+          sourceModifiedAt: row.modifiedAt,
+          observedAt: new Date(this.now()).toISOString(),
+          retrievedVia: "scoped-sync",
+          ...row.details,
+        };
+        tx.create(timeDetailsRef(source, revision), details);
+      }
       writeTotals();
       tx.set(source, envelope);
       if (held)

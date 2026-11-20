@@ -165,3 +165,15 @@ test("bounded project updates and milestones use explicit visibility and nested 
   assert.deepEqual(report.milestones, [{ id: "m1", title: "Synthetic milestone", date: "2026-12-01", completed: false }]);
   assert.ok(!JSON.stringify(report).includes("private"));
 });
+
+test("the current report can show an undated milestone while the legacy view is rollback compatible", () => {
+  const input = managedProject({ ...managed, milestones: [
+    { id: "unscheduled", title: "Review", date: "", completed: false, visible: true, status: "in-progress", body: "Review materials" },
+  ] });
+  const project = { ...input, id: "example", tenantId: "fixture", schemaVersion: 2, source: null, published: true,
+    updatedBy: "owner", createdBy: "owner", updatedAt: "2026-11-20", createdAt: "2026-11-20" } as const;
+  assert.deepEqual(approvedProjectContent(project, false).milestones, []);
+  const report = publicProject({ ...projectView(project, 0), ...approvedProjectContent(project) }, 0);
+  assert.equal(report.milestones?.[0].status, "in-progress");
+  assert.equal(report.milestones?.[0].date, "");
+});

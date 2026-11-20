@@ -6,6 +6,8 @@ export interface ServiceArea {
   description: string;
   order: number;
   visible: boolean;
+  monthlyCap?: number;
+  lifetimeCap?: number;
 }
 export interface Engagement {
   id: string;
@@ -15,6 +17,8 @@ export interface Engagement {
   areaPlans: { areaId: string; seconds: number }[];
   order: number;
   visible: boolean;
+  monthlyCap?: number;
+  lifetimeCap?: number;
 }
 export interface DirectoryEntry {
   id: string;
@@ -28,6 +32,22 @@ export interface DirectoryEntry {
   order: number;
   active: boolean;
   visible: boolean;
+  email?: string;
+  phone?: string;
+  staffNotes?: string;
+  internalRole?: string;
+  shareEmail?: boolean;
+  sharePhone?: boolean;
+  profile?: WordPressProfile;
+}
+export interface WordPressProfile {
+  id: number;
+  name: string;
+  title?: string;
+  photo?: string;
+  alt?: string;
+  url: string;
+  modified?: string;
 }
 export interface ProjectPlacement {
   id: string;
@@ -66,7 +86,7 @@ export interface PortfolioTotals {
 export type PortfolioSection = keyof Portfolio;
 export type PortfolioRecord = Portfolio[PortfolioSection][number];
 export const portfolioLimits: Record<PortfolioSection, number> = {
-  areas: 20, engagements: 24, directory: 48, placements: 160, notes: 24,
+  areas: 20, engagements: 24, directory: 160, placements: 160, notes: 24,
 };
 export const newPortfolio = (): Portfolio => ({
   areas: ["Finance", "HR", "CFW", "Health", "Miscellaneous", "Training"].map((name, order) => ({
@@ -79,8 +99,8 @@ export const byOrder = <T extends { order: number; name: string }>(a: T, b: T) =
 export interface PublishedPortfolio {
   areas: ServiceArea[];
   engagements: { id: string; name: string }[];
-  placements: (Pick<ProjectPlacement, "id" | "areaId" | "engagementId" | "start" | "target" | "archived"> & { leadId?: string })[];
-  directory: Pick<DirectoryEntry, "id" | "name" | "role" | "responsibility" | "publicContact" | "projectIds" | "areaId" | "order">[];
+  placements: (Pick<ProjectPlacement, "id" | "areaId" | "engagementId" | "start" | "target" | "archived"> & { leadId?: string; managerIds?: string[] })[];
+  directory: (Pick<DirectoryEntry, "id" | "name" | "role" | "responsibility" | "publicContact" | "projectIds" | "areaId" | "order"> & { photo?: string; photoAlt?: string; profileUrl?: string; email?: string; phone?: string })[];
   narrative: string;
   action: string;
   history: { month: string; seconds: number }[];

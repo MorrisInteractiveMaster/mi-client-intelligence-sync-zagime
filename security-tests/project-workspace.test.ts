@@ -22,7 +22,7 @@ import { staffTestFixture } from "../server/testing/morris-staff-fixture";
 
 test(
   "project-only secured Auth/Firestore workflow and real browser persistence without agreement records",
-  { timeout: 150000 },
+  { timeout: 210000 },
   async () => {
     const runtime = firebaseRuntime(
       "emulator",
@@ -157,6 +157,7 @@ function ClientFixture() {
       '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js" defer></script></body></html>',
     );
     await cp(resolve("public/branding"), join(directory, "branding"), { recursive: true });
+    let directoryAvailable = true;
     const options = {
       time: new TimeSync(new ProjectStore(runtime.db)),
       frontend: directory,
@@ -169,6 +170,10 @@ function ClientFixture() {
           issuer: "https://securetoken.google.com/demo-mi-security",
           audience: "demo-mi-security",
           now: Date.now,
+        },
+        async () => {
+          if (!directoryAvailable) throw Error("Synthetic WordPress outage");
+          return [{ id: 41, name: "Example delivery facilitator", title: "Facilitator", url: "https://morrisinteractive.ca/team/example-profile/" }];
         },
       ),
     };
@@ -811,6 +816,7 @@ function ClientFixture() {
         }),
       });
       await card.getByText(/45% progress/).waitFor();
+      first.page.once("dialog", dialog => void dialog.accept());
       await first.page
         .getByRole("button", {
           name: "Publish Browser saved project",
@@ -823,13 +829,15 @@ function ClientFixture() {
           exact: true,
         })
         .waitFor();
-      await first.page.getByRole("button", { name: "Hours & allocations", exact: true }).click();
+      await first.page.getByRole("button", { name: "Time Allocation", exact: true }).click();
       await first.page
         .getByRole("button", { name: "Load authorized time", exact: true })
         .click();
       await first.page
         .getByRole("button", { name: "Allocate recorded hours", exact: true })
         .click();
+      await first.page.getByLabel("Reporting description", { exact: true }).fill("Reviewed delivery preparation");
+      await first.page.getByLabel("Internal note", { exact: true }).fill("Private allocation review");
       await first.page
         .getByLabel("Delivery project", { exact: true })
         .nth(0)
@@ -842,12 +850,27 @@ function ClientFixture() {
         .getByLabel("Allocated seconds", { exact: true })
         .nth(1)
         .fill("5400");
+      const allocationEditor = first.page.getByRole("region", { name: "Time allocation", exact: true });
+      await allocationEditor.scrollIntoViewIfNeeded();
+      await first.page.screenshot({ path: join(evidence, "time-allocation-editor.png"), animations: "disabled" });
       await first.page
         .getByRole("button", { name: "Save allocation", exact: true })
         .click();
+      await first.page.getByText("Allocation saved.", { exact: true }).waitFor();
+      await first.page.getByText("Reviewed delivery preparation", { exact: true }).waitFor();
+      const monthSearch = first.page.getByRole("searchbox", { name: "Search month", exact: true });
+      await monthSearch.fill("Reviewed delivery");
+      await first.page.getByRole("button", { name: "Apply filters", exact: true }).click();
+      await first.page.getByRole("status").filter({ hasText: /Search: Reviewed delivery.*1 match out of/ }).waitFor();
+      await monthSearch.fill("No matching reporting text");
+      await first.page.getByRole("button", { name: "Apply filters", exact: true }).click();
+      await first.page.getByRole("status").filter({ hasText: /0 matches out of/ }).waitFor();
+      await first.page.getByRole("button", { name: "Clear filters", exact: true }).click();
+      await first.page.getByText("Reviewed delivery preparation", { exact: true }).waitFor();
+      await first.page.screenshot({ path: join(evidence, "time-allocation.png"), fullPage: true, animations: "disabled" });
       await first.page.getByRole("navigation").getByRole("button", { name: "Projects", exact: true }).click();
       await card.locator("dd").first().filter({ hasText: /^0\.5 h$/ }).waitFor();
-      await first.page.getByRole("button", { name: "Hours & allocations", exact: true }).click();
+      await first.page.getByRole("button", { name: "Time Allocation", exact: true }).click();
       await first.page
         .getByRole("button", { name: "Load authorized time", exact: true })
         .click();
@@ -855,7 +878,7 @@ function ClientFixture() {
         .getByRole("button", { name: "Allocation history", exact: true })
         .click();
       await first.page.getByText(/Revision 2 ·/).waitFor();
-      await first.page.getByRole("navigation").getByRole("button", { name: "Audit history", exact: true }).click();
+      await first.page.getByRole("navigation").getByRole("button", { name: "Audit & Settings", exact: true }).click();
       await first.page
         .getByRole("button", { name: "Load audit history", exact: true })
         .click();
@@ -870,6 +893,27 @@ function ClientFixture() {
         path: join(evidence, "staff-1440.png"),
         fullPage: true,
       });
+      await first.page.getByRole("button", { name: "Team Directory", exact: true }).click();
+      await first.page.getByRole("button", { name: "Sync team from WordPress", exact: true }).click();
+      await first.page.getByText("1 public WordPress profiles checked.", { exact: true }).waitFor();
+      await first.page.getByRole("button", { name: /Example delivery facilitator/ }).click();
+      await first.page.getByLabel("Email", { exact: true }).fill("facilitator@example.test");
+      await first.page.getByLabel("Phone", { exact: true }).fill("555-0111");
+      await first.page.getByLabel("Internal role", { exact: true }).fill("Private coordination");
+      await first.page.getByRole("button", { name: "Save contact settings", exact: true }).click();
+      await first.page.getByText("Contact settings saved.", { exact: true }).waitFor();
+      await first.page.screenshot({ path: join(evidence, "team-directory.png"), animations: "disabled" });
+      await first.page.getByRole("button", { name: "Sync team from WordPress", exact: true }).click();
+      await first.page.getByText("1 public WordPress profiles checked.", { exact: true }).waitFor();
+      directoryAvailable = false;
+      assert.equal((await request("directory/wordpress-sync", "POST", {})).status, 503);
+      const afterDirectoryOutage = await json(await request("portfolio"));
+      const syncedPerson = afterDirectoryOutage.portfolio.directory.find((person: { id: string }) => person.id === "wordpress-41");
+      assert.equal(syncedPerson.email, "facilitator@example.test");
+      assert.equal(syncedPerson.phone, "555-0111");
+      assert.equal(syncedPerson.internalRole, "Private coordination");
+      assert.equal(syncedPerson.visible, false);
+      directoryAvailable = true;
       await first.page.getByRole("button", { name: "Portfolio management", exact: true }).click();
       await first.page.getByRole("button", { name: "Edit Health", exact: true }).click();
       await first.page.getByLabel("Description", { exact: true }).fill("Approved health service area.");
@@ -972,8 +1016,30 @@ function ClientFixture() {
       const draftPreview = previewPage.locator("article.secure-card:not(.secure-published-project)").filter({ has: previewPage.getByRole("heading", { name: "Browser saved project", exact: true }) });
       await draftPreview.getByText("Preview approved content", { exact: true }).click();
       const previewCard = draftPreview.locator(".secure-published-project");
-      await previewCard.getByText("Approved synthetic contact · Lead", { exact: true }).waitFor();
+      await previewCard.getByText(/Approved synthetic contact.*Project manager/).waitFor();
       assert.doesNotMatch(await previewCard.innerText(), /PRIVATE|INTERNAL/);
+      await previewPage.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Client Preview", exact: true }).click();
+      await previewPage.getByText("LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW", { exact: true }).waitFor();
+      await previewPage.getByRole("heading", { name: "Leadership summary", exact: true }).waitFor();
+      await previewPage.getByLabel("Preview mode").selectOption("draft");
+      await previewPage.getByText("DRAFT PREVIEW · MORRIS STAFF ONLY", { exact: true }).waitFor();
+      await previewPage.getByRole("heading", { name: "Leadership summary", exact: true }).waitFor();
+      await previewPage.screenshot({ path: join(evidence, "staff-draft-preview.png"), fullPage: true, animations: "disabled" });
+      await previewPage.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Projects", exact: true }).click();
+      await previewPage.getByRole("button", { name: "Edit Browser saved project", exact: true }).click();
+      await previewPage.getByLabel("Client description").fill("Editorial revision in progress");
+      await previewPage.getByRole("button", { name: "Save Draft", exact: true }).click();
+      await previewPage.getByText("Draft saved. Clients still see the last approved version.", { exact: true }).waitFor();
+      await previewPage.getByRole("button", { name: "Preview Changes", exact: true }).click();
+      await previewPage.getByText("DRAFT PREVIEW · MORRIS STAFF ONLY", { exact: true }).waitFor();
+      await previewPage.getByText("Editorial revision in progress", { exact: true }).first().waitFor();
+      await previewPage.screenshot({ path: join(evidence, "staff-project-revision-preview.png"), animations: "disabled" });
+      const duringDraft = await json(await request("report?month=2026-11", "GET", undefined, client.idToken));
+      assert.doesNotMatch(JSON.stringify(duringDraft), /Editorial revision in progress/);
+      await previewPage.getByRole("button", { name: "Back to project" }).click();
+      previewPage.once("dialog", dialog => void dialog.accept());
+      await previewPage.getByRole("button", { name: "Discard Draft", exact: true }).click();
+      await previewPage.getByText("Draft discarded. The approved version is unchanged.", { exact: true }).waitFor();
       await previewBrowser.context.close();
 
       for (const width of [1440, 390]) {
@@ -984,7 +1050,7 @@ function ClientFixture() {
         await page.getByText("No published projects match.").waitFor();
         await search.fill("BROWSER SAVED");
         const visibleCard = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Browser saved project", exact: true }) });
-        await visibleCard.getByText("45% progress").waitFor();
+        await visibleCard.getByText("100% progress", { exact: true }).waitFor();
         await visibleCard.locator("dd").first().filter({ hasText: /^0\.5 h$/ }).waitFor();
         await visibleCard.getByText("Updates and milestones").click();
         await visibleCard.getByText("Approved delivery update").waitFor();
@@ -1210,17 +1276,59 @@ function ClientFixture() {
       assert.equal(approvedCard.milestones.length, 1);
       assert.ok(!JSON.stringify(approvedCard).includes("PRIVATE-UPDATE"));
       assert.ok(!JSON.stringify(approvedCard).includes("internalNotes"));
-      await json(await request(`projects/${persisted.id}`, "PATCH", {
-        expectedRevision: await revision(),
-        patch: {
-          name: persisted.name,
-          description: persisted.description,
-          internalNotes: persisted.internalNotes,
-          plan: persisted.plan,
-          progress: 50,
-          status: persisted.status,
-        },
-      }));
+      const projectPath = `projects/${persisted.id}`;
+      const approvedProjectRef = root.collection("projects").doc(persisted.id);
+      const approvedViewRef = root.collection("projectViews").doc(persisted.id);
+      const draftRef = root.collection("projectDrafts").doc(persisted.id);
+      const approvedView = (await approvedViewRef.get()).data();
+      const changes = { name: persisted.name, description: "Candidate description", internalNotes: "PRIVATE-DRAFT-ONLY",
+        plan: persisted.plan, progress: 50, status: persisted.status };
+      const raceRevision = await revision();
+      const competing = await Promise.all([
+        request(projectPath, "PATCH", { expectedRevision: raceRevision, patch: changes }),
+        request(projectPath, "PATCH", { expectedRevision: raceRevision, patch: { ...changes, description: "Competing description" } }),
+      ]);
+      assert.deepEqual(competing.map(response => response.status).sort(), [200, 409]);
+      const firstDraft = await json(await request(projectPath));
+      assert.equal(firstDraft.draft.revision, raceRevision + 1);
+      assert.equal(firstDraft.project.progress, 50);
+      assert.match(firstDraft.project.description, /^(Candidate|Competing) description$/);
+      assert.deepEqual((await approvedViewRef.get()).data(), approvedView);
+      assert.deepEqual((await approvedProjectRef.get()).data(), persisted);
+      assert.deepEqual(await json(await request("report?month=2026-11", "GET", undefined, client.idToken)), approvedReport);
+      const previewWithDraft = await json(await request("client-preview?month=2026-11&mode=draft"));
+      assert.equal(previewWithDraft.projects.find((p: { id: string }) => p.id === persisted.id).description, firstDraft.project.description);
+      assert.doesNotMatch(JSON.stringify(previewWithDraft), /PRIVATE-DRAFT-ONLY|PRIVATE-UPDATE/);
+      for (const action of ["publish", "discard"]) {
+        assert.equal((await request(projectPath + "/draft", "PATCH", { expectedRevision: await revision(), action }, client.idToken)).status, 403);
+      }
+      assert.equal((await request(projectPath + "/draft", "PATCH", { expectedRevision: raceRevision, action: "publish" })).status, 409);
+      assert.equal((await request(projectPath + "/publication", "PATCH", { expectedRevision: await revision(), published: false })).status, 409);
+      await approvedProjectRef.update({ description: "Approval changed independently" });
+      assert.equal((await request(projectPath + "/draft", "PATCH", { expectedRevision: await revision(), action: "publish" })).status, 409);
+      await approvedProjectRef.update({ description: persisted.description });
+      const beforePublish = await revision();
+      const promoted = await Promise.all([
+        request(projectPath + "/draft", "PATCH", { expectedRevision: beforePublish, action: "publish" }),
+        request(projectPath + "/draft", "PATCH", { expectedRevision: beforePublish, action: "discard" }),
+      ]);
+      assert.deepEqual(promoted.map(response => response.status).sort(), [200, 409]);
+      if (promoted[0].status !== 200) {
+        await json(await request(projectPath, "PATCH", { expectedRevision: await revision(), patch: changes }));
+        await json(await request(projectPath + "/draft", "PATCH", { expectedRevision: await revision(), action: "publish" }));
+      }
+      const publishedDraft = await json(await request("report?month=2026-11", "GET", undefined, client.idToken));
+      assert.match(publishedDraft.projects.find((p: { id: string }) => p.id === persisted.id).description, /^(Candidate|Competing) description$/);
+      assert.doesNotMatch(JSON.stringify(publishedDraft), /PRIVATE-DRAFT-ONLY/);
+      assert.equal(publishedDraft.totalSeconds, approvedReport.totalSeconds);
+      assert.equal((await draftRef.get()).data()!.state, "published");
+      assert.ok(!("content" in (await draftRef.get()).data()!));
+      const revisionAudits = (await root.collection("audits").where("entityId", "==", persisted.id).get()).docs
+        .map(doc => doc.data()).filter(entry => entry.action.startsWith("project-draft-"));
+      assert.ok(revisionAudits.some(entry => entry.action === "project-draft-saved"));
+      assert.ok(revisionAudits.some(entry => entry.action === "project-draft-discarded"));
+      assert.ok(revisionAudits.some(entry => entry.action === "project-draft-published"));
+      assert.ok(revisionAudits.every(entry => entry.actor === staff.localId && !("content" in entry)));
       const legacyEdit = (await root.collection("projects").doc(persisted.id).get()).data()!;
       assert.deepEqual(legacyEdit.updates, persisted.updates);
       assert.deepEqual(legacyEdit.milestones, persisted.milestones);
@@ -1229,6 +1337,98 @@ function ClientFixture() {
       }));
       const afterUnpublish = await json(await request("report?month=2026-11", "GET", undefined, client.idToken));
       assert.ok(!afterUnpublish.projects.some((item: { id: string }) => item.id === persisted.id));
+      const activePreview = await json(await request("client-preview?month=2026-11&mode=published&scope=" + membershipRef.id));
+      assert.deepEqual(activePreview, afterUnpublish);
+      const privatePreview = await json(await request("client-preview?month=2026-11&mode=draft"));
+      assert.ok(privatePreview.projects.some((item: { id: string }) => item.id === persisted.id));
+      assert.doesNotMatch(JSON.stringify(privatePreview), /PRIVATE-UPDATE|Private allocation review|Browser synthetic private note/);
+      for (const route of [
+        "client-preview?month=2026-11&mode=draft",
+        "client-preview?month=2026-11&mode=published&scope=" + membershipRef.id,
+        "client-preview/scopes",
+      ]) assert.equal((await request(route, "GET", undefined, client.idToken)).status, 403);
+      assert.equal((await request("directory/wordpress-sync", "POST", {}, client.idToken)).status, 403);
+
+      // Isolated work-order identities and imported total. These represent the
+      // source contract shape without contacting QuickBooks or adding real records.
+      const fixtureJobs = ["132160684", "135372950", "132160686", "136571342"];
+      const syntheticRecorded = [360_000, 360_000, 360_000, 564_300];
+      for (const [i, jobcodeId] of fixtureJobs.entries()) {
+        await root.collection("timeMappings").doc(key("verified-fixture", jobcodeId)).set({ jobcodeId, account: "verified-fixture",
+          projectId: "synthetic-delivery", scopeProjectId: "synthetic-delivery",
+          sourceJob: { id: jobcodeId, name: "Fixture source order " + (i + 1), missing: false } });
+        const id = "delivery-record-" + i;
+        await root.collection("rawTime").doc(id).set({ schemaVersion: 2, source: "quickbooks-time", sourceCompanyId: "verified-fixture",
+          scopeProjectId: "synthetic-delivery", record: { id, tenantId: tenant, sourceWorkOrderId: jobcodeId, sourcePersonId: "",
+            date: "2026-10-20", description: "Synthetic Time", seconds: syntheticRecorded[i], revision: "fixture-1" } });
+      }
+      const snapshotRecords = async () => (await root.collection("rawTime").get()).docs.map(doc => [doc.id, doc.data()]);
+      const recordsBefore = await snapshotRecords();
+      const baseDelivery = { kind: "project", type: "hourly", managerIds: [], teamIds: [] };
+      const add = async (name: string, delivery: object) => json(await request("projects", "POST", {
+        name, internalNotes: "", description: "", status: "active", progress: 0, plan: { basis: "monthly", targetSeconds: 0 }, delivery,
+      }, staff.idToken, Date.now() + "-" + crypto.randomUUID()), 201);
+      const parent = await add("Consulting engagement fixture", { ...baseDelivery, kind: "engagement", monthlyCap: 36_000, lifetimeCap: 72_000 });
+      const department = await add("Personnel group fixture", { ...baseDelivery, parentId: parent.id, areaId: "hr" });
+      const nested = await add("Policy assessment fixture", { ...baseDelivery, parentId: department.id, areaId: "hr" });
+      const historyPrior = (await root.collection("allocationRevisions").get()).docs.map(doc => doc.data());
+      const link = async (id: string, config: object) => {
+        const { project } = await json(await request("projects/" + id));
+        const { name, status, progress, description, internalNotes, plan } = project;
+        return request("projects/" + id, "PATCH", { expectedRevision: await revision(), patch: { name, status, progress, description, internalNotes, plan, delivery: config } });
+      };
+      assert.equal((await link(nested.id, { ...baseDelivery, parentId: department.id, areaId: "hr", workOrderIds: [fixtureJobs[0]] })).status, 200);
+      assert.equal((await link(parent.id, { ...baseDelivery, parentId: nested.id })).status, 400);
+      assert.equal((await link(nested.id, { ...baseDelivery, parentId: department.id, workOrderIds: ["999999"] })).status, 400);
+      assert.deepEqual(await snapshotRecords(), recordsBefore);
+      assert.deepEqual((await root.collection("allocationRevisions").get()).docs.map(doc => doc.data()), historyPrior);
+      const imported = await json(await request("sources?month=2026-10"));
+      const workOrders = imported.sources.filter((source: { sourceWorkOrderId: string }) => fixtureJobs.includes(source.sourceWorkOrderId));
+      assert.deepEqual(workOrders.map((source: { sourceWorkOrderId: string }) => source.sourceWorkOrderId), fixtureJobs);
+      assert.equal(workOrders.reduce((sum: number, source: { seconds: number }) => sum + source.seconds, 0), 456.75 * 3600);
+      const hierarchyBrowser = await session(1440);
+      await hierarchyBrowser.page.getByRole("button", { name: "Budgets & Delivery Health", exact: true }).click();
+      await hierarchyBrowser.page.getByRole("button", { name: "Policy assessment fixture", exact: true }).waitFor();
+      await hierarchyBrowser.page.getByText("1 department · 2 active · 0 completed", { exact: true }).waitFor();
+      await hierarchyBrowser.page.screenshot({ path: join(evidence, "delivery-hierarchy.png"), animations: "disabled" });
+
+      const bulkReady = root.collection("rawTime").doc("browser-bulk-ready");
+      const bulkConflict = root.collection("rawTime").doc("browser-bulk-changed");
+      const bulkFixture = (id: string, day: string, description: string) => ({
+        schemaVersion: 2, source: "synthetic", scopeProjectId: "synthetic-delivery", deleted: false,
+        record: { id, tenantId: tenant, sourcePersonId: "synthetic-person", sourceWorkOrderId: "synthetic-job",
+          date: "2026-11-" + day, seconds: 1733, description, revision: "browser-bulk-1" },
+      });
+      const readyEntry = bulkFixture(bulkReady.id, "21", "Browser bulk ready entry");
+      await Promise.all([
+        bulkReady.set(readyEntry),
+        bulkConflict.set(bulkFixture(bulkConflict.id, "22", "Browser bulk changed entry")),
+      ]);
+      const bulkPage = hierarchyBrowser.page;
+      await bulkPage.getByRole("button", { name: "Time Allocation", exact: true }).click();
+      await bulkPage.getByRole("row").filter({ hasText: "Browser bulk ready entry" }).getByRole("checkbox").check();
+      await bulkPage.getByRole("row").filter({ hasText: "Browser bulk changed entry" }).getByRole("checkbox").check();
+      await bulkPage.getByLabel("Assign 2 unallocated entries").selectOption(nested.id);
+      // The browser has already loaded its revisions. Simulate a source correction in the emulator only.
+      await bulkConflict.update({ "record.revision": "browser-bulk-2" });
+      const confirmBulk = bulkPage.waitForEvent("dialog").then(async dialog => {
+        const message = dialog.message();
+        await dialog.accept();
+        assert.match(message, /Assign all recorded time on 2 selected entries to Policy assessment fixture/);
+      });
+      await Promise.all([bulkPage.getByRole("button", { name: "Assign selected time" }).click(), confirmBulk]);
+      const bulkResults = bulkPage.getByRole("region", { name: "Bulk allocation results" });
+      await bulkResults.getByText("1 of 2 entries saved.", { exact: true }).waitFor();
+      await bulkResults.getByText(/Nov 21.*Saved\./).waitFor();
+      await bulkResults.getByText(/Nov 22.*Source changed/).waitFor();
+      assert.equal(await bulkResults.getByRole("button", { name: "Retry unsaved entries" }).count(), 0);
+      assert.deepEqual((await root.collection("allocationHeads").doc(bulkReady.id).get()).data()?.portions,
+        [{ projectId: nested.id, description: "", seconds: 1733 }]);
+      assert.equal((await root.collection("allocationHeads").doc(bulkConflict.id).get()).exists, false);
+      assert.deepEqual((await bulkReady.get()).data(), readyEntry);
+      await bulkResults.scrollIntoViewIfNeeded();
+      await bulkPage.screenshot({ path: join(evidence, "bulk-allocation-results.png"), animations: "disabled" });
+      await hierarchyBrowser.context.close();
       assert.deepEqual(errors, []);
       await writeFile(
         join(evidence, "report.json"),
@@ -1249,6 +1449,7 @@ function ClientFixture() {
             publishedTimeline: true,
             rapidMonthSwitch: true,
             allocation: true,
+            bulkAllocationPartialConflict: true,
             history: true,
             audits: true,
             errors,

@@ -15,6 +15,7 @@ export interface PageQuery {
   cursor?: string;
   agreementId?: string;
   sourceId?: string;
+  sourceFilters?: SourceFilters;
 }
 export interface StaffProject
   extends Omit<DeliveryProject, "internalNotes" | "trainingSessions"> {
@@ -32,17 +33,53 @@ export interface StaffSource {
   seconds: number;
   description: string;
   sourceWorkOrderId: string;
+  workOrderName?: string;
+  sourcePersonId?: string;
+  consultantName?: string;
+  annotations?: AllocationAnnotations;
   sourceRevision: string;
   allocationRevision: number;
   portions: Allocation[];
   unallocatedSeconds: number;
   conflict: boolean;
 }
+export const sourceStatuses = ["allocated", "partial", "unallocated", "review", "deleted"] as const;
+export type SourceStatus = typeof sourceStatuses[number];
+export interface SourceFilters {
+  workOrder?: string;
+  consultant?: string;
+  area?: string;
+  project?: string;
+  from?: string;
+  through?: string;
+  status?: SourceStatus | "queue";
+}
+export interface SourceSummary {
+  monthTotal: number;
+  matched: number;
+  counts: Record<SourceStatus, number> & { total: number; remaining: number };
+  workOrders: { id: string; label: string }[];
+  consultants: { id: string; label: string }[];
+}
+export function sourceStatus(source: Pick<StaffSource, "deleted" | "needsReview" | "conflict" | "unallocatedSeconds" | "seconds">): SourceStatus {
+  if (source.deleted) return "deleted";
+  if (source.needsReview || source.conflict) return "review";
+  if (!source.unallocatedSeconds) return "allocated";
+  return source.unallocatedSeconds === source.seconds ? "unallocated" : "partial";
+}
 export interface HistoryRow {
   revision: number;
   at: string;
   actor?: string;
   portions: Allocation[];
+  annotations?: AllocationAnnotations;
+  sourceRevision?: string;
+}
+export interface AllocationAnnotations {
+  reportingDescription: string;
+  internalNote: string;
+  parentId?: string;
+  areaId?: string;
 }
 export interface StaffPage {
   audits?: { id: string; action: string; entityId: string; actor: string; at: string; revision: number }[];

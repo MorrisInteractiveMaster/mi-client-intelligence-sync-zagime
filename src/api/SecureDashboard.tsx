@@ -221,13 +221,13 @@ export function SecureDashboard() {
       {!signedIn ? (
         <section className="secure-sign-in" aria-label="Sign in">
           <h2>Sign in to your workspace</h2>
-          <p>Choose the sign-in method for your account.</p>
-          <button disabled={!auth} onClick={() => void signIn("google")}>
+          <p>Clients use the Google account approved for their organization. Morris staff use their work Microsoft account.</p>
+          <div className="secure-actions"><button disabled={!auth} onClick={() => void signIn("google")}>
             Sign in with Google
           </button>
           <button disabled={!auth} onClick={() => void signIn("microsoft")}>
             Sign in with Microsoft
-          </button>
+          </button></div>
           {import.meta.env.VITE_AUTH_EMULATOR === "true" && (
             <form
               onSubmit={async (e) => {

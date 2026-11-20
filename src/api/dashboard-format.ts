@@ -1,3 +1,5 @@
+import { deliveryDate } from "../projects/delivery";
+
 const hoursFormat = new Intl.NumberFormat("en-CA", {
   maximumFractionDigits: 3,
 });
@@ -19,14 +21,14 @@ const monthFormat = new Intl.DateTimeFormat("en-CA", {
 export const reportHours = (seconds: number) =>
   seconds > 0 && seconds < 3.6 ? "<0.001" : hoursFormat.format(seconds / 3600);
 export const reportDay = (date: string) =>
-  calendarFormat.format(new Date(date));
+  Number.isFinite(Date.parse(date)) ? calendarFormat.format(new Date(date)) : "No date set";
 export const reportMonth = (month: string) =>
   monthFormat.format(new Date(month + "-01"));
 export const reportTimestamp = (value: string) =>
   Number.isFinite(Date.parse(value))
     ? timestampFormat.format(new Date(value)) + " UTC"
     : "Date unavailable";
-export const today = () => new Date().toISOString().slice(0, 10);
+export const today = () => deliveryDate();
 export const projectStatus = {
   planned: "Planned",
   active: "In progress",
