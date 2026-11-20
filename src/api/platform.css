@@ -116,6 +116,12 @@
 .platform-audit li { display: flex; justify-content: space-between; gap: 1rem; padding-block: .65rem; border-bottom: 1px solid var(--secure-line); }
 .platform-audit time { font-variant-numeric: tabular-nums; color: #43566a; }
 .platform-client-preview { margin-top: .85rem; }
+.nordic.secure-shell.platform-shell .secure-project-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+.nordic.secure-shell.platform-shell .secure-published-project .secure-project-hours {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr));
+}
 .platform-client-actions { display: flex; flex-wrap: wrap; gap: .7rem; }
 .nordic.secure-shell .platform-client-hero {
   grid-template-columns: minmax(0, 1.1fr) minmax(0, .8fr);

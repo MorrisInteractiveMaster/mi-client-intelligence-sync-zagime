@@ -157,6 +157,9 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.screenshot({ path: join(evidence, "client-dashboard-native-overview.png"), fullPage: true, animations: "disabled" });
     await client.page.setViewportSize({ width: 768, height: 1024 });
     assert.ok(await client.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const narrowestTile = await client.page.locator(".secure-published-project .secure-project-hours > div")
+      .evaluateAll(tiles => Math.min(...tiles.map(tile => tile.getBoundingClientRect().width)));
+    assert.ok(Number.isFinite(narrowestTile) && narrowestTile >= 96, "tablet project metrics have readable columns");
     await client.page.screenshot({ path: join(evidence, "client-dashboard-tablet.png"), fullPage: true, animations: "disabled" });
     await client.page.setViewportSize({ width: 1440, height: 1000 });
     assert.equal(await client.page.getByRole("link", { name: /Morris Workspace|Control Panel/ }).count(), 0);
