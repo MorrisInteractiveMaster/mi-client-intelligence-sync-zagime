@@ -302,6 +302,16 @@ export function ProjectStaffWorkspace({
     portalNavigate({ staff: "preview", editor: null, previewProject: projectId, previewMode: "draft",
       view: "project:" + projectId, chart: null, present: null, q: null, status: null });
   }
+  function changePublication(project: StaffProjectSummary) {
+    if (!window.confirm(project.published ? "Remove this project from client reporting?" : "Publish approved project information to authorized clients?")) return;
+    void perform(async () => {
+      await client.call(tenant, "projects/" + project.id + "/publication", {
+        method: "PATCH",
+        body: { expectedRevision: page.revision, published: !project.published },
+      });
+      refresh();
+    });
+  }
   function resolveDraft(projectId: string, action: "publish" | "discard") {
     const confirmation = action === "publish"
       ? "Publish the saved changes to authorized clients?"
@@ -699,10 +709,17 @@ export function ProjectStaffWorkspace({
           <button type="button" aria-pressed={tableView} className="secure-secondary" onClick={() => portalNavigate({ "staff-layout": "table" })}>Table</button>
         </div>
         {tableView && <div className="intel-table-scroll" tabIndex={0} role="region" aria-label="Projects table">
-          <table><thead><tr><th scope="col">Project</th><th scope="col">Status</th><th scope="col">Visibility</th><th scope="col">Allocated</th><th scope="col">Work order</th></tr></thead>
+          <table><thead><tr><th scope="col">Project</th><th scope="col">Status</th><th scope="col">Visibility</th><th scope="col">Reported effort</th><th scope="col">Work order</th><th scope="col">Publication</th></tr></thead>
           <tbody>{page.projects?.filter(matchesStatus).map(p => <tr key={p.id}><th scope="row"><button type="button" className="exec-text-button" disabled={busy}
             onClick={() => { if (!editorDirty || window.confirm("Discard the unsaved project changes?")) portalNavigate({ staff: "projects", editor: p.id }); }}>{p.name}</button></th>
             <td>{projectStatus[p.status]}</td><td>{p.published ? (p.draft ? "Published · Draft changes" : "Published") : "Unpublished"}</td><td>{reportHours(p.seconds)} h</td><td>{p.workOrderReference || "—"}</td>
+            <td><div className="secure-actions">
+              {p.published && nativeWorkspace && <PlatformLink href={periodHref(clientBase + "/projects/" + p.id, month)}>View Published</PlatformLink>}
+              {p.draft ? <button type="button" className="secure-secondary" disabled={busy || editorDirty}
+                onClick={() => openDeliveryProject(p.id)}>Review changes</button> :
+                <button type="button" className="secure-secondary" disabled={busy} onClick={() => changePublication(p)}
+                  aria-label={`${p.published ? "Unpublish" : "Publish"} ${p.name}`}>{p.published ? "Unpublish" : "Publish"}</button>}
+            </div></td>
           </tr>)}</tbody></table>
         </div>}
         {treeView && <DeliveryHealth projects={allProjects} portfolio={portfolio} onOpen={openDeliveryProject} />}
@@ -773,23 +790,7 @@ export function ProjectStaffWorkspace({
                   className="secure-secondary"
                   disabled={busy || Boolean(p.draft)}
                   aria-label={`${p.published ? "Unpublish" : "Publish"} ${p.name}`}
-                  onClick={() => {
-                    if (!window.confirm(p.published ? "Remove this project from client reporting?" : "Publish approved project information to authorized clients?")) return;
-                    void perform(async () => {
-                      await client.call(
-                        tenant,
-                        `projects/${p.id}/publication`,
-                        {
-                          method: "PATCH",
-                          body: {
-                            expectedRevision: page.revision,
-                            published: !p.published,
-                          },
-                        },
-                      );
-                      refresh();
-                    });
-                  }}
+                  onClick={() => changePublication(p)}
                 >
                   {p.published ? "Unpublish" : "Publish"}
                 </button>

@@ -821,6 +821,8 @@ function ClientFixture() {
         }),
       });
       await card.waitFor();
+      await first.page.getByRole("button", { name: "Table", exact: true }).click();
+      await first.page.getByRole("region", { name: "Projects table" }).waitFor();
       first.page.once("dialog", dialog => void dialog.accept());
       await first.page
         .getByRole("button", {
@@ -834,6 +836,7 @@ function ClientFixture() {
           exact: true,
         })
         .waitFor();
+      await first.page.getByRole("button", { name: "Project list", exact: true }).click();
       await first.page.getByRole("button", { name: "Time Allocation", exact: true }).click();
       await first.page
         .getByRole("button", { name: "Load authorized time", exact: true })
