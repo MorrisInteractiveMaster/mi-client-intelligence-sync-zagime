@@ -65,7 +65,7 @@ export function ExecutiveOverview({ report, onPresentation, onLink, onChart, pla
         </div>
       </div>
       <div className="mi-leadership-metric" aria-label="Published portfolio summary">
-        <div>Reported effort<ContextHelp label="How are reported hours calculated?">Hours include classified work and remaining time recorded against published work orders you can see.</ContextHelp></div>
+        <div>{platform ? "Reported effort" : "Reported effort · " + reportMonth(report.month)}<ContextHelp label="How are reported hours calculated?">Hours include classified work and remaining time recorded against published work orders you can see.</ContextHelp></div>
         {projects.length ? <>
           <strong>{reportHours(report.totalSeconds)} <small>h</small></strong>
           <Sparkline rows={trend.map(row => ({ ...row, value: row.seconds }))} />

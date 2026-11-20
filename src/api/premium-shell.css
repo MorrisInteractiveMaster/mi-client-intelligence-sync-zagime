@@ -188,3 +188,21 @@
   .intel-workspace[data-platform="true"] .mi-client-nav-group { grid-template-columns: repeat(auto-fit,minmax(min(100%,138px),1fr)); }
   .intel-workspace[data-platform="true"] .mi-client-nav-group > p { grid-column: 1/-1; }
 }
+/* Keep legacy Nordic SVG sizing from expanding control icons into text columns. */
+.nordic.secure-shell.platform-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog,.mi-workspace-tools,.mi-dialog-heading,.mi-sign-in-story,.mi-account,.report-export,.reporting-period,.mi-blocker-toggle) svg {
+  flex: 0 0 18px; width: 18px; height: 18px;
+}
+.nordic.secure-shell.platform-shell .mi-workspace-sidebar .mi-nav-jump,
+.nordic.secure-shell.platform-shell .mi-navigation-dialog .mi-nav-jump { flex: 0 0 13px; width: 13px; height: 13px; }
+.nordic.secure-shell.platform-shell .mi-workspace-tools button { white-space: nowrap; width: auto; }
+.nordic.secure-shell.platform-shell .mi-navigation-dialog .mi-dialog-heading h2 { color: #eef5fc; }
+.nordic.secure-shell.platform-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog) button span { min-width: 0; overflow-wrap: normal; text-wrap: pretty; }
+.nordic.secure-shell.platform-shell .mi-page-heading { display: block; padding: 0; border: 0; }
+.nordic.secure-shell.platform-shell .mi-operations-trend header { padding: 0 0 11px; }
+.nordic.secure-shell.platform-shell .mi-operations-trend :is(summary, p) svg { display: inline-block; width: 15px; height: 15px; }
+.nordic.secure-shell.platform-shell .mi-operations-trend summary { padding: 8px 0; }
+.nordic.secure-shell.platform-shell .mi-operation-metrics { grid-template-columns: repeat(auto-fit,minmax(min(100%,164px),1fr)); }
+.nordic.secure-shell.platform-shell .mi-operation-metrics dd { font-size: clamp(1rem,1.45vw,1.36rem); }
+.nordic.secure-shell.platform-shell .mi-progress-fields .mi-blocker-toggle { display: flex; grid-column: 1/-1; }
+.platform-shell .mi-progress-fields .mi-blocker-toggle input { width: auto; }
+.platform-shell .reporting-period__label { text-wrap: nowrap; }

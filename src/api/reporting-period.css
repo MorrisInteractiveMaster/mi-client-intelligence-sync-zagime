@@ -27,7 +27,7 @@
 .nordic .reporting-period button,
 .nordic .reporting-period select,
 .nordic .reporting-period input,
-.reporting-period summary {
+.reporting-period__options {
   min-height: 44px;
   font-variant-numeric: tabular-nums;
 }
@@ -46,7 +46,7 @@
   min-width: 0;
   position: relative;
 }
-.reporting-period__presets summary {
+.reporting-period__presets .reporting-period__options {
   display: flex;
   align-items: center;
   gap: .5rem;
@@ -55,7 +55,7 @@
   font-weight: 650;
   cursor: pointer;
 }
-.reporting-period__presets summary::after {
+.reporting-period__presets .reporting-period__options::after {
   content: "";
   display: inline-block;
   width: .36rem;
@@ -70,7 +70,7 @@
   background: var(--secure-paper, #f7f5ee);
   border: 1px solid var(--secure-line, #d2dce3);
 }
-.reporting-period__presets[open] { flex-basis: 100%; }
+.reporting-period__presets[data-open=true] { flex-basis: 100%; }
 .reporting-period__range { align-items: end; }
 .reporting-period__range label { display: grid; gap: .3rem; }
 .reporting-period__hint, .reporting-period__range p {
