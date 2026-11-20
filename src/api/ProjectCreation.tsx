@@ -126,7 +126,7 @@ export function ProjectCreation({ projects, portfolio, busy, onDirty, onCancel, 
       <legend className="creation-legend">Project type and name</legend>
       <div className="creation-kinds">{deliveryKinds.map(option => <label key={option} className={kind === option ? "creation-kind-selected" : ""}>
         <input type="radio" name="projectKind" value={option} aria-label={deliveryKindNames[option]} checked={kind === option} onChange={() => {
-          setKind(option); setParent(""); setDepartment(""); setArea(""); setParentSearch("");
+          setKind(option); setParent(""); setDepartment(""); setArea("");
         }} />
         <span>{deliveryKindNames[option]}<small>{descriptions[option]}</small></span>
       </label>)}</div>

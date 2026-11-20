@@ -36,7 +36,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
   batch.set(parentRef, recordedParent);
   batch.set(root.collection("projectViews").doc(parentId), projectView(recordedParent, 0));
   for (const period of [month, "lifetime"])
-    batch.set(root.doc("timeProjectTotals/" + parentId + "/periods/" + period), { recorded: 74700, allocated: 0 });
+    batch.set(root.collection("timeProjectTotals").doc(parentId).collection("periods").doc(period), { recorded: 74700, allocated: 0 });
   batch.set(root.collection("rawTime").doc("recorded-order-fixture"), {
     schemaVersion: 2, source: "quickbooks-time", scopeProjectId: parentId, deleted: false,
     record: { id: "recorded-order-fixture", tenantId: tenant, sourceWorkOrderId: "132160684", date: month + "-03", revision: "fixture-revision", seconds: 74700 },
