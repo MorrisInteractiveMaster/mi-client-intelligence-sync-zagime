@@ -206,3 +206,4 @@
 .nordic.secure-shell.platform-shell .mi-progress-fields .mi-blocker-toggle { display: flex; grid-column: 1/-1; }
 .platform-shell .mi-progress-fields .mi-blocker-toggle input { width: auto; }
 .platform-shell .reporting-period__label { text-wrap: nowrap; }
+.mi-legacy-sign-in { display: contents; }

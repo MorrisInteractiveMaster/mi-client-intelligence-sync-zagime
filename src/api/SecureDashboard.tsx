@@ -242,10 +242,10 @@ export function SecureDashboard() {
       </header>
       {!signedIn ? (
         <section className={"secure-sign-in" + (route ? " platform-sign-in" : "")} aria-label="Sign in">
-          <div className="mi-sign-in-story"><p><LockKeyhole size={16} aria-hidden="true" /> Protected reporting</p>
-            <strong>Client Intelligence Platform</strong><span>Morris Interactive</span></div>
-          <div className="mi-sign-in-panel">
-          <Fingerprint size={28} aria-hidden="true" />
+          {route && <div className="mi-sign-in-story"><p><LockKeyhole size={16} aria-hidden="true" /> Protected reporting</p>
+            <strong>Client Intelligence Platform</strong><span>Morris Interactive</span></div>}
+          <div className={route ? "mi-sign-in-panel" : "mi-legacy-sign-in"}>
+          {route && <Fingerprint size={28} aria-hidden="true" />}
           <h2>Sign in to your workspace</h2>
           <p>Clients use their approved Google account. Morris staff use their work Microsoft account.</p>
           <div className="secure-actions"><button disabled={!auth} onClick={() => void signIn("google")}>
