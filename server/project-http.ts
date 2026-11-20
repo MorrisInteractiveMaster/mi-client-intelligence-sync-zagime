@@ -163,6 +163,7 @@ export async function projectRequest(
   };
   const queryKeys = [...url.searchParams.keys()];
   const sourceList = req.method === "GET" && resource === "sources" && !id && !action;
+  const sourceExport = sourceList && url.searchParams.get("download") === "csv";
   if (
     queryKeys.some(
       (k) =>
@@ -172,6 +173,7 @@ export async function projectRequest(
             resource === "projects" &&
             !id) ||
           (sourceList && sourceFilterKeys.some(field => field === k)) ||
+          (sourceExport && k === "download") ||
           ["month", "limit", "cursor"].includes(k)
         ) || url.searchParams.getAll(k).length !== 1,
     )
@@ -180,6 +182,7 @@ export async function projectRequest(
   const page = {
     month: url.searchParams.get("month") ?? "",
     limit: Number(url.searchParams.get("limit") ?? 25),
+    ...(sourceExport && { sourceExport: true as const }),
     ...(url.searchParams.has("search")
       ? { search: url.searchParams.get("search")! }
       : {}),

@@ -1,0 +1,99 @@
+.reporting-period {
+  display: grid;
+  gap: .625rem;
+  padding: .35rem 0;
+  min-width: 0;
+  color: var(--secure-ink, #15263a);
+}
+.reporting-period__main,
+.reporting-period__stepper,
+.reporting-period__choices,
+.reporting-period__range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+}
+.reporting-period__label {
+  display: inline-flex;
+  align-items: center;
+  gap: .375rem;
+  margin-inline-end: .25rem;
+  font-size: .84rem;
+  font-weight: 700;
+}
+.reporting-period__stepper { flex-wrap: nowrap; min-width: 0; }
+.reporting-period__month { min-width: 0; }
+.nordic .reporting-period button,
+.nordic .reporting-period select,
+.nordic .reporting-period input,
+.reporting-period summary {
+  min-height: 44px;
+  font-variant-numeric: tabular-nums;
+}
+.nordic .reporting-period .reporting-period__stepper button {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  min-width: 44px;
+}
+.nordic .reporting-period select {
+  width: min(10rem, 100%);
+  padding-inline: .625rem;
+}
+.reporting-period__presets {
+  max-width: 100%;
+  min-width: 0;
+  position: relative;
+}
+.reporting-period__presets summary {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding-inline: .75rem;
+  color: var(--secure-brand, #102a47);
+  font-weight: 650;
+  cursor: pointer;
+}
+.reporting-period__presets summary::after {
+  content: "";
+  display: inline-block;
+  width: .36rem;
+  height: .36rem;
+  border-inline-end: 1.5px solid;
+  border-block-end: 1.5px solid;
+  transform: translateY(-.08rem) rotate(45deg);
+}
+.reporting-period__choices {
+  padding: .65rem;
+  border-radius: .65rem;
+  background: var(--secure-paper, #f7f5ee);
+  border: 1px solid var(--secure-line, #d2dce3);
+}
+.reporting-period__presets[open] { flex-basis: 100%; }
+.reporting-period__range { align-items: end; }
+.reporting-period__range label { display: grid; gap: .3rem; }
+.reporting-period__hint, .reporting-period__range p {
+  margin: 0;
+  color: var(--secure-muted, #43566a);
+  font-size: .84rem;
+}
+.reporting-period :is(button, select, summary, input):focus-visible {
+  outline: 2px solid #215d94;
+  outline-offset: 2px;
+}
+.reporting-period__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@media (max-width: 550px) {
+  .reporting-period__label { flex-basis: 100%; }
+  .reporting-period__stepper { flex: 1 1 100%; }
+  .reporting-period__month { flex: 1 1 0; }
+  .nordic .reporting-period select { width: 100%; }
+}

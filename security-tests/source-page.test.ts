@@ -118,6 +118,13 @@ test("Time search, choices, counts and cursor cover a complete period without ex
     await timeDetailsRef(src(31), revision).set(details);
     assert.equal((await request(`sources?month=${period}&search=shoreline&limit=1&cursor=${filtered.nextCursor}`)).status, 409);
     assert.equal((await request(`sources?month=${period}`, "client")).status, 403);
+    const exported = await sources({ period: "all", limit: "500", download: "csv" });
+    assert.equal(exported.sources?.length, exported.sourceSummary?.matched);
+    assert.equal(exported.sources?.length, 35);
+    assert.equal(exported.nextCursor, undefined);
+    assert.equal((await request("sources?month=" + period + "&limit=500&download=csv", "client")).status, 403);
+    assert.equal((await request("sources?month=" + period + "&limit=501&download=csv")).status, 400);
+    assert.equal((await request("sources?month=" + period + "&limit=500")).status, 400);
     const report = await request(`report?month=${period}`, "client");
     assert.equal(report.status, 200);
     assert.doesNotMatch(await report.text(), /Taylor Canoe|shoreline survey|Staff-only private line/);

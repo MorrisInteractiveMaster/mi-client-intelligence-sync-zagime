@@ -1,25 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize, Pause, Play, Printer, RotateCcw, X } from "lucide-react";
 import type { ProjectReport } from "../projects/model";
-import { areaHours } from "../projects/portfolio";
 import { brandAsset } from "../config/branding";
 import { reportHours, reportMonth } from "./dashboard-format";
-import { chartRows, dotScale, DotField } from "./DotAnalytics";
+import { chartRows } from "./DotAnalytics";
+import { Sparkline } from "./ReportingPlots";
 import { portalNavigate, usePortalLocation } from "./portal-location";
 import { PresentationContent, publishedChapters } from "./PresentationChapters";
-
-const dotCount = 84;
-function dotPosition(index: number, chapter: number) {
-  const column = index % 12;
-  const row = Math.floor(index / 12);
-  if (chapter === 0 || chapter === 8) {
-    const angle = index * Math.PI * (3 - Math.sqrt(5));
-    const radius = 45 * Math.sqrt((index + .5) / dotCount);
-    return { left: (50 + Math.cos(angle) * radius * .92) + "%", top: (50 + Math.sin(angle) * radius) + "%" };
-  }
-  const offset = (chapter === 4 || chapter === 5 || chapter === 7) ? Math.sin(column * .62 + chapter) * 6 : 0;
-  return { left: (6 + column * 8) + "%", top: (14 + row * 12 + offset) + "%" };
-}
 
 export default function ExecutivePresentation({ report, onClose, scope = "overview", scopeTitle, onLink, draft, linked }: {
   report: ProjectReport; onClose: () => void; scope?: string; scopeTitle?: string;
@@ -32,6 +19,7 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
   const requestedChapter = Number(location.get("chapter") ?? "1") - 1;
   const dialog = useRef<HTMLDialogElement>(null);
   const stage = useRef<HTMLDivElement>(null);
+  const gesture = useRef<{ x: number; y: number } | undefined>(undefined);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const period = reportMonth(report.month);
@@ -45,9 +33,9 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
   const lines = (p: typeof projects) => p.length ? p.slice(0, 4).map(x => x.name) : ["No published projects in this category."];
   const leadership = [
     { label: "Partnership", title: report.tenant.name, value: "At a glance", rows: ["Morris Interactive"] },
-    { label: "Reporting period", title: "Reporting period", value: period, rows: ["Monthly allocations for published projects"] },
-    { label: "Delivery hours", title: "Published delivery", value: reportHours(report.totalSeconds) + " h", rows: ["Approved allocations for " + period] },
-    { label: "Service areas", title: "Work across service areas", value: "", rows: areaHours(projects, report.portfolio).map(x => x.name + " · " + reportHours(x.seconds) + " h") },
+    { label: "Reporting period", title: "Reporting period", value: period, rows: ["Monthly reported effort for published projects"] },
+    { label: "Delivery hours", title: "Published delivery", value: reportHours(report.totalSeconds) + " h", rows: ["Approved reported effort for " + period] },
+    { label: "Service areas", title: "Work across service areas", value: "", rows: chartRows(report, "distribution").map(x => x.label + " · " + reportHours(x.seconds) + " h") },
     { label: "Active work", title: "Active work", value: String(active.length), rows: lines(active) },
     { label: "Milestones", title: "Progress and milestones", value: String(milestones.length), rows: milestones.slice(0, 4).map(m => m.title) },
     { label: "Completed work", title: "Completed work", value: String(completed.length), rows: lines(completed) },
@@ -61,7 +49,7 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
       rows: scopedNote.length ? scopedNote : single?.description ? [single.description] : [projects.length + " approved projects"] },
     { label: "Delivery hours", title: "Published delivery", value: reportHours(report.totalSeconds) + " h",
       rows: scope === "history" ? chartRows(report, "trend").map(row => row.label + " · " + reportHours(row.seconds) + " h")
-        : single ? [single.progress + "% progress", reportHours(single.lifetimeSeconds) + " h lifetime allocated"] : lines(projects) },
+        : single ? [single.progress + "% progress", reportHours(single.lifetimeSeconds) + " h lifetime reported"] : lines(projects) },
     { label: "Progress & plans", title: "Progress and plans", value: "",
       rows: projects.filter(p => p.plan.targetSeconds > 0).map(p => p.name + " · " + reportHours(p.plan.targetSeconds) + " h " + (p.plan.basis === "monthly" ? "monthly" : "lifetime") + " target") },
     { label: "Timeline", title: "Delivery timeline", value: "",
@@ -74,8 +62,7 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
   const current = linked && Number.isSafeInteger(requestedChapter) ? Math.min(end, Math.max(0, requestedChapter)) : Math.min(index, end);
   const scene = scenes[Math.min(current, scenes.length - 1)];
   const chapter = chapters?.[current];
-  const groups = areaHours(projects, report.portfolio).filter(row => row.seconds > 0);
-  const markers = groups.map((row, i) => groups.slice(0, i + 1).reduce((sum, value) => sum + value.seconds, 0) / Math.max(1, report.totalSeconds));
+  const history = chartRows(report, "trend").map(row => ({ ...row, value: row.seconds }));
   useEffect(() => {
     const el = dialog.current;
     if (!el) return;
@@ -102,39 +89,44 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
     if (linked) portalNavigate({ chapter: String(target + 1) }, true);
     else setIndex(target);
   }
-  return <dialog ref={dialog} className={"exec-presentation" + (linked ? " platform-presentation" : "")} aria-labelledby="presentation-title"
+  return <dialog ref={dialog} className={"exec-presentation mi-live-presentation" + (linked ? " platform-presentation" : "")} aria-labelledby="presentation-title"
     onCancel={event => { event.preventDefault(); closeRef.current(); }}
     onKeyDown={event => {
-      if (event.target instanceof HTMLSelectElement) return;
-      if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-        event.preventDefault(); go(current + (event.key === "ArrowRight" ? 1 : -1));
+      if (event.target instanceof HTMLElement && event.target.closest("select, input, textarea, [contenteditable]")) return;
+      if (["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        go(event.key === "Home" ? 0 : event.key === "End" ? end : current + (event.key === "ArrowRight" ? 1 : -1));
       }
     }}>
     <div className="exec-presentation-stage intel-presentation-stage" data-chapter={current} ref={stage}>
     <header className="exec-presentation-top">
       <img src={brandAsset("branding/zagime/zagime-main-logo.png")} alt="Zagimē Anishinabēk" />
-      {draft && <strong className="delivery-watermark">DRAFT · MORRIS STAFF ONLY</strong>}
+      {draft && <strong className="mi-presentation-draft">Draft · Morris staff only</strong>}
       <button className="exec-icon" type="button" aria-label="Close presentation" onClick={onClose}><X size={20} /></button>
     </header>
-    <div className="exec-presentation-body">
-      {chapter ? <div className="platform-chapter" key={current} aria-live={playing ? "off" : "polite"}>
+    <div className="exec-presentation-body mi-presentation-body" onTouchStart={event => {
+      gesture.current = undefined;
+      if (event.touches.length !== 1 || (event.target instanceof Element && event.target.closest("button, select, summary, .mi-trend-viewport"))) return;
+      gesture.current = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+    }} onTouchEnd={event => {
+      const start = gesture.current, endTouch = event.changedTouches[0];
+      gesture.current = undefined;
+      if (!start || !endTouch) return;
+      const dx = endTouch.clientX - start.x, dy = endTouch.clientY - start.y;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { go(current + (dx < 0 ? 1 : -1)); setPlaying(false); }
+    }} onTouchCancel={() => { gesture.current = undefined; }}>
+      {chapter ? <div className="platform-chapter mi-presentation-chapter" data-layout={chapter.timeline ? "trend" : chapter.people ? "team" : chapter.data ? "chart" : current === 0 ? "opening" : "narrative"} key={current} aria-live={playing ? "off" : "polite"}>
         <span className="exec-kicker">{period} · {current + 1} / {chapters?.length}</span>
         <h2 id="presentation-title">{chapter.title}</h2>
         {chapter.text && <p>{chapter.text}</p>}
-        <PresentationContent chapter={chapter} onLink={onLink} />
-        {onLink && <button className="intel-report-link" type="button" onClick={() => onLink(chapter.link)}>Open live report</button>}
+        <PresentationContent chapter={chapter} onLink={onLink} month={report.month} draft={draft} />
+        {onLink && <button className="mi-presentation-link mi-presentation-return" type="button" onClick={() => onLink(chapter.link)}>Open live report</button>}
       </div> : <>
-      {(current === 2 && scope === "overview") || (current === 1 && scope !== "overview") ?
-        <div className="intel-presentation-data"><DotField value={report.totalSeconds} unit={dotScale(Math.max(1, report.totalSeconds), 80)} capacity={80} /></div>
-        : <div className="exec-dot-field" aria-hidden="true">
-        {Array.from({ length: dotCount }, (_, i) => <i key={i} data-tone={current === 3 && markers.length ? markers.findIndex(marker => i / dotCount < marker) % 5 : undefined}
-          data-lit={(i * 7 + current * 11) % 29 < 12}
-          style={dotPosition(i, current)} />)}
-      </div>}
-      <div className="exec-scene" key={current} aria-live={playing ? "off" : "polite"}>
+      <div className="exec-scene mi-presentation-chapter" data-layout={current === 0 ? "opening" : "legacy"} key={current} aria-live={playing ? "off" : "polite"}>
         <span className="exec-kicker">{period} · {current + 1} / {scenes.length}</span>
         <h2 id="presentation-title">{scene.title}</h2>
         {scene.value && <p className="exec-scene-value">{scene.value}</p>}
+        {((scope === "overview" && current === 2) || (scope !== "overview" && current === 1)) && <Sparkline rows={history} />}
         {scene.rows.length ? <ul>{scene.rows.map((row, i) => <li key={i}>{row}</li>)}</ul> : <p>No published allocations for this chapter.</p>}
         {onLink && <button className="intel-report-link" type="button"
           onClick={() => onLink(scope === "overview" ? (["overview", "history", "projects", "history", "projects:active", "milestones", "projects:completed", "projects:planned", "notes"][current] ?? "overview") : scope)}>
@@ -143,7 +135,7 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
       </div>
       </>}
     </div>
-    <footer className="exec-presentation-controls">
+    <footer className="exec-presentation-controls" aria-label="Presentation controls">
       <button className="exec-icon" type="button" aria-label="Previous chapter" disabled={!current} onClick={() => go(current - 1)}><ChevronLeft size={20} /></button>
       <button className="exec-icon" type="button" aria-label={playing ? "Pause" : "Play"} onClick={() => { if (!playing && current === end) go(0); setPlaying(!playing); }}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
       <button className="exec-icon" type="button" aria-label="Next chapter" disabled={current === end} onClick={() => go(current + 1)}><ChevronRight size={20} /></button>
