@@ -858,7 +858,7 @@ function ClientFixture() {
         .click();
       await first.page.getByText("Allocation saved.", { exact: true }).waitFor();
       await first.page.getByText("Reviewed delivery preparation", { exact: true }).waitFor();
-      await first.page.screenshot({ path: join(evidence, "time-allocation.png"), animations: "disabled" });
+      await first.page.screenshot({ path: join(evidence, "time-allocation.png"), fullPage: true, animations: "disabled" });
       await first.page.getByRole("navigation").getByRole("button", { name: "Projects", exact: true }).click();
       await card.locator("dd").first().filter({ hasText: /^0\.5 h$/ }).waitFor();
       await first.page.getByRole("button", { name: "Time Allocation", exact: true }).click();
@@ -1015,7 +1015,7 @@ function ClientFixture() {
       await previewPage.getByLabel("Preview mode").selectOption("draft");
       await previewPage.getByText("DRAFT PREVIEW · MORRIS STAFF ONLY", { exact: true }).waitFor();
       await previewPage.getByRole("heading", { name: "Leadership summary", exact: true }).waitFor();
-      await previewPage.screenshot({ path: join(evidence, "staff-draft-preview.png"), animations: "disabled" });
+      await previewPage.screenshot({ path: join(evidence, "staff-draft-preview.png"), fullPage: true, animations: "disabled" });
       await previewBrowser.context.close();
 
       for (const width of [1440, 390]) {
@@ -1323,7 +1323,7 @@ function ClientFixture() {
       const hierarchyBrowser = await session(1440);
       await hierarchyBrowser.page.getByRole("button", { name: "Budgets & Delivery Health", exact: true }).click();
       await hierarchyBrowser.page.getByRole("button", { name: "Policy assessment fixture", exact: true }).waitFor();
-      await hierarchyBrowser.page.getByText("1 departments · 2 active · 0 completed", { exact: true }).waitFor();
+      await hierarchyBrowser.page.getByText("1 department · 2 active · 0 completed", { exact: true }).waitFor();
       await hierarchyBrowser.page.screenshot({ path: join(evidence, "delivery-hierarchy.png"), animations: "disabled" });
       await hierarchyBrowser.context.close();
       assert.deepEqual(errors, []);

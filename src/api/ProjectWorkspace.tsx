@@ -129,6 +129,7 @@ export function ProjectStaffWorkspace({
     if (area === next) return;
     if ((editorDirty || portfolioDirty) && !window.confirm("Discard the unsaved changes?")) return;
     if (editorDirty) { setEditing(undefined); setEditorDirty(false); }
+    setNotice("");
     if (next !== "projects" && next !== "hours") {
       setSearch("");
       setDraftSearch("");
@@ -342,7 +343,7 @@ export function ProjectStaffWorkspace({
         <div className="secure-actions"><button type="button" onClick={() => changeArea("projects")}>Open client projects</button>
           <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button></div>
       </section>}
-      {area === "directory" && <DeliveryDirectory client={client} tenant={tenant} portfolio={portfolio} revision={page.revision} onSaved={refresh} onDenied={onDenied} />}
+      {area === "directory" && <DeliveryDirectory client={client} tenant={tenant} portfolio={portfolio} revision={page.revision} onSaved={() => setEpoch(value => value + 1)} onDenied={onDenied} />}
       {area === "health" && <DeliveryHealth projects={allProjects} portfolio={portfolio} healthOnly onOpen={openDeliveryProject} />}
       {area === "milestones" && <DeliveryMilestones client={client} tenant={tenant} projects={allProjects} onSaved={refresh} onOpen={openDeliveryProject} />}
       {area === "preview" && <DeliveryPreview client={client} tenant={tenant} month={month} />}

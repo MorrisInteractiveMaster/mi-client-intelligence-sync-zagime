@@ -43,6 +43,13 @@
 .delivery-people-list label { padding:5px; }
 .delivery-person span, .delivery-people-list span { min-width:0; }
 .delivery-watermark { background:#f7de87; color:#1b2735; padding:12px; font-weight:700; letter-spacing:.06em; }
+.delivery-preview-frame { container: delivery-preview / inline-size; }
+.nordic.secure-shell .delivery-preview-frame .intel-hero h2 { font-size:clamp(2rem,5.2cqi,4.4rem); }
+@container delivery-preview (max-width:850px) {
+  .delivery-preview-frame .intel-hero,
+  .delivery-preview-frame .intel-analysis { grid-template-columns:minmax(0,1fr); }
+  .delivery-preview-frame .intel-hero { align-items:start; min-height:0; }
+}
 .delivery-milestones { list-style:none; padding:0; }
 .delivery-milestones li { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid #c9d8e2; }
 .delivery-milestones li > div { flex:1 0 215px; }

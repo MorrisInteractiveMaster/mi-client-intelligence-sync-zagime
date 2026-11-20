@@ -195,9 +195,9 @@ export function DeliveryPreview({ client, tenant, month }: { client: SecuredApiC
       {mode === "published" && <label>Client access profile<select value={scope} onChange={e => { setScope(e.target.value); setError(""); }}><option value="">Select an approved profile</option>{profiles?.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>}
     </div>
     {error && <p role="alert">{error}</p>}
-    {entitled && <><p className="delivery-watermark">{mode === "draft" ? "DRAFT PREVIEW · MORRIS STAFF ONLY" : "LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW"}</p>
+    {entitled && <div className="delivery-preview-frame"><p className="delivery-watermark">{mode === "draft" ? "DRAFT PREVIEW · MORRIS STAFF ONLY" : "LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW"}</p>
       <ProjectClientReport client={client} tenant={tenant} month={month} preview={{ mode, ...(mode === "published" ? { scope } : {}) }}
-        onDenied={() => setError("This client access profile is no longer available.")} /></>}
+        onDenied={() => setError("This client access profile is no longer available.")} /></div>}
   </section>;
 }
 
@@ -274,7 +274,7 @@ export function DeliveryHealth({ projects, portfolio, healthOnly = false, onOpen
         .filter(m => !m.completed && m.status !== "waived").map(m => m.date)]).filter((date): date is string => Boolean(date && date >= asOf)).sort()[0];
       return <tr key={p.id}><th scope="row"><button type="button" className="exec-text-button" style={{ marginInlineStart: layout === "tree" ? Math.min(trail.length, 5) * 12 : 0 }} onClick={() => onOpen(p.id)}>{p.name}</button>
         <small>{trail.length ? trail.join(" / ") : "Client root"}{sum.descendants ? " · " + sum.descendants + " descendant projects" : ""}</small>
-        {!!branch.length && <small>{departments} departments · {active} active · {completed} completed</small>}</th>
+        {!!branch.length && <small>{departments} {departments === 1 ? "department" : "departments"} · {active} active · {completed} completed</small>}</th>
         <td>{portfolio?.areas.find(a => a.id === area)?.name ?? "Unclassified"}<small>{p.delivery?.type ?? "Engagement type not configured"}</small></td>
         <td>{managers.map(id => people.get(id)).filter(Boolean).join(", ") || "Unassigned"}</td>
         <td>{reportHours(sum.monthly)} h monthly<small>{reportHours(sum.lifetime)} h lifetime</small></td>
