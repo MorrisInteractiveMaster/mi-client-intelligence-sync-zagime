@@ -1,0 +1,30 @@
+# Owner-run image build. The immutable digest is reviewed separately for deployment.
+serviceAccount: projects/morris-client-dash-zagime/serviceAccounts/mi-client-build@morris-client-dash-zagime.iam.gserviceaccount.com
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --platform=linux/amd64
+      - -f
+      - deployment/Dockerfile
+      - -t
+      - '${_IMAGE}'
+      - --label
+      - 'org.opencontainers.image.revision=${_REVISION}'
+      - --build-arg
+      - VITE_DASHBOARD_DEPLOYMENT=production
+      - --build-arg
+      - VITE_SECURE_TENANT_ID=zagime-production
+      - --build-arg
+      - 'VITE_FIREBASE_API_KEY=${_API_KEY}'
+      - --build-arg
+      - 'VITE_FIREBASE_APP_ID=${_APP_ID}'
+      - --build-arg
+      - 'VITE_FIREBASE_AUTH_DOMAIN=${_AUTH_DOMAIN}'
+      - --build-arg
+      - 'VITE_MORRIS_ENTRA_TENANT_ID=${_ENTRA_TENANT}'
+      - .
+images: ['${_IMAGE}']
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 900s
