@@ -11,6 +11,11 @@ import type {
 import type { StaffSource, HistoryRow } from "./types";
 import type { Allocation } from "../reporting/model";
 import { hoursToSeconds } from "../projects/duration";
+import { Activity, Clock3, FolderKanban, Layers3, Plug } from "lucide-react";
+import { PortfolioAdmin } from "./PortfolioAdmin";
+import { ProjectReportPreview } from "./ProjectReportingCard";
+import { ContextHelp } from "./ContextHelp";
+import "./executive.css";
 import { TimeConnectionPanel } from "./TimeConnectionPanel";
 import { ProjectTimelineFields } from "./ProjectTimelineFields";
 import {
@@ -23,24 +28,32 @@ import {
 
 const sections = {
   projects: "Projects",
+  portfolio: "Portfolio management",
   hours: "Hours & allocations",
   activity: "Audit history",
   integrations: "Integrations",
 };
 type Area = keyof typeof sections;
+const sectionIcons = { projects: FolderKanban, portfolio: Layers3, hours: Clock3, activity: Activity, integrations: Plug };
 export function ProjectStaffWorkspace({
   client,
   tenant,
   workspace,
   month,
   onDenied,
+  onUnsavedChange,
 }: {
   client: SecuredApiClient;
   tenant: string;
   workspace: ProjectWorkspace;
   month: string;
   onDenied: () => void;
+  onUnsavedChange?: (dirty: boolean) => void;
 }) {
+  const [organizing, setOrganizing] = useState<StaffProjectSummary>();
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [portfolioDirty, setPortfolioDirty] = useState(false);
+  useEffect(() => { onUnsavedChange?.(editorDirty || portfolioDirty); return () => onUnsavedChange?.(false); }, [editorDirty, portfolioDirty, onUnsavedChange]);
   const [page, setPage] = useState<ProjectPage>({
     revision: workspace.revision,
     projects: [],
@@ -75,6 +88,8 @@ export function ProjectStaffWorkspace({
   const creation = useRef<string | undefined>(undefined);
   const changeArea = (next: Area) => {
     if (area === next) return;
+    if ((editorDirty || portfolioDirty) && !window.confirm("Discard the unsaved changes?")) return;
+    if (editorDirty) { setEditing(undefined); setEditorDirty(false); }
     if (next !== "projects" && next !== "hours") {
       setSearch("");
       setDraftSearch("");
@@ -86,10 +101,17 @@ export function ProjectStaffWorkspace({
   }, [area]);
   useEffect(() => {
     if (editing) editorHeading.current?.focus();
+    setEditorDirty(false);
   }, [editing]);
   useEffect(() => {
     if (selected) allocationHeading.current?.focus();
   }, [selected]);
+  useEffect(() => {
+    if (!editorDirty) return;
+    const prevent = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", prevent);
+    return () => window.removeEventListener("beforeunload", prevent);
+  }, [editorDirty]);
   const query = (cursor?: string) =>
     `month=${month}&limit=25${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
   const projectQuery = (cursor?: string) =>
@@ -200,7 +222,9 @@ export function ProjectStaffWorkspace({
           <h2>{workspace.tenant.name}</h2>
         </div>
       </div>
-      <nav aria-label="Morris workspace sections" className="secure-tabs">
+      <div className="exec-frame exec-staff-frame">
+      <aside className="exec-sidebar">
+      <nav aria-label="Morris workspace sections">
         {Object.entries(sections).map(([key, label]) => (
           <button
             key={key}
@@ -209,6 +233,7 @@ export function ProjectStaffWorkspace({
             disabled={busy}
             onClick={() => {
               setSelectedProject(undefined);
+              setOrganizing(undefined);
               if (key === "hours") {
                 setSearch("");
                 setDraftSearch("");
@@ -216,10 +241,13 @@ export function ProjectStaffWorkspace({
               changeArea(key as Area);
             }}
           >
-            {label}
+            {(() => { const Icon = sectionIcons[key as Area]; return <Icon size={18} aria-hidden="true" />; })()}
+            <span>{label}</span>
           </button>
         ))}
       </nav>
+      </aside>
+      <div className="exec-content">
       {error && (
         <p className="secure-message secure-error" role="alert">
           {error}
@@ -326,6 +354,7 @@ export function ProjectStaffWorkspace({
           <form
             className="secure-form secure-project-editor"
             key={editing === "new" ? "new" : editing.id}
+            onChange={() => setEditorDirty(true)}
             onSubmit={(e) => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
@@ -471,7 +500,7 @@ export function ProjectStaffWorkspace({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => setEditing(undefined)}
+                onClick={() => { if (!editorDirty || window.confirm("Discard the unsaved project changes?")) setEditing(undefined); }}
               >
                 Cancel
               </button>
@@ -556,6 +585,8 @@ export function ProjectStaffWorkspace({
                 >
                   Edit
                 </button>
+                <button type="button" className="secure-secondary" disabled={busy} aria-label={"Organize " + p.name}
+                  onClick={() => { setOrganizing(p); changeArea("portfolio"); }}>Organize</button>
                 <button
                   className="secure-secondary"
                   disabled={busy}
@@ -580,6 +611,7 @@ export function ProjectStaffWorkspace({
                   {p.published ? "Unpublish" : "Publish"}
                 </button>
               </div>
+              <ProjectReportPreview project={p} period={reportMonth(month)} />
             </article>
           ))}
         </div>
@@ -589,13 +621,15 @@ export function ProjectStaffWorkspace({
           </button>
         )}
       </section>
+      {area === "portfolio" && <PortfolioAdmin key={organizing?.id ?? "portfolio"} client={client} tenant={tenant} month={month}
+        initialProject={organizing} onDenied={onDenied} onSaved={() => setEpoch(x => x + 1)} onDirty={setPortfolioDirty} />}
       <section hidden={area !== "hours"} aria-labelledby="project-time-hours">
         <h2
           id="project-time-hours"
           ref={area === "hours" ? areaHeading : undefined}
           tabIndex={-1}
         >
-          Project hours{selectedProject ? " · " + selectedProject.name : ""}
+          Project hours{selectedProject ? " · " + selectedProject.name : ""} <ContextHelp label="Recorded versus allocated hours">Recorded hours come from the time source. Reporting allocations assign all or part of a record to delivery projects without editing the original time.</ContextHelp>
         </h2>
         {selectedProject && (
           <button
@@ -957,6 +991,8 @@ export function ProjectStaffWorkspace({
           </article>
         </section>
       )}
+      </div>
+      </div>
     </section>
   );
 }

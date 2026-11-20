@@ -1,3 +1,4 @@
+import { portfolioLimits, type PortfolioSection } from "../src/projects/portfolio";
 import type { IncomingMessage } from "node:http";
 import type { ProjectBackend } from "./project-workspace";
 import type { TimeSync } from "./time-sync";
@@ -67,6 +68,24 @@ export async function projectRequest(
     }
     return { status: 405, body: { error: "method_not_allowed" } };
   }
+  const portfolio = /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/portfolio$/.exec(url.pathname);
+  if (portfolio) {
+    if ([...url.searchParams].some(([k]) => k !== "month") || url.searchParams.getAll("month").length > 1 || (url.search && req.method !== "GET"))
+      throw Error("Invalid query");
+    const tenant = portfolio[1], token = req.headers.authorization ?? "";
+    if (req.method === "GET") return { status: 200, body: await backend.portfolio(token, tenant, undefined, url.searchParams.get("month") ?? undefined) };
+    if (req.method === "PATCH") {
+      const input = await readBody();
+      if (!Object.hasOwn(portfolioLimits, input.section) ||
+          !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1 ||
+          Object.keys(input).some(k => !["section", "record", "expectedRevision"].includes(k)))
+        throw Error("Invalid portfolio request");
+      return { status: 200, body: await backend.portfolio(token, tenant, {
+        section: input.section as PortfolioSection, record: input.record, expectedRevision: input.expectedRevision,
+      }) };
+    }
+    return { status: 405, body: { error: "method_not_allowed" } };
+  }
   const m =
     /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|report|projects|sources|allocations|audits)(?:\/([-a-zA-Z0-9_]{1,128}))?(?:\/(publication|history))?$/.exec(
       url.pathname,
@@ -106,8 +125,11 @@ export async function projectRequest(
   if (req.method === "GET") {
     if (resource === "workspace" && !id && !url.search)
       return ok(await backend.workspace(token, tenant));
-    if (resource === "report" && !id && queryKeys.every((k) => k === "month"))
-      return ok(await backend.report(token, tenant, page.month));
+    if (resource === "report" && !id && queryKeys.every((k) => k === "month")) {
+      const report = await backend.report(token, tenant, page.month);
+      const sourceUpdatedAt = await time?.reportFreshness(tenant);
+      return ok(sourceUpdatedAt ? { ...report, sourceUpdatedAt } : report);
+    }
     if (resource === "projects" && id && !action && !url.search)
       return ok(await backend.detail(token, tenant, id));
     if (["projects", "sources", "audits"].includes(resource) && !id && !action)

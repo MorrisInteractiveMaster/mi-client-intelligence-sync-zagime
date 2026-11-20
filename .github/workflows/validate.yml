@@ -23,7 +23,7 @@ jobs:
           distribution: temurin
           java-version: "21"
       - run: npm ci --ignore-scripts
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit
       - run: node scripts/validate-m8-build.cjs
       - run: node --test scripts/validate-m8-build.test.cjs
       - run: bash -n scripts/verify-staging-iam.sh scripts/test-staging-iam-collector.sh
@@ -31,7 +31,7 @@ jobs:
       - run: bash -n scripts/m8-staging.sh scripts/test-m8-staging.sh
       - run: bash scripts/test-m8-staging.sh
       - name: Check production runbook Bash syntax without executing commands
-        run: awk '/^```bash$/ { in_bash=1; next } /^```$/ { in_bash=0 } in_bash' docs/production-launch-runbook.md docs/production-build-iam.md | bash -n
+        run: awk '/^```bash$/ { in_bash=1; next } /^```$/ { in_bash=0 } in_bash' docs/production-launch-runbook.md docs/production-build-iam.md docs/executive-workspace.md | bash -n
       - run: python3 -B scripts/test-production-build.py
       - run: python3 -B scripts/test-production-time.py
       - run: npm test
@@ -41,6 +41,7 @@ jobs:
       - run: npm run test:security
         env:
           FIREBASE_CLI_DISABLE_UPDATE_CHECK: "true"
+          MI_SECURE_CROSS_BROWSER: "true"
       - name: Reproduce the reviewed deployed image source in a real browser
         if: github.event_name == 'pull_request' && github.event.pull_request.base.sha == '1ef561b733bf3cc44925c08ab0cc8f153cab0801'
         run: |

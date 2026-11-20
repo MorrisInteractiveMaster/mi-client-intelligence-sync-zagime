@@ -22,7 +22,13 @@ export function SecureDashboard() {
   const [workspace, setWorkspace] = useState<ProjectWorkspace>();
   const [retry, setRetry] = useState(0);
   const [error, setError] = useState("");
+  const [unsaved, setUnsaved] = useState(false);
   const [month, setMonth] = useState(() => today().slice(0, 7));
+  const [nativeMonthPicker] = useState(() => {
+    const input = document.createElement("input");
+    input.type = "month";
+    return input.type === "month";
+  });
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     if (!enabled) return;
@@ -212,6 +218,8 @@ export function SecureDashboard() {
       </header>
       {!signedIn ? (
         <section className="secure-sign-in" aria-label="Sign in">
+          <h2>Sign in to your workspace</h2>
+          <p>Choose the sign-in method for your account.</p>
           <button disabled={!auth} onClick={() => void signIn("google")}>
             Sign in with Google
           </button>
@@ -252,19 +260,27 @@ export function SecureDashboard() {
           </p>
         </section>
       ) : (
-        <div className="secure-period">
+        <form className="secure-period" onSubmit={event => {
+          event.preventDefault();
+          const value = String(new FormData(event.currentTarget).get("month") ?? "");
+          if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value) &&
+              (!unsaved || window.confirm("Discard the unsaved changes and change reporting month?"))) setMonth(value);
+        }}>
           <label>
             Reporting month
-            <input
+            {nativeMonthPicker ? <input
               type="month"
               value={month}
               onChange={(e) => {
-                if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value))
+                if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value) &&
+                    (!unsaved || window.confirm("Discard the unsaved changes and change reporting month?")))
                   setMonth(e.target.value);
               }}
-            />
+            /> : <input name="month" type="text" defaultValue={month} key={month}
+              placeholder="YYYY-MM" pattern="[0-9]{4}-(0[1-9]|1[0-2])" required />}
           </label>
-        </div>
+          {!nativeMonthPicker && <button type="submit">Apply month</button>}
+        </form>
       )}
       {loading && (
         <p className="secure-empty" role="status">
@@ -278,6 +294,7 @@ export function SecureDashboard() {
           client={client}
           tenant={import.meta.env.VITE_SECURE_TENANT_ID ?? ""}
           workspace={workspace}
+          onUnsavedChange={setUnsaved}
           month={month}
           onDenied={onDenied}
         />
