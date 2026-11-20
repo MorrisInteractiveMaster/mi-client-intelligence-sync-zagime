@@ -9,6 +9,8 @@ import { projectStatus, reportDay, reportHours, today } from "./dashboard-format
 import { portalNavigate, usePortalLocation } from "./portal-location";
 import { ProjectClientReport } from "./ProjectClientReport";
 import { PersonPhoto } from "./PersonPhoto";
+import { CsvExport } from "./CsvExport";
+import { csvHours } from "./report-csv";
 
 export async function projectCatalog(client: SecuredApiClient, tenant: string, month: string, signal: AbortSignal) {
   const projects: StaffProjectSummary[] = [];
@@ -258,8 +260,8 @@ export function DeliveryPreview({ client, tenant, month, standalone = false }: {
   </section>;
 }
 
-export function DeliveryHealth({ projects, portfolio, healthOnly = false, onOpen }: {
-  projects: StaffProjectSummary[]; portfolio?: Portfolio; healthOnly?: boolean; onOpen: (id: string) => void;
+export function DeliveryHealth({ projects, portfolio, month, healthOnly = false, onOpen }: {
+  projects: StaffProjectSummary[]; portfolio?: Portfolio; month?: string; healthOnly?: boolean; onOpen: (id: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [layout, setLayout] = useState("tree");
@@ -306,7 +308,24 @@ export function DeliveryHealth({ projects, portfolio, healthOnly = false, onOpen
     });
   return <section>
     <div className="delivery-section-heading"><div><h3>{healthOnly ? "Budgets and delivery health" : "Project hierarchy"}</h3>
-      <p>Allocated hours measure effort. Milestones and manual assessments measure completion.</p></div></div>
+      <p>Allocated hours measure effort. Milestones and manual assessments measure completion.</p></div>
+      <CsvExport filename={["Morris", healthOnly ? "Delivery_Health" : "Project_Hierarchy", month].filter(Boolean).join("_")}
+        label={healthOnly ? "Export budgets and health CSV" : "Export hierarchy CSV"}
+        data={{
+          headers: ["Project", "Parent path", "Service area", "Monthly reported hours", "Lifetime reported hours", "Monthly cap hours",
+            "Monthly cap used hours", "Monthly cap remaining hours", "Lifetime cap hours", "Lifetime cap used hours", "Lifetime cap remaining hours",
+            "Completion percent", "Health", "Next date", "Publication", "Delivery status"],
+          rows: rows.map(({ p, trail, area }) => {
+            const sum = totals.get(p.id)!;
+            const cap = caps.get(p.id)!;
+            const result = measureDelivery({ ...p, milestones: p.deliveryMilestones ?? p.milestones }, cap, asOf);
+            return [p.name, trail.join(" / "), portfolio?.areas.find(item => item.id === area)?.name,
+              csvHours(sum.monthly), csvHours(sum.lifetime), csvHours(p.delivery?.monthlyCap), csvHours(cap.monthly), csvHours(result.monthlyRemaining),
+              csvHours(p.delivery?.lifetimeCap), csvHours(cap.lifetime), csvHours(result.lifetimeRemaining),
+              result.completion, result.health, result.upcoming, p.published ? "Published" : "Private", projectStatus[p.status]];
+          }),
+        }} />
+    </div>
     {healthOnly && !!budgetRows.length && <details className="delivery-details"><summary>Department and group caps</summary>
       <dl>{budgetRows.map(({ item, classification, month, lifetime }) => <div key={classification + item.id}><dt>{item.name} · {classification}</dt>
         <dd>{reportHours(month)} h allocated monthly · {item.monthlyCap === undefined ? "No monthly cap" : reportHours(item.monthlyCap - month) + " h remaining"}</dd>
@@ -350,8 +369,8 @@ export function DeliveryHealth({ projects, portfolio, healthOnly = false, onOpen
   </section>;
 }
 
-export function DeliveryMilestones({ client, tenant, projects, onSaved, onOpen }: {
-  client: SecuredApiClient; tenant: string; projects: StaffProjectSummary[]; onSaved: () => void; onOpen: (id: string) => void;
+export function DeliveryMilestones({ client, tenant, month, projects, onSaved, onOpen }: {
+  client: SecuredApiClient; tenant: string; month?: string; projects: StaffProjectSummary[]; onSaved: () => void; onOpen: (id: string) => void;
 }) {
   const [filter, setFilter] = useState("open");
   const [saving, setSaving] = useState<string>();
@@ -385,6 +404,14 @@ export function DeliveryMilestones({ client, tenant, projects, onSaved, onOpen }
     finally { setSaving(undefined); }
   }
   return <section aria-label="Delivery milestones">
+    <div className="secure-actions">
+      <CsvExport filename={["Morris", tenant, "Milestones", month, filter].filter(Boolean).join("_")}
+        label="Export delivery milestones CSV" disabled={Boolean(saving)}
+        data={{
+          headers: ["Project", "Milestone", "Due date", "Completed date", "Milestone status"],
+          rows: milestones.map(({ p, m }) => [p.name, m.title, m.date, m.completedAt, m.status ?? (m.completed ? "completed" : "not started")]),
+        }} />
+    </div>
     <div className="delivery-section-heading"><div><h3>Delivery milestones</h3><p>Review due dates and close completed work.</p></div>
       {selected ? <button type="button" className="secure-secondary" onClick={() => portalNavigate({ milestone: null })}>Back to all milestones</button> :
         <label>Show<select value={filter} onChange={e => setFilter(e.target.value)}><option value="open">Open milestones</option><option value="all">All milestones</option></select></label>}</div>

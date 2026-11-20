@@ -1,16 +1,19 @@
 import { reportHours, reportMonth } from "./dashboard-format";
+import { CsvExport } from "./CsvExport";
+import { hoursBreakdown } from "./report-csv";
 import type { SourceHoursGroup, SourceSummary } from "./types";
 import type { TimeGrouping } from "../projects/time-history";
 
 type Props = {
   summary: SourceSummary;
   grouping: TimeGrouping;
+  filenamePrefix?: string;
   busy: boolean;
   onConsultant: (id: string) => void;
   onWorkOrder: (id: string) => void;
 };
 
-export function TimeHistorySummary({ summary, grouping, busy, onConsultant, onWorkOrder }: Props) {
+export function TimeHistorySummary({ summary, grouping, busy, onConsultant, onWorkOrder, filenamePrefix = "Morris" }: Props) {
   const { hours } = summary;
   return <section className="time-history-summary" aria-label="Time summaries">
     <div className="time-ledger-totals">
@@ -20,36 +23,40 @@ export function TimeHistorySummary({ summary, grouping, busy, onConsultant, onWo
     </div>
     <details className="delivery-details">
       <summary>Hours by consultant</summary>
-      <HoursTable label="Hours by consultant" rows={hours.byConsultant}
+      <HoursTable label="Hours by consultant" filename={filenamePrefix + "_byConsultant"} rows={hours.byConsultant}
         onSelect={onConsultant} unavailableFilter="unavailable" busy={busy} />
     </details>
     {!!hours.byMorrisProfile?.length && <details className="delivery-details">
       <summary>Hours by linked Morris profile</summary>
-      <HoursTable label="Hours by linked Morris profile" rows={hours.byMorrisProfile} busy={busy} />
+      <HoursTable label="Hours by linked Morris profile" filename={filenamePrefix + "_byMorrisProfile"} rows={hours.byMorrisProfile} busy={busy} />
     </details>}
     <details className="delivery-details">
       <summary>Hours by work order</summary>
-      <HoursTable label="Hours by work order" rows={hours.byWorkOrder}
+      <HoursTable label="Hours by work order" filename={filenamePrefix + "_byWorkOrder"} rows={hours.byWorkOrder}
         onSelect={onWorkOrder} busy={busy} />
     </details>
     <details className="delivery-details">
       <summary>Hours by {grouping}</summary>
-      <HoursTable label={"Hours by " + grouping} rows={grouping === "month"
+      <HoursTable label={"Hours by " + grouping} filename={filenamePrefix + "_" + grouping} exportedRows={hours.byPeriod} rows={grouping === "month"
         ? hours.byPeriod.map(row => ({ ...row, label: reportMonth(row.label) }))
         : hours.byPeriod} busy={busy} />
     </details>
   </section>;
 }
 
-function HoursTable({ label, rows, onSelect, unavailableFilter, busy }: {
+function HoursTable({ label, rows, exportedRows, filename, onSelect, unavailableFilter, busy }: {
   label: string;
   rows: SourceHoursGroup[];
+  exportedRows?: SourceHoursGroup[];
+  filename: string;
   onSelect?: (id: string) => void;
   unavailableFilter?: string;
   busy: boolean;
 }) {
   if (!rows.length) return <p>No recorded hours match this scope.</p>;
-  return <div className="intel-table-scroll time-summary-table" tabIndex={0} aria-label={label}>
+  return <><CsvExport filename={filename} label={"Export " + label.toLowerCase() + " CSV"} disabled={busy}
+    data={hoursBreakdown(label, exportedRows ?? rows)} />
+    <div className="intel-table-scroll time-summary-table" tabIndex={0} aria-label={label}>
     <table>
       <thead><tr><th scope="col">{label}</th><th scope="col">Recorded</th><th scope="col">Allocated</th><th scope="col">Unallocated</th></tr></thead>
       <tbody>{rows.map(row => <tr key={row.id ?? "unavailable"}>
@@ -65,5 +72,5 @@ function HoursTable({ label, rows, onSelect, unavailableFilter, busy }: {
         <td>{reportHours(row.unallocatedSeconds)} h</td>
       </tr>)}</tbody>
     </table>
-  </div>;
+  </div></>;
 }

@@ -1,3 +1,4 @@
+import { Fingerprint, LockKeyhole, UserRound } from "lucide-react";
 import { ProjectStaffWorkspace } from "./ProjectWorkspace";
 import type { ProjectWorkspace } from "../projects/model";
 import "./secure.css";
@@ -220,7 +221,9 @@ export function SecureDashboard() {
           {!signedIn && !production && <Link to="/">Synthetic demonstration</Link>}
         </div>
         {signedIn && (
-          <button
+          <details className="mi-account">
+            <summary><UserRound size={17} aria-hidden="true" /> Account</summary>
+            <div className="mi-account-menu"><p>{workspace?.role === "staff" ? "Morris workspace" : "Protected session"}</p><button
             className="secure-secondary"
             onClick={async () => {
               if (unsaved && !window.confirm("Sign out without saving your changes?")) return;
@@ -234,13 +237,17 @@ export function SecureDashboard() {
             }}
           >
             Sign out
-          </button>
+          </button></div></details>
         )}
       </header>
       {!signedIn ? (
         <section className={"secure-sign-in" + (route ? " platform-sign-in" : "")} aria-label="Sign in">
+          {route && <div className="mi-sign-in-story"><p><LockKeyhole size={16} aria-hidden="true" /> Protected reporting</p>
+            <strong>Client Intelligence Platform</strong><span>Morris Interactive</span></div>}
+          <div className={route ? "mi-sign-in-panel" : "mi-legacy-sign-in"}>
+          {route && <Fingerprint size={28} aria-hidden="true" />}
           <h2>Sign in to your workspace</h2>
-          <p>Clients use the Google account approved for their organization. Morris staff use their work Microsoft account.</p>
+          <p>Clients use their approved Google account. Morris staff use their work Microsoft account.</p>
           <div className="secure-actions"><button disabled={!auth} onClick={() => void signIn("google")}>
             Sign in with Google
           </button>
@@ -278,10 +285,10 @@ export function SecureDashboard() {
           {!route && <p>
             Morris staff use their Microsoft work account. Client accounts have
             read-only access to approved publications.
-          </p>}
+          </p>}</div>
         </section>
       ) : (
-        <form className="secure-period" hidden={route?.kind === "home"} onSubmit={event => {
+        <form className="secure-period" hidden={Boolean(route && route.kind !== "control")} onSubmit={event => {
           event.preventDefault();
           const value = String(new FormData(event.currentTarget).get("month") ?? "");
           if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value) &&

@@ -11,9 +11,14 @@ import {
 import { ArrowUpRight, CalendarDays, ChartNoAxesColumnIncreasing, ChevronLeft, ChevronRight, FolderKanban, LayoutGrid, PanelLeftClose, Presentation as PresentationIcon, UsersRound } from "lucide-react";
 import { ProjectReportingCard } from "./ProjectReportingCard";
 import { ExecutiveOverview } from "./ExecutiveOverview";
-import { chartKinds, DotChart, DotChartDialog, DotField, dotScale, type ChartKind } from "./DotAnalytics";
+import { chartKinds, DotChart, DotChartDialog, type ChartKind } from "./DotAnalytics";
 import { closePortalOverlay, portalNavigate, usePlatformRoute, usePortalLocation } from "./portal-location";
 import { PersonPhoto } from "./PersonPhoto";
+import { ReportingPeriod } from "./ReportingPeriod";
+import { readReportingRange } from "./reporting-period";
+import { reportingTimeMonth } from "../projects/time-history";
+import { CsvExport } from "./CsvExport";
+import { milestoneCsv, publishedProjectCsv, type CsvData } from "./report-csv";
 import { deliveryDefaults, rollup } from "../projects/delivery";
 import "./executive.css";
 import "./intelligence.css";
@@ -33,7 +38,7 @@ type ReportScope = {
 export function ProjectClientReport(props: ReportScope) {
   return (
     <ScopedClientReport
-      key={JSON.stringify([props.tenant, props.month, props.preview?.mode, props.preview?.scope])}
+      key={JSON.stringify([props.tenant, props.preview?.mode, props.preview?.scope])}
       {...props}
     />
   );
@@ -42,7 +47,9 @@ export function ProjectClientReport(props: ReportScope) {
 function ScopedClientReport({ client, tenant, month, onDenied, preview }: ReportScope) {
   const [result, setResult] = useState<{
     client: SecuredApiClient;
+    month: string;
     report?: ProjectReport;
+    lastReport?: ProjectReport;
   }>();
   const [epoch, setEpoch] = useState(0);
   const location = usePortalLocation();
@@ -84,29 +91,49 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
     overlayTrigger.current = document.activeElement as HTMLElement | null;
     portalNavigate({ [key]: value }, false, key);
   };
-  const current = result?.client === client ? result : undefined;
+  const scopedResult = result?.client === client ? result : undefined;
+  const current = scopedResult?.month === month ? scopedResult : undefined;
+  const reportRequest = (preview ? "client-preview?" : "report?") + new URLSearchParams({
+    month, ...(preview && { mode: preview.mode, ...(preview.scope && { scope: preview.scope }) }),
+  });
   useEffect(() => {
     const abort = new AbortController();
     client
-      .call<ProjectReport>(tenant, (preview ? "client-preview?" + new URLSearchParams({ month, mode: preview.mode, ...(preview.scope ? { scope: preview.scope } : {}) }) : "report?month=" + month), {
+      .call<ProjectReport>(tenant, reportRequest, {
         signal: abort.signal,
       })
       .then((data) => {
         if (abort.signal.aborted) return;
         if (data.month !== month || data.tenant.id !== tenant)
           throw Error("Unexpected reporting scope");
-        setResult({ client, report: data });
+        setResult({ client, month, report: data });
       })
       .catch((failure: unknown) => {
         if (abort.signal.aborted) return;
         if (failure instanceof ApiError && [401, 403].includes(failure.status))
-          { if (preview) setResult({ client }); onDenied(); }
-        else setResult({ client });
+          { setResult({ client, month }); onDenied(); }
+        else setResult(prior => ({ client, month, lastReport: prior?.client === client ? prior.report ?? prior.lastReport : undefined }));
       });
     return () => abort.abort();
-  }, [client, tenant, month, epoch, onDenied, preview?.mode, preview?.scope]);
+  }, [client, tenant, month, epoch, onDenied, reportRequest]);
 
   const report = current?.report;
+  const periodReport = report ?? scopedResult?.report ?? scopedResult?.lastReport;
+  const currentMonth = periodReport?.reportingThroughMonth ?? reportingTimeMonth();
+  const monthRange = view === "history" ? readReportingRange(location, currentMonth) : undefined;
+  const availableMonths = (periodReport?.portfolio?.history ?? []).map(row => row.month);
+  const latestMonth = [
+    ...(periodReport && periodReport.totalSeconds > 0 ? [periodReport.month] : []),
+    ...(periodReport?.portfolio?.history ?? []).filter(row => row.seconds > 0).map(row => row.month),
+  ].filter(candidate => candidate <= currentMonth).sort().at(-1);
+  const periodToolbar = <ReportingPeriod month={month} currentMonth={currentMonth}
+    availableMonths={availableMonths} latestMonth={latestMonth} empty={report?.totalSeconds === 0}
+    range={monthRange} pending={!report && !current}
+    onMonth={selected => portalNavigate({ month: selected, "period-scope": null, "from-month": null, "through-month": null })}
+    onRange={range => portalNavigate({ view: "history", "period-scope": range.preset,
+      "from-month": range.preset === "custom" ? range.from ?? null : null,
+      "through-month": range.preset === "custom" ? range.through ?? null : null, chart: null })} />;
+
   const [kind, id, itemId] = view.split(":");
   const area = kind === "area" ? report?.portfolio?.areas.find(a => a.id === id) : undefined;
   const engagementProject = kind === "group" && report?.hierarchy?.[id]?.kind === "engagement" ? report.projects.find(p => p.id === id) : undefined;
@@ -127,6 +154,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   if (current && !current.report)
     return (
       <section className="secure-empty">
+        {nativeClient && periodToolbar}
         <h2>Reporting is temporarily unavailable</h2>
         <p role="alert">
           The published report could not be loaded. Try again in a moment.
@@ -143,9 +171,10 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
     );
   if (!report)
     return (
-      <p className="intel-empty intel-loading" role="status">
-        Loading approved reporting…
-      </p>
+      <div>
+        {nativeClient && scopedResult && periodToolbar}
+        <p className="intel-empty intel-loading" role="status">Loading approved reporting…</p>
+      </div>
     );
 
   const visible = [...report.projects].sort((a, b) =>
@@ -189,13 +218,32 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
     ...report,
     projects: selectedArea || engagement ? scoped : project ? [project] : contact ? visible.filter(p => contact.projectIds.includes(p.id)) : report.projects,
   };
+  const allowExport = preview?.mode !== "draft";
+  function confirmedExport(select: (report: ProjectReport) => CsvData) {
+    const visibleData = JSON.stringify(select(report!));
+    return async (signal: AbortSignal) => {
+      const latest = await client.call<ProjectReport>(tenant, reportRequest, { signal });
+      if (latest.month !== month || latest.tenant.id !== tenant) throw Error("Unexpected reporting scope.");
+      const data = select(latest);
+      if (JSON.stringify(data) !== visibleData) throw Error("The approved report changed. Refresh it and export again.");
+      return data;
+    };
+  }
+  const exportProjectRows = (projects: ProjectReport["projects"]) =>
+    confirmedExport(latest => publishedProjectCsv(latest, projects));
+  const exportMilestoneRows = (projects: ProjectReport["projects"], chosenMilestone?: string) =>
+    confirmedExport(latest => {
+      const ids = new Set(projects.map(p => p.id));
+      return milestoneCsv(latest.projects.filter(p => ids.has(p.id)), false, chosenMilestone);
+    });
+  const csvPrefix = "Morris_" + report.tenant.name + "_" + report.month;
   const contextScoped = Boolean(selectedArea || engagement || project || contact);
   if (contextScoped) {
     presentReport.totalSeconds = presentReport.projects.reduce((sum, p) => sum + p.seconds, 0);
     if (portfolio) presentReport.portfolio = { ...portfolio, history: [] };
   }
   return (
-    <div className="exec-frame intel-workspace" data-collapsed={collapsed}>
+    <div className="exec-frame intel-workspace" data-platform={nativeClient} data-collapsed={collapsed}>
       <aside className="exec-sidebar" data-mobile-open={mobileOpen} onKeyDown={event => {
         if (event.key === "Escape" && mobileOpen) { setMobileOpen(false); mobileToggle.current?.focus(); }
       }}>
@@ -205,21 +253,32 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
           <button className="exec-icon exec-collapse" type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => setCollapsed(!collapsed)}><PanelLeftClose size={18} /></button>
         </div>
         <nav aria-label="Client workspace" id="client-portal-nav">
-          <button type="button" aria-label="Leadership summary" aria-current={view === "overview" ? "page" : undefined} onClick={() => choose("overview")}><LayoutGrid size={18} /><span>Leadership summary</span></button>
-          {nativeClient && <>
-            <button type="button" aria-current={view === "engagements" ? "page" : undefined} onClick={() => choose("engagements")}><FolderKanban size={18} aria-hidden="true" />Engagements</button>
-            <button type="button" aria-current={view === "areas" ? "page" : undefined} onClick={() => choose("areas")}><span className="exec-nav-dot" aria-hidden="true" />Service Areas</button>
-          </>}
-          <button type="button" aria-label="Projects" aria-current={view === "projects" ? "page" : undefined} onClick={() => choose("projects")}><FolderKanban size={18} /><span>Projects</span></button>
-          <button type="button" aria-label="Reporting history" aria-current={view === "history" ? "page" : undefined} onClick={() => choose("history")}><ChartNoAxesColumnIncreasing size={18} /><span>Reporting history</span></button>
-          <button type="button" aria-label="Milestones" aria-current={view === "milestones" ? "page" : undefined} onClick={() => choose("milestones")}><CalendarDays size={18} /><span>Milestones</span></button>
-          {portfolio?.areas.map(area => <button type="button" key={area.id} aria-label={area.name} aria-current={view === "area:" + area.id ? "page" : undefined} onClick={() => choose("area:" + area.id)}><span className="exec-nav-dot" aria-hidden="true" /><span>{area.name}</span></button>)}
-          <button type="button" aria-label="MI Directory" aria-current={view === "directory" ? "page" : undefined} onClick={() => choose("directory")}><UsersRound size={18} /><span>MI Directory</span></button>
-          {nativeClient && <button type="button" aria-current={presenting ? "page" : undefined} onClick={() => openOverlay("present", "1")}><PresentationIcon size={18} aria-hidden="true" />Presentation</button>}
+          <div className="mi-client-nav-group">
+            <p>Reports</p>
+            <button type="button" aria-label="Leadership summary" aria-current={view === "overview" ? "page" : undefined} onClick={() => choose("overview")}><LayoutGrid size={18} aria-hidden="true" /><span>Leadership summary</span></button>
+            <button type="button" aria-label="Reporting history" aria-current={view === "history" ? "page" : undefined} onClick={() => choose("history")}><ChartNoAxesColumnIncreasing size={18} aria-hidden="true" /><span>Reporting history</span></button>
+          </div>
+          <div className="mi-client-nav-group">
+            <p>Delivery</p>
+            {nativeClient && <>
+              <button type="button" aria-label="Engagements" aria-current={view === "engagements" ? "page" : undefined} onClick={() => choose("engagements")}><FolderKanban size={18} aria-hidden="true" /><span>Engagements</span></button>
+              <button type="button" aria-label="Service Areas" aria-current={view === "areas" ? "page" : undefined} onClick={() => choose("areas")}><span className="exec-nav-dot" aria-hidden="true" /><span>Service Areas</span></button>
+            </>}
+            <button type="button" aria-label="Projects" aria-current={view === "projects" ? "page" : undefined} onClick={() => choose("projects")}><FolderKanban size={18} aria-hidden="true" /><span>Projects</span></button>
+            <button type="button" aria-label="Milestones" aria-current={view === "milestones" ? "page" : undefined} onClick={() => choose("milestones")}><CalendarDays size={18} aria-hidden="true" /><span>Milestones</span></button>
+          </div>
+          {!!portfolio?.areas.length && <div className="mi-client-nav-group"><p>Service areas</p>
+            {portfolio.areas.map(area => <button type="button" key={area.id} aria-label={area.name} aria-current={view === "area:" + area.id ? "page" : undefined} onClick={() => choose("area:" + area.id)}><span className="exec-nav-dot" aria-hidden="true" /><span>{area.name}</span></button>)}
+          </div>}
+          <div className="mi-client-nav-group"><p>People &amp; presentation</p>
+            <button type="button" aria-label="MI Directory" aria-current={view === "directory" ? "page" : undefined} onClick={() => choose("directory")}><UsersRound size={18} aria-hidden="true" /><span>MI Directory</span></button>
+            {nativeClient && <button type="button" aria-label="Presentation" aria-current={presenting ? "page" : undefined} onClick={() => openOverlay("present", "1")}><PresentationIcon size={18} aria-hidden="true" /><span>Presentation</span></button>}
+          </div>
         </nav>
       </aside>
       <div className="exec-content" tabIndex={-1} ref={page}>
-        {view === "overview" && <ExecutiveOverview report={report} platform={nativeClient} onLink={choose} onChart={type => openOverlay("chart", type)}
+        {nativeClient && view === "overview" && periodToolbar}
+        {view === "overview" && <ExecutiveOverview report={report} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose} onChart={type => openOverlay("chart", type)}
           onPresentation={() => openOverlay("present", "1")} />}
         {view !== "overview" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
           <button type="button" className="exec-text-button" onClick={() => choose("overview")}><ChevronLeft size={16} /> Leadership summary</button>
@@ -232,16 +291,20 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
         {view !== "overview" && <section className="intel-page-hero" data-area={selectedArea && searchText(selectedArea.name)}>
           <div><span className="exec-kicker">{period}</span><h2>{title}</h2>
             {selectedArea?.description && <p>{selectedArea.description}</p>}
-            {selectedArea && <p>{scoped.length ? reportHours(presentReport.totalSeconds) + " h allocated · " + scoped.length + " published projects" : "No published projects for this period"}</p>}
+            {selectedArea && <p>{scoped.length ? reportHours(presentReport.totalSeconds) + " h reported · " + scoped.length + " published projects" : "No published projects for this period"}</p>}
             {contact && <p>{contact.role}</p>}
           </div>
           {!unavailable && <button className="exec-hero-action platform-primary-action" type="button" onClick={() => openOverlay("present", "1")}><PresentationIcon size={16} aria-hidden="true" /> Present this view</button>}
-          {selectedArea && <DotField value={presentReport.totalSeconds} unit={dotScale(Math.max(report.totalSeconds, 1))} />}
         </section>}
+        {nativeClient && view !== "overview" && periodToolbar}
         {view === "projects" && Object.values(hierarchy).some(item => item.parentId) && <details className="delivery-details">
           <summary>Project hierarchy</summary><ul className="delivery-client-tree">{visible.filter(p => hierarchy[p.id]?.parentId).map(p =>
             <li key={p.id}>{projectLookup.get(hierarchy[p.id].parentId!)?.name} <span aria-hidden="true">›</span> <button className="exec-text-button" type="button" onClick={() => choose("project:" + p.id)}>{p.name}</button></li>)}</ul>
         </details>}
+        {(view === "engagements" || view === "areas") && allowExport && visible.length > 0 &&
+          <div className="secure-actions"><CsvExport filename={csvPrefix + "_" + title}
+            label={view === "engagements" ? "Export approved engagement projects CSV" : "Export approved service area projects CSV"}
+            load={exportProjectRows(visible)} onDenied={onDenied} /></div>}
         {(view === "engagements" || view === "areas") && <section className="platform-report-directory" aria-label={title}>
           {view === "engagements" && <>
             {parentEngagements.map(engagement => <button type="button" key={engagement.id} className="platform-report-link" onClick={() => choose("group:" + engagement.id)}>
@@ -269,10 +332,13 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
           <div>
             <h2 id="published-projects">Published projects</h2>
             <p>
-              Hours reflect published reporting allocations for the selected
+              Hours reflect approved recorded effort and classifications for the selected
               month.
             </p>
           </div>
+          {allowExport && matching.length > 0 && <CsvExport filename={csvPrefix + "_" + title + "_Projects"}
+            label="Export approved projects CSV" scope={JSON.stringify([view, search, status])}
+            load={exportProjectRows(matching)} onDenied={onDenied} />}
           {scoped.length > 0 && (
             <label className="secure-search-label">
               Search published projects
@@ -330,8 +396,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
           </div>
         </article>)}</div> : <p className="secure-empty">{search && view === "directory" ? "No approved contacts match." : "No approved contacts are available for these projects."}</p>}
       </section>}
-      {view === "history" && <DotChart report={report} kind="trend" expanded onLink={choose} onOpen={() => openOverlay("chart", "trend")} />}
-      {(selectedArea || engagement) && <DotChart report={presentReport} kind="plan" onLink={choose} onOpen={() => openOverlay("chart", "plan")} />}
+      {view === "history" && <DotChart report={report} kind="trend" expanded monthRange={monthRange} draft={preview?.mode === "draft"} onLink={choose} onOpen={() => openOverlay("chart", "trend")} />}
+      {(selectedArea || engagement) && <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"} onLink={choose} onOpen={() => openOverlay("chart", "plan")} />}
       {view === "notes" && <article className="intel-detail"><h3>Delivery narrative</h3>
         <p>{portfolio?.narrative || "No executive narrative has been published for this period."}</p>
         {portfolio?.action && <><h3>Next decision</h3><p>{portfolio.action}</p></>}</article>}
@@ -342,15 +408,22 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
             {portfolio?.areas.find(a => a.id === placements.get(project.id)?.areaId)?.name}</button>}
           {placements.get(project.id)?.engagementId && <button className="exec-text-button" onClick={() => choose("group:" + placements.get(project.id)!.engagementId)}>{groupName(placements.get(project.id)!.engagementId)}</button>}
           <button className="exec-text-button" onClick={() => choose("timeline:" + project.id)}>Project timeline</button>
+          {allowExport && <CsvExport filename={csvPrefix + "_" + project.name} label="Export project CSV"
+            load={exportProjectRows([project])} onDenied={onDenied} />}
           {report.sourceUpdatedAt && <span>Source updated {reportTimestamp(report.sourceUpdatedAt)}</span>}
         </div>
         <ProjectReportingCard project={project} period={period} placement={placements.get(project.id)} team={directoryFor(project.id)} onLink={choose}
           delivery={hierarchy[project.id]} descendantTotals={delegatedTotals.get(project.id)} detail />
         {!!children.length && <section aria-label="Child projects"><h3>Child projects</h3><ul className="delivery-client-tree">{children.map(child => <li key={child.id}><button type="button" className="exec-text-button" onClick={() => choose("project:" + child.id)}>{child.name}</button></li>)}</ul></section>}
-        <DotChart report={presentReport} kind="plan" onLink={choose} onOpen={() => openOverlay("chart", "plan")} />
+        <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"} onLink={choose} onOpen={() => openOverlay("chart", "plan")} />
       </article>}
       {(view === "milestones" || (project && kind === "timeline")) && <article className="intel-detail">
-        <h3>{kind === "timeline" ? "Delivery timeline" : "Published milestones"}</h3>
+        <div className="secure-section-heading">
+          <h3>{kind === "timeline" ? "Delivery timeline" : "Published milestones"}</h3>
+          {allowExport && (project ? [project] : visible).some(p => p.milestones?.length) &&
+            <CsvExport filename={csvPrefix + "_" + title + "_Milestones"} label="Export milestones CSV"
+              load={exportMilestoneRows(project ? [project] : visible)} onDenied={onDenied} />}
+        </div>
         {(() => {
           const items = (project ? [project] : visible).flatMap(p => [
             ...(p.milestones ?? []).map(m => ({ ...m, project: p, body: "", type: m.completed ? "Complete" : "Upcoming", route: "milestone:" + p.id + ":" + m.id })),
@@ -366,7 +439,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
       {milestone && project && <article className="intel-detail"><h3>{milestone.completed ? "Completed milestone" : "Upcoming milestone"}</h3>
         <p>{reportDay(milestone.date)} · {project.name}</p><button className="exec-text-button" onClick={() => choose("timeline:" + project.id)}>View the project timeline</button></article>}
       </div>
-      {chart && !presenting && !unavailable && <DotChartDialog report={contextScoped ? presentReport : report} kind={chart}
+      {chart && !presenting && !unavailable && <DotChartDialog report={contextScoped ? presentReport : report} kind={chart} monthRange={monthRange} draft={preview?.mode === "draft"}
         onLink={choose} onClose={() => closePortalOverlay("chart")} />}
       {presenting && !unavailable && <Suspense fallback={<p role="status">Opening presentation…</p>}>
         <Presentation report={presentReport} scope={view} scopeTitle={title} onLink={choose} onClose={() => closePortalOverlay("present")}

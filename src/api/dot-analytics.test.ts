@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ProjectReport } from "../projects/model";
-import { chartRows, comparableYears, dotScale } from "./DotAnalytics";
+import { axisMaximum, chartRows, comparableYears } from "./reporting-chart-data";
 
 const report: ProjectReport = {
   month: "2026-11",
@@ -35,8 +35,9 @@ test("distribution and current month retain approved scope and integer seconds",
     ["unassigned", 4_500, ["monthly", "fixed"]],
   ]);
   assert.deepEqual(chartRows(report, "trend").map(row => [row.month, row.seconds]), [["2026-11", 4_500]]);
-  assert.equal(dotScale(0), 1);
-  assert.equal(dotScale(4_501, 48), 94);
+  assert.equal(axisMaximum(0), 3600);
+  assert.equal(axisMaximum(4_501), 7200);
+  assert.equal(axisMaximum(106, "percent"), 200);
 });
 
 test("year comparison aligns months and preserves unavailable versus zero values", () => {
@@ -49,4 +50,27 @@ test("year comparison aligns months and preserves unavailable versus zero values
   assert.equal(comparison[0].prior, undefined);
   assert.equal(comparison[10].prior?.seconds, 0);
   assert.equal(comparison[10].current?.seconds, 4500);
+});
+
+test("historical chart stays chronological and preserves later buckets while a historical month is open", () => {
+  const history = { areas: [], engagements: [], placements: [], directory: [], narrative: "", action: "",
+    history: [{ month: "2026-11", seconds: 12_600 }, { month: "2026-09", seconds: 7_200 }, { month: "2026-10", seconds: 100 }] };
+  const historical = { ...report, month: "2026-10", portfolio: history };
+  assert.deepEqual(chartRows(historical, "trend").map(row => [row.month, row.seconds]), [
+    ["2026-09", 7200], ["2026-10", 4500], ["2026-11", 12600],
+  ]);
+  assert.deepEqual(chartRows(historical, "trend", { from: "2026-11", through: "2026-11" }).map(row => row.month), ["2026-11"]);
+});
+
+test("remaining work-order hours never count as classified service-area effort", () => {
+  const portfolio = { areas: [{ id: "hr", name: "HR", description: "", order: 0, visible: true }], directory: [],
+    engagements: [], placements: [{ id: "monthly", areaId: "hr", engagementId: "", start: "", target: "", archived: false }],
+    narrative: "", action: "", history: [] };
+  const projects = [{ ...report.projects[0], seconds: 5_400, workOrderEffort: {
+    recordedSeconds: 5_400, remainingSeconds: 3_600, assignedSeconds: 1_800,
+    lifetimeRecordedSeconds: 5_400, lifetimeRemainingSeconds: 3_600,
+  } }];
+  assert.deepEqual(chartRows({ ...report, projects, portfolio, totalSeconds: 5_400 }, "distribution").map(row => [row.id, row.seconds]), [
+    ["recorded-remainder", 3600], ["hr", 1800],
+  ]);
 });

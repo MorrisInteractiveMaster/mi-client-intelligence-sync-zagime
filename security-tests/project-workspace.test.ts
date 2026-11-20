@@ -1190,8 +1190,10 @@ function ClientFixture() {
           const expand = page.getByRole("button", { name: "Expand delivery by service area" });
           await expand.click();
           const analytics = page.getByRole("dialog", { name: "Delivery by service area analysis" });
-          await analytics.getByRole("button", { name: "Health, 0.5 hours" }).click();
-          assert.ok(await analytics.locator('[data-filled="true"]').count());
+          const healthHours = analytics.getByRole("button", { name: "Health, 0.5 hours" });
+          await healthHours.click();
+          assert.equal(await healthHours.getAttribute("aria-pressed"), "true");
+          assert.ok(await healthHours.locator(".mi-bar-track > i").evaluate(bar => bar.getBoundingClientRect().width > 0));
           await analytics.getByText("Show data table").click();
           await analytics.getByRole("table").waitFor();
           await page.screenshot({ path: join(evidence, "analytics.png"), animations: "disabled" });
@@ -1242,7 +1244,7 @@ function ClientFixture() {
         await presentation.getByRole("heading", { name: "Published delivery" }).waitFor();
         await presentation.getByText("0.5 h", { exact: true }).waitFor();
         if (width === 1440) {
-          await page.screenshot({ path: join(evidence, "presentation-dots.png"), animations: "disabled" });
+          await page.screenshot({ path: join(evidence, "presentation-reported-effort.png"), animations: "disabled" });
           const maximize = presentation.getByRole("button", { name: "Toggle fullscreen" });
           if (await maximize.count()) {
             await maximize.click();

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { build } from "esbuild";
@@ -14,7 +14,7 @@ import { seedProjectSynthetic } from "../server/project-operator";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
 import { projectView, type Project } from "../src/projects/model";
 
-test("native portal URLs keep authenticated roles, approved reporting, editable settings and chapter links across reload and history", { timeout: 90000 }, async () => {
+test("native portal URLs keep authenticated roles, approved reporting, editable settings and chapter links across reload and history", { timeout: 140000 }, async () => {
   const runtime = firebaseRuntime("emulator", "demo-mi-security", "mi-client-staging");
   const directory = await mkdtemp(join(tmpdir(), "mi-platform-routes-"));
   const tenant = "synthetic-platform-browser";
@@ -45,6 +45,10 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
   batch.set(root.collection("projectViews").doc(projectId), projectView(backendProject, 10800));
   batch.set(root.collection("projectPeriods").doc(key(month, projectId)), { projectId, month, seconds: 7200 });
   batch.set(root.collection("projectPeriods").doc(key(previousMonth, projectId)), { projectId, month: previousMonth, seconds: 3600 });
+  batch.set(root.collection("projectPeriods").doc(key("2026-09", projectId)), { projectId, month: "2026-09", seconds: 5400 });
+  // Tenant-wide month discovery must never disclose activity for hidden projects.
+  batch.set(root.collection("timeMonthlyTotals").doc("2025-05"), { recorded: 99999, allocated: 0 });
+  batch.set(root.collection("timeProjectTotals").doc("private-history-fixture").collection("periods").doc("2025-05"), { recorded: 99999, allocated: 0 });
   batch.set(root.collection("memberships").doc(key("client")), {
     schemaVersion: 2, tenantId: tenant, subject: "client", role: "client", approved: true, enabled: true,
     projectIds: [projectId, "synthetic-planning"],
@@ -159,6 +163,39 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await metric.getByText(expected, { exact: true }).waitFor();
     }
     await admin.page.screenshot({ path: join(evidence, "morris-workspace-native-overview.png"), fullPage: true, animations: "disabled" });
+    for (const width of [320, 390, 768, 1024, 1280, 1920]) {
+      await admin.page.setViewportSize({ width, height: 900 });
+      assert.ok(await admin.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Morris workspace fits " + width);
+    }
+    await admin.page.setViewportSize({ width: 390, height: 844 });
+    const menu = admin.page.getByRole("button", { name: "Menu", exact: true });
+    await menu.click();
+    const drawer = admin.page.getByRole("dialog", { name: "Workspace menu" });
+    await drawer.getByRole("button", { name: "Project Management", exact: true }).waitFor();
+    await admin.page.screenshot({ path: join(evidence, "morris-workspace-mobile-menu.png"), animations: "disabled" });
+    await admin.page.keyboard.press("Escape");
+    assert.equal(await menu.evaluate(button => document.activeElement === button), true);
+    await menu.click();
+    await drawer.getByRole("button", { name: "Project Management", exact: true }).click();
+    await admin.page.waitForURL(route("/workspace/project-management"));
+    await admin.page.getByRole("combobox", { name: "Selected project" }).selectOption(projectId);
+    await admin.page.waitForURL(route("/workspace/project-management/" + projectId));
+    const progress = admin.page.getByRole("form", { name: "Delivery progress" });
+    await progress.getByRole("combobox", { name: "Delivery status" }).selectOption("paused");
+    await progress.getByRole("button", { name: "Save Progress" }).click();
+    await progress.getByText(/Progress saved to the draft/).waitFor();
+    await admin.page.screenshot({ path: join(evidence, "project-management-mobile.png"), fullPage: true, animations: "disabled" });
+    await admin.page.reload();
+    await progress.getByRole("combobox", { name: "Delivery status" }).waitFor();
+    assert.equal(await progress.getByRole("combobox", { name: "Delivery status" }).inputValue(), "paused");
+    assert.equal((await projectRef.get()).data()?.status, "active", "client-approved project remains unchanged");
+    await admin.page.setViewportSize({ width: 1440, height: 1000 });
+    await admin.page.getByRole("button", { name: "Search workspace", exact: false }).click();
+    const search = admin.page.getByRole("dialog", { name: "Search workspace" });
+    await search.getByRole("searchbox").fill("regular consulting");
+    await search.getByRole("button", { name: /Regular Consulting fixture/ }).waitFor();
+    await admin.page.keyboard.press("Escape");
+    await admin.page.screenshot({ path: join(evidence, "project-management.png"), fullPage: true, animations: "disabled" });
     await admin.page.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Projects", exact: true }).click();
     await admin.page.getByRole("button", { name: "By Parent Engagement" }).click();
     await admin.page.getByRole("button", { name: "Open Regular Consulting fixture" }).click();
@@ -176,10 +213,63 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await staff.context.close();
 
     const client = await session(mainBrowser, "client");
+    const reportRoute = "/clients/zagime/reports";
+    const october = await client.context.request.get(origin + "/api/v2/tenants/" + tenant + "/report?month=2026-10", {
+      headers: { authorization: "Bearer client" },
+    });
+    assert.equal(october.status(), 200);
+    const octoberReport = await october.json();
+    assert.equal(octoberReport.totalSeconds, 3600);
+    assert.deepEqual(octoberReport.portfolio.history.filter((row: { month: string }) => row.month === "2026-11"),
+      [{ month: "2026-11", seconds: 81900 }]);
+    assert.equal(octoberReport.portfolio.history.some((row: { month: string }) => row.month === "2025-05"), false);
+    await client.page.goto(origin + reportRoute + "?month=2026-10");
+    const monthControl = client.page.getByRole("combobox", { name: "Reporting month" });
+    await monthControl.waitFor();
+    assert.equal(await monthControl.inputValue(), "2026-10");
+    const timeline = client.page.getByRole("region", { name: "Reporting period" });
+    await client.page.getByRole("button", { name: "November 2026, 22.75 hours" }).first().waitFor();
+    await client.page.screenshot({ path: join(evidence, "reporting-history-october.png"), fullPage: true, animations: "disabled" });
+    await client.page.setViewportSize({ width: 320, height: 780 });
+    const periodBounds = await timeline.boundingBox();
+    assert.ok(periodBounds && periodBounds.x + periodBounds.width <= 320, "reporting period fits small mobile");
+    assert.ok(await client.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await client.page.screenshot({ path: join(evidence, "reporting-history-october-mobile.png"), fullPage: true, animations: "disabled" });
+    await client.page.setViewportSize({ width: 1440, height: 1000 });
+    await timeline.getByRole("button", { name: "Next reporting month" }).click();
+    await client.page.waitForURL(route(reportRoute));
+    await monthControl.waitFor();
+    assert.equal(await monthControl.inputValue(), "2026-11");
+    await timeline.getByRole("button", { name: "Previous reporting month" }).click();
+    await client.page.waitForURL(origin + reportRoute + "?month=2026-10");
+    await monthControl.selectOption("2026-09");
+    await client.page.waitForURL(origin + reportRoute + "?month=2026-09");
+    await client.page.getByRole("button", { name: "September 2026, 1.5 hours" }).first().waitFor();
+    await timeline.getByRole("button", { name: "Latest available month" }).click();
+    await client.page.waitForURL(route(reportRoute));
+    await monthControl.waitFor();
+    await client.page.goBack();
+    await client.page.waitForURL(origin + reportRoute + "?month=2026-09");
+    await monthControl.waitFor();
+    assert.equal(await monthControl.inputValue(), "2026-09");
+    await client.page.goForward();
+    await client.page.waitForURL(route(reportRoute));
+    await monthControl.waitFor();
+    assert.equal(await monthControl.inputValue(), "2026-11");
+    await timeline.getByRole("button", { name: "Period options", exact: true }).click();
+    await timeline.getByRole("button", { name: "Custom Range" }).click();
+    await timeline.getByLabel("From month").fill("2026-09");
+    await timeline.getByLabel("Through month").fill("2026-10");
+    await timeline.getByRole("button", { name: "Apply range" }).click();
+    await client.page.waitForURL(route(reportRoute, "&period-scope=custom&from-month=2026-09&through-month=2026-10"));
+    await client.page.getByRole("button", { name: "September 2026, 1.5 hours" }).first().waitFor();
+    assert.equal(await client.page.getByRole("button", { name: "November 2026, 22.75 hours" }).count(), 0);
     await client.page.goto(route("/"));
     await client.page.waitForURL(route("/clients/zagime"));
     await client.page.getByRole("navigation", { name: "Client workspace" }).waitFor();
     await client.page.getByRole("heading", { name: /Leadership\s*summary/i }).waitFor();
+    const metricBorder = await client.page.locator(".mi-leadership-metric").evaluate(el => getComputedStyle(el).borderTopWidth);
+    assert.equal(metricBorder, "0px");
     await client.page.screenshot({ path: join(evidence, "client-dashboard-native-overview.png"), fullPage: true, animations: "disabled" });
     await client.page.setViewportSize({ width: 768, height: 1024 });
     assert.ok(await client.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -204,6 +294,21 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.getByRole("heading", { name: projectName, level: 2 }).waitFor();
     await client.page.screenshot({ path: join(evidence, "client-project-native-route.png"), fullPage: true, animations: "disabled" });
 
+    await client.page.goto(origin + projectPath + "?month=" + previousMonth);
+    const approvedExport = client.page.waitForEvent("download");
+    await client.page.getByRole("button", { name: "Export project CSV", exact: true }).click();
+    const download = await approvedExport;
+    assert.match(download.suggestedFilename(), /2026-10.*Board_reporting_pilot[.]csv$/);
+    const approvedCsv = await readFile((await download.path())!, "utf8");
+    const [columns, exported] = approvedCsv.trim().split(String.fromCharCode(13, 10));
+    assert.match(columns, /Reported hours/);
+    const content = exported.replaceAll('"', '').split(",");
+    assert.equal(content[0], previousMonth);
+    assert.equal(content[1], projectName);
+    assert.equal(content[6], "1");
+    assert.doesNotMatch(approvedCsv, /Private staff status|synthetic-delivery|132160684/);
+    await download.saveAs(join(evidence, "client-october-approved-project.csv"));
+
     const presentationPath = "/clients/zagime/present";
     await client.page.goto(route(presentationPath, "&chapter=5"));
     const dialog = client.page.getByRole("dialog");
@@ -221,6 +326,10 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await dialog.getByRole("button", { name: "Close presentation", exact: true }).click();
     await client.page.waitForURL(route("/clients/zagime"));
     await client.page.goto(route(presentationPath, "&chapter=1"));
+    await dialog.getByRole("heading", { name: "November Board Briefing", exact: true }).waitFor();
+    await dialog.press("End");
+    await dialog.getByRole("heading", { name: "Next Steps and Approved Updates", exact: true }).waitFor();
+    await dialog.press("Home");
     await dialog.getByRole("heading", { name: "November Board Briefing", exact: true }).waitFor();
     await client.page.emulateMedia({ media: "print" });
     const printable = client.page.locator(".platform-print-deck");

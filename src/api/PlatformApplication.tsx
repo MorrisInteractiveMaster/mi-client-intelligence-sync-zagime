@@ -1,3 +1,4 @@
+import "./premium-shell.css";
 import { ArrowLeft, Building2, Home } from "lucide-react";
 import { lazy, Suspense, useEffect } from "react";
 import type { ProjectWorkspace } from "../projects/model";

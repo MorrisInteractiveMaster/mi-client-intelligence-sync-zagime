@@ -199,6 +199,19 @@ async function observe(context, page) {
             assert.equal(new URL(page.url()).hash, "#/");
           }
           await page.evaluate(() => document.fonts.ready);
+          if (item.protected) {
+            const contrast = await page.locator(".mi-sign-in-panel > p").first().evaluate(paragraph => {
+              const luminosity = color => {
+                const srgb = color.match(/[0-9.]+/g).slice(0, 3).map(value => Number(value) / 255);
+                const linear = srgb.map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+                return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+              };
+              const foreground = luminosity(getComputedStyle(paragraph).color);
+              const background = luminosity(getComputedStyle(paragraph.parentElement).backgroundColor);
+              return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+            });
+            assert.ok(contrast >= 4.5, "native sign-in instructions contrast");
+          }
           assert.ok(
             await page.evaluate(
               () => document.documentElement.scrollWidth <= innerWidth,

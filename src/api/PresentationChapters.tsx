@@ -1,11 +1,14 @@
 import { useState } from "react";
 import type { ProjectReport } from "../projects/model";
 import { chartRows } from "./DotAnalytics";
+import { BarPlot, TrendPlot, plotValue, type PlotRow, type PlotUnit } from "./ReportingPlots";
+import { CsvExport } from "./CsvExport";
+import { csvHours } from "./report-csv";
 import { deliveryDefaults, rollup } from "../projects/delivery";
 import { PersonPhoto } from "./PersonPhoto";
 import { reportDay, reportHours, reportMonth, today } from "./dashboard-format";
 
-type DataRow = { id: string; label: string; value: number; destination?: string; month?: string };
+type DataRow = PlotRow & { destination?: string };
 type Narrative = { label: string; detail?: string; destination?: string };
 type Person = NonNullable<ProjectReport["portfolio"]>["directory"][number];
 type Chapter = {
@@ -14,7 +17,7 @@ type Chapter = {
   link: string;
   timeline?: boolean;
   measure?: string;
-  unit?: "hours" | "percent";
+  unit?: PlotUnit;
   data?: DataRow[];
   notes?: Narrative[];
   people?: Person[];
@@ -53,7 +56,7 @@ export function publishedChapters(report: ProjectReport): Chapter[] {
         destination: (hierarchy[p.id]?.kind === "engagement" ? "group:" : "project:") + p.id })) },
     { title: "Historical Hours and Effort", link: "history", timeline: true, unit: "hours", measure: "Approved reported hours by month",
       data: chartRows(report, "trend").map(row => ({ ...row, value: row.seconds })) },
-    { title: "Hours by Service Area", link: navigation.area, unit: "hours", measure: "Approved allocated hours by service area",
+    { title: "Hours by Service Area", link: navigation.area, unit: "hours", measure: "Approved reported hours by service area",
       data: chartRows(report, "distribution").map(row => ({ ...row, value: row.seconds })) },
     { title: "Hours by Delivery Project", link: navigation.project, unit: "hours", measure: "Approved reported hours by project",
       data: positive.map(p => ({ id: p.id, label: p.name, value: p.seconds, destination: "project:" + p.id })) },
@@ -73,7 +76,10 @@ export function publishedChapters(report: ProjectReport): Chapter[] {
         ...projects.filter(p => p.status !== "completed" && hierarchy[p.id]?.deadline).map(p => ({
           label: p.name, date: hierarchy[p.id].deadline!, detail: "Project deadline", destination: "project:" + p.id,
         })),
-      ].sort((a, b) => a.date.localeCompare(b.date)).map(row => ({ ...row, detail: (row.date < asOf ? "Past due · " : "") + reportDay(row.date) + " · " + row.detail })) },
+      ].sort((a, b) => a.date.localeCompare(b.date)).map(row => ({ ...row, detail: (row.date < asOf ? "Past due · " : "") + reportDay(row.date) + " · " + row.detail }))
+      .concat(projects.filter(p => hierarchy[p.id]?.blocker?.active).map(p => ({
+        label: p.name, date: "", detail: "Blocked · " + (hierarchy[p.id].blocker?.message || "Published delivery blocker"), destination: "project:" + p.id,
+      }))) },
     { title: "Morris Team", link: "directory", people: (portfolio?.directory ?? []).filter(p => p.projectIds.some(id => projects.some(project => project.id === id))) },
     { title: "Next Steps and Approved Updates", link: "notes", notes: [
       ...(portfolio?.narrative ? [{ label: "Executive notes", detail: portfolio.narrative }] : []),
@@ -83,38 +89,32 @@ export function publishedChapters(report: ProjectReport): Chapter[] {
   ];
 }
 
-function reading(chapter: Chapter, value: number) {
-  return chapter.unit === "percent" ? value + "%" : reportHours(value) + " h";
-}
-
-export function PresentationContent({ chapter, onLink }: { chapter: Chapter; onLink?: OpenReport }) {
+export function PresentationContent({ chapter, onLink, month, draft }: { chapter: Chapter; onLink?: OpenReport; month?: string; draft?: boolean }) {
   const rows = chapter.data ?? [];
+  const unit = chapter.unit ?? "hours";
   const [selectedId, setSelectedId] = useState<string>();
-  const chosen = rows.find(row => row.id === selectedId) ?? (chapter.timeline ? rows.at(-1) : rows[0]);
-  const maximum = Math.max(1, ...rows.map(row => row.value));
-  const coordinate = (row: DataRow, index: number) => [12 + index / Math.max(1, rows.length - 1) * 296, 83 - row.value / maximum * 68].join(",");
-  const table = (tableRows: DataRow[]) => <table>
+  const [hoveredId, setHoveredId] = useState<string>();
+  const chosen = rows.find(row => row.id === selectedId) ?? (chapter.timeline ? rows.find(row => row.month === month) ?? rows.at(-1) : rows[0]);
+  const inspected = rows.find(row => row.id === hoveredId) ?? chosen;
+  const Plot = chapter.timeline ? TrendPlot : BarPlot;
+  const table = <table className="mi-presentation-table">
     <caption>{chapter.measure}</caption>
-    <thead><tr><th scope="col">Name</th><th scope="col">{chapter.unit === "percent" ? "Percent" : "Hours"}</th></tr></thead>
-    <tbody>{tableRows.map(row => <tr key={row.id}><th scope="row">{row.label}</th><td>{reading(chapter, row.value)}</td></tr>)}</tbody>
+    <thead><tr><th scope="col">{chapter.timeline ? "Month" : "Name"}</th><th scope="col">{unit === "percent" ? "Percent" : "Hours"}</th></tr></thead>
+    <tbody>{rows.map(row => <tr key={row.id}><th scope="row">{row.label}</th><td>{plotValue(row.value, unit)}</td></tr>)}</tbody>
   </table>;
-  if (rows.length && !onLink) return table(rows);
-  if (rows.length) return <div className="platform-scene-data">
-    {chapter.timeline && <svg viewBox="0 0 320 100" role="img" aria-label={chapter.measure}>
-      <defs><linearGradient id="presentation-trend-fill" x2="0%" y2="100%"><stop stopColor="#f5db77" stopOpacity=".33"/><stop offset="100%" stopColor="#f5db77" stopOpacity="0"/></linearGradient></defs>
-      <path d="M12 83H308M12 49H308M12 15H308" stroke="#7c9ab24a" fill="none"/>
-      <polygon points={"12,83 " + rows.map(coordinate).join(" ") + " " + coordinate(rows.at(-1)!, rows.length - 1).split(",")[0] + ",83"} fill="url(#presentation-trend-fill)"/>
-      <polyline points={rows.map(coordinate).join(" ")} fill="none" stroke="#f5db77" strokeWidth="2.4" strokeLinejoin="round" />
-      {rows.map((row, index) => { const [x, y] = coordinate(row, index).split(","); return <circle cx={x} cy={y} key={row.id} r={chosen?.id === row.id ? 4 : 2.5} fill="#f5db77" />; })}
-    </svg>}
-    <div className={"platform-scene-series" + (chapter.timeline ? " platform-scene-time" : "")} aria-label={chapter.measure}>
-      {(chapter.timeline ? rows.slice(-12) : rows.slice(0, 8)).map(row => <button key={row.id} type="button" aria-pressed={chosen?.id === row.id} onClick={() => setSelectedId(row.id)} title={row.label + " · " + reading(chapter, row.value)}>
-        <span>{row.label}</span>{!chapter.timeline && <span className="platform-scene-bar" style={{ width: Math.max(.2, row.value / maximum * 100) + "%" }} aria-hidden="true" />}
-        <b>{reading(chapter, row.value)}</b>
-      </button>)}
+  if (rows.length && !onLink) return table;
+  if (chosen && inspected) return <div className={"mi-presentation-data" + (chapter.timeline ? " mi-presentation-trend" : "")}>
+    <Plot label={chapter.measure ?? chapter.title} unit={unit} rows={rows} active={chosen.id} onSelect={setSelectedId} onInspect={setHoveredId} />
+    <div className="mi-presentation-detail">
+      <p aria-live="polite"><strong>{inspected.label}</strong><span>{plotValue(inspected.value, unit)}</span></p>
+      {chosen.destination && <button className="mi-presentation-link" type="button" onClick={() => onLink?.(chosen.destination!, chosen.month)}>Open {chosen.label}</button>}
     </div>
-    {chosen?.destination && <button className="intel-report-link" type="button" onClick={() => onLink?.(chosen.destination!, chosen.month)}>Open {chosen.label}</button>}
-    <details><summary>Show data table</summary>{table(rows)}</details>
+    <div className="mi-chart-actions">
+      <details><summary>Show data table</summary>{table}</details>
+      {!draft && month && <CsvExport filename={"Morris_Zagime_" + chapter.title.replace(/[^a-zA-Z0-9]+/g, "_") + "_" + month}
+        label="Export chart CSV" data={{ headers: [chapter.timeline ? "Month" : "Name", unit === "percent" ? "Percent" : "Reported hours"],
+          rows: rows.map(row => [row.month ?? row.label, unit === "percent" ? row.value : csvHours(row.value)]) }} />}
+    </div>
   </div>;
   if (chapter.people?.length) return <ul className="platform-scene-team">{chapter.people.map(person => <li key={person.id}>
     {!!onLink && <PersonPhoto name={person.name} photo={person.photo} alt={person.photoAlt} />}

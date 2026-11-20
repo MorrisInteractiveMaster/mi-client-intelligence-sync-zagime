@@ -23,10 +23,12 @@ export function PlatformHome({ workspace, month }: { workspace: ProjectWorkspace
     ...(workspace.platformAdmin ? [{ title: "Open Control Panel", label: "Manage access, reporting preferences and integration health.", href: "/control", icon: ShieldCheck }] : []),
   ];
   return <main id="platform-content" className="platform-home">
-    <section className="platform-hero">
-      <span>Client Intelligence Platform</span>
-      <h2>Morris Interactive</h2>
-      <p>Manage delivery and report progress for {workspace.tenant.name}.</p>
+    <section className="platform-hero mi-home-stage">
+      <div className="mi-home-stage-content"><span>Client Intelligence Platform</span>
+        <h2>Morris Interactive</h2>
+        <p>Manage delivery and report progress for {workspace.tenant.name}.</p>
+        <PlatformLink className="mi-home-primary" href={periodHref("/workspace", month)}>Go to workspace <ArrowRight size={18} aria-hidden="true" /></PlatformLink>
+      </div>
     </section>
     <nav className="platform-destinations" aria-label="Your destinations">
       {cards.map(({ title, label, href, icon: Icon, query }) => <PlatformLink className="platform-card" key={title} href={periodHref(href, month, query)}>

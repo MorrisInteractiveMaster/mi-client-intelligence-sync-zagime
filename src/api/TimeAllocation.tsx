@@ -9,6 +9,8 @@ import { reportDay, reportHours, reportMonth, reportTimestamp } from "./dashboar
 import { sourceStatus, type AllocationAnnotations, type HistoryRow, type SourceFilters, type SourceSummary, type StaffSource } from "./types";
 import { BulkAllocationResults } from "./BulkAllocationResults";
 import { TimeHistorySummary } from "./TimeHistorySummary";
+import { CsvExport } from "./CsvExport";
+import { allAuthorizedRows, authorizedPages, sourceCsv } from "./report-csv";
 import { PlatformLink } from "./PlatformHome";
 import { MAX_BULK_ALLOCATION_ENTRIES, type BulkAllocationRequest, type BulkAllocationResponse } from "../projects/bulk-allocation";
 import "./time-allocation.css";
@@ -357,7 +359,17 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     </form>}
     {summary && !linkedId && <>
       <p role="status">Scope · {scope.length ? scope.join(" · ") : summary.period.kind === "month" ? "Entire month" : periodLabel} · {summary.matched} {summary.matched === 1 ? "match" : "matches"} out of {summary.monthTotal} {summary.period.kind === "month" ? "month" : "period"} entries</p>
-      <TimeHistorySummary summary={summary} grouping={applied.group ?? "month"} busy={busy} onConsultant={id => {
+      <CsvExport label="Export time entries CSV"
+        filename={["Morris", tenant, "Time", applied.workOrder, applied.consultant,
+          summary.period.kind === "month" ? appliedMonth : summary.period.start ?? "All_History",
+          summary.period.kind === "month" ? undefined : summary.period.end].filter(Boolean).join("_")}
+        scope={JSON.stringify([applied, appliedMonth, revision])} disabled={busy || !summary.matched} onDenied={onDenied}
+        load={async signal => {
+          const query = new URLSearchParams({ month: appliedMonth });
+          for (const [name, value] of Object.entries(applied)) if (value) query.set(name, value);
+          return sourceCsv(await allAuthorizedRows("sources", query, signal, authorizedPages(client, tenant)));
+        }} />
+      <TimeHistorySummary summary={summary} filenamePrefix={["Morris", tenant, summary.period.start ?? "All_History", summary.period.end].filter(Boolean).join("_")} grouping={applied.group ?? "month"} busy={busy} onConsultant={id => {
         setConsultant(id); void load(undefined, { ...applied, consultant: id });
       }} onWorkOrder={id => {
         setWorkOrder(id); void load(undefined, { ...applied, workOrder: id });
