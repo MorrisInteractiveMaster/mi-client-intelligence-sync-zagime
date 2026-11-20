@@ -33,7 +33,7 @@ export function ExecutiveOverview({ report, onPresentation, onLink, onChart, pla
         </div>
       </div>
       <div className="intel-hero-delivery" aria-label="Published portfolio summary">
-        <div className="intel-hero-label">Allocated hours · {period}<ContextHelp label="How are allocated hours calculated?">Only reporting allocations approved for the projects you can see contribute to this figure.</ContextHelp></div>
+        <div className="intel-hero-label">Reported effort · {period}<ContextHelp label="How are reported hours calculated?">Hours include classified work and remaining time recorded against published work orders you can see.</ContextHelp></div>
         <strong>{reportHours(report.totalSeconds)} h</strong>
         <DotField value={report.totalSeconds} unit={dotScale(ceiling, 80)} capacity={80} />
         <p>{change === undefined ? "Prior month unavailable" : change === 0 ? "No change from the prior month" : reportHours(Math.abs(change)) + " h " + (change > 0 ? "more" : "less") + " than the prior month"}</p>

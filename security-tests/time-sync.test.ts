@@ -255,6 +255,12 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
     const first = (await raw.get()).data()!;
     assert.equal(first.approval, "unknown");
     assert.ok(!JSON.stringify(first).includes("private notes"));
+    const preAssignment = await data(await req("projects?month=2026-11"));
+    const scopedBefore = preAssignment.projects.find((project: { id: string }) => project.id === projectId);
+    assert.equal(scopedBefore.workOrderEffort.recordedSeconds, 1800);
+    assert.equal(scopedBefore.workOrderEffort.remainingSeconds, 1800);
+    assert.equal(scopedBefore.seconds, 1800);
+    assert.equal((await head.get()).exists, false);
     await data(
       await req(`allocations/${id}`, {
         expectedRevision: (await root.get()).data()!.revision,
@@ -264,6 +270,12 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
       }),
     );
     assert.equal((await view.get()).data()!.lifetimeSeconds, 1800);
+    const postAssignment = await data(await req("projects?month=2026-11"));
+    const scopedAfter = postAssignment.projects.find((project: { id: string }) => project.id === projectId);
+    assert.equal(scopedAfter.workOrderEffort.recordedSeconds, 1800);
+    assert.equal(scopedAfter.workOrderEffort.remainingSeconds, 0);
+    assert.equal(scopedAfter.seconds, 1800);
+    assert.deepEqual((await raw.get()).data(), first);
     assert.equal(
       (await data(await req("time?month=2026-11"))).recordedSeconds,
       1800,

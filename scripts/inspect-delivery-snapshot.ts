@@ -5,7 +5,7 @@ import { checkHierarchy, MAX_DELIVERY_PROJECTS, parseDelivery } from "../src/pro
 interface Snapshot {
   projects: { id: string; schemaVersion: number; delivery?: unknown }[];
   rawTime: { record: { id: string; seconds: number; sourceWorkOrderId: string; revision: string }; deleted?: boolean }[];
-  timeMappings: { account: string; jobcodeId: string; projectId: string }[];
+  timeMappings: { account: string; jobcodeId: string; projectId: string; scopeProjectId?: string }[];
   allocationHeads: { sourceId: string; portions: { projectId: string; seconds: number }[]; appliedPortions?: { projectId: string; seconds: number }[]; needsReview?: boolean }[];
 }
 export function inspectDeliverySnapshot(value: unknown) {
@@ -39,6 +39,12 @@ export function inspectDeliverySnapshot(value: unknown) {
   if (!Number.isSafeInteger(recordedSeconds) || !Number.isSafeInteger(allocatedSeconds) || allocatedSeconds > recordedSeconds)
     throw Error("Invalid snapshot totals");
   const orderIds = [...orders].sort();
+  const reviewedJobs = ["132160684", "135372950", "132160686", "136571342"];
+  const attribution = reviewedJobs.map(jobcodeId => {
+    const matches = snapshot.timeMappings.filter(mapping => mapping.jobcodeId === jobcodeId);
+    const project = matches.length === 1 ? matches[0].scopeProjectId ?? matches[0].projectId : undefined;
+    return { jobcodeId, project, state: project && graph.has(project) ? "existing scope" : "owner review required" };
+  });
   const rawRows = [...raw].sort(([a], [b]) => a.localeCompare(b)).map(([id, envelope]) => [
     id, envelope.record.sourceWorkOrderId, envelope.record.revision, envelope.record.seconds, Boolean(envelope.deleted),
   ]);
@@ -46,7 +52,7 @@ export function inspectDeliverySnapshot(value: unknown) {
     readOnly: true, projects: graph.size, projectsWithDelivery: snapshot.projects.filter(p => p.delivery).length,
     workOrders: orders.size, sourceEntries: raw.size, recordedSeconds, allocatedSeconds,
     unallocatedSeconds: recordedSeconds - allocatedSeconds,
-    correctionsForReview: snapshot.allocationHeads.filter(head => head.needsReview).length,
+    correctionsForReview: snapshot.allocationHeads.filter(head => head.needsReview).length, attribution,
     sourceIdentityDigest: createHash("sha256").update(JSON.stringify([orderIds, rawRows])).digest("hex"),
   };
 }

@@ -14,7 +14,7 @@ import { MAX_BULK_ALLOCATION_ENTRIES, type BulkAllocationRequest, type BulkAlloc
 import "./time-allocation.css";
 
 const blank: AllocationAnnotations = { reportingDescription: "", internalNote: "" };
-const sourceStatusLabels = { allocated: "Allocated", partial: "Partially allocated", unallocated: "Unallocated", review: "Needs review", deleted: "Deleted" };
+const sourceStatusLabels = { allocated: "Classified", partial: "Partially classified", unallocated: "Not assigned to a delivery project", review: "Needs review", deleted: "Deleted" };
 type AppliedFilters = SourceFilters & { search?: string };
 type BulkBatch = { key: string; body: BulkAllocationRequest; labels: Record<string, string> };
 const timePresets = {
@@ -154,10 +154,13 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   }, [editor?.id]);
   const draftAnnotations = { reportingDescription: annotations.reportingDescription, internalNote: annotations.internalNote,
     ...(parent ? { parentId: parent } : {}), ...(classification ? { areaId: classification } : {}) };
+  const defaultParent = (source: StaffSource) => source.sourceProjectId &&
+    projects.some(project => project.id === source.sourceProjectId && project.delivery?.structure === 2 && project.delivery.kind === "engagement")
+    ? source.sourceProjectId : "";
   const priorAnnotations = editor?.annotations ?? blank;
   const dirty = Boolean(editor && (JSON.stringify(portions) !== JSON.stringify(editor.portions) ||
     draftAnnotations.reportingDescription !== priorAnnotations.reportingDescription ||
-    draftAnnotations.internalNote !== priorAnnotations.internalNote || parent !== (priorAnnotations.parentId ?? "") ||
+    draftAnnotations.internalNote !== priorAnnotations.internalNote || parent !== (priorAnnotations.parentId ?? defaultParent(editor)) ||
     classification !== (priorAnnotations.areaId ?? "")));
   useEffect(() => { onUnsavedChange?.(dirty); return () => { onUnsavedChange?.(false); }; }, [dirty, onUnsavedChange]);
   function edit(source: StaffSource) {
@@ -169,7 +172,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     setHistoryCursor(undefined);
     setProjectSearch("");
     setParentSearch("");
-    setParent(source.annotations?.parentId ?? "");
+    setParent(source.annotations?.parentId ?? defaultParent(source));
     setClassification(source.annotations?.areaId ?? "");
   }
   function close(force = false) {
@@ -298,7 +301,6 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     void submitBulk(current, current.body);
   }
   async function revisions(source: StaffSource, next?: string) {
-    if (!next) edit(source);
     try {
       const p = await client.call<ProjectPage>(tenant, "sources/" + source.id + "/history?" + new URLSearchParams({ month: source.date.slice(0, 7), limit: "10", ...(next ? { cursor: next } : {}) }));
       setHistory(old => next ? [...(old ?? []), ...(p.history ?? [])] : p.history ?? []);
@@ -365,7 +367,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
         const queue = applied.status === "queue" ? undefined : "queue";
         setStatus(queue); void load(undefined, { ...applied, status: queue });
-      }} aria-pressed={applied.status === "queue"}>Unallocated queue · {summary.counts.remaining}</button>
+      }} aria-pressed={applied.status === "queue"}>Time awaiting classification · {summary.counts.remaining}</button>
     </>}
     {error && <p className="secure-message secure-error" role="alert">{error}</p>}
     {notice && <p className="secure-message" role="status">{notice}</p>}
@@ -383,34 +385,32 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     {!rows && !error && <p role="status">Loading recorded time…</p>}
     {rows && rows.length === 0 && <p className="secure-empty">{linkedId ? "This time entry is unavailable in this workspace." : "No entries match these filters."}</p>}
     {!!rows?.length && <div className="intel-table-scroll time-entries" tabIndex={0} role="region" aria-label="Recorded time table">
-      <table><thead><tr><th scope="col">Select</th><th scope="col">Date</th><th scope="col">Consultant</th><th scope="col">Original provider notes</th>
+      <table><thead><tr><th scope="col">Select</th><th scope="col">Date</th>{rows.some(row => row.consultantName) && <th scope="col">Consultant</th>}{rows.some(row => row.description) && <th scope="col">Original provider notes</th>}
         <th scope="col">Work order</th><th scope="col">Recorded</th><th scope="col">Reporting</th><th scope="col">Assignment</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
       <tbody>{rows.map(source => <tr key={source.id}>
         <td><input aria-label={"Select entry on " + source.date} type="checkbox" disabled={source.conflict || source.needsReview || source.portions.length > 0 || source.seconds === 0}
           checked={selected.includes(source.id)} onChange={e => setSelected(old => e.target.checked ? [...old, source.id] : old.filter(id => id !== source.id))} /></td>
         <td>{reportDay(source.date)}</td>
-        <td><div className="time-profile">
+        {rows.some(row => row.consultantName) && <td><div className="time-profile">
           {source.wordpressProfile?.photo && <img src={source.wordpressProfile.photo} alt={source.wordpressProfile.alt || ""} width="32" height="32" loading="lazy" />}
-          <span>{source.consultantName || "Unavailable"}{source.wordpressProfile?.title && <small>{source.wordpressProfile.title}</small>}</span>
-        </div></td>
-        <td>{source.description || "Unavailable"}</td><td><b>{source.workOrderName || source.sourceWorkOrderId}</b></td>
+          <span>{source.consultantName}{source.wordpressProfile?.title && <small>{source.wordpressProfile.title}</small>}</span>
+        </div></td>}
+        {rows.some(row => row.description) && <td>{source.description}</td>}<td><b>{source.workOrderName || source.sourceWorkOrderId}</b></td>
         <td>{reportHours(source.seconds)} h</td><td>{source.annotations?.reportingDescription || "No reporting description"}</td>
         <td>{source.portions.length ? source.portions.map(p => <div key={p.projectId}>{projectName(p.projectId)}<small>{resolvedParent(p.projectId) ? projectName(resolvedParent(p.projectId)) + " · " : ""}{areaLabel(resolvedArea(p.projectId))}</small></div>) : "Unassigned"}
           {(source.annotations?.parentId || source.annotations?.areaId) && <small>Reporting: {source.annotations.parentId ? projectName(source.annotations.parentId) + " · " : ""}{areaLabel(source.annotations.areaId ?? "")}</small>}</td>
-        <td>{sourceStatusLabels[sourceStatus(source)]}<small>{reportHours(source.unallocatedSeconds)} h unallocated</small>
+        <td>{sourceStatusLabels[sourceStatus(source)]}<small>{reportHours(source.unallocatedSeconds)} h at work order</small>
           <small>{approvalLabel(source)}</small></td>
-        <td><button type="button" className="exec-text-button" disabled={busy || source.conflict} onClick={() => edit(source)}>Allocate recorded hours</button>
-          <button type="button" className="exec-text-button" disabled={busy} onClick={() => void revisions(source)}>Allocation history</button>
-          {!linkedId && sourceLink && <PlatformLink href={sourceLink.href(source.id)}>Open time entry</PlatformLink>}</td>
+        <td><button type="button" className="exec-text-button" disabled={busy} onClick={() => edit(source)}>Manage Time</button></td>
       </tr>)}</tbody></table></div>}
     {cursor && <button type="button" className="secure-secondary" disabled={busy} onClick={() => void load(cursor)}>More recorded time</button>}
     {editor && <dialog className="time-alloc-drawer" ref={drawer} aria-label="Time allocation" onCancel={e => { e.preventDefault(); if (!busy) close(); }}>
       <div className="delivery-section-heading"><h3 ref={heading} tabIndex={-1}>Allocate {reportHours(editor.seconds)} recorded hours</h3><button type="button" className="secure-secondary" disabled={busy} onClick={() => close()}>Close allocation</button></div>
       <p>{reportDay(editor.date)} · {editor.workOrderName || editor.sourceWorkOrderId} · {editor.seconds.toLocaleString("en-CA")} original seconds</p>
       <details open><summary>Original source details</summary><dl>
-        <div><dt>Consultant name</dt><dd>{editor.consultantName || "Unavailable"}</dd></div>
-        <div><dt>Consultant identifier</dt><dd>{editor.sourcePersonId || "Unavailable"}</dd></div>
-        <div><dt>Original provider notes</dt><dd>{editor.description || "Unavailable"}</dd></div>
+        {editor.consultantName && <div><dt>Consultant name</dt><dd>{editor.consultantName}</dd></div>}
+        {editor.sourcePersonId && <div><dt>Consultant identifier</dt><dd>{editor.sourcePersonId}</dd></div>}
+        {editor.description && <div><dt>Original provider notes</dt><dd>{editor.description}</dd></div>}
         <div><dt>Accounting approval</dt><dd>{approvalLabel(editor)}</dd></div>
         <div><dt>Source revision</dt><dd><code>{editor.sourceRevision}</code></dd></div>
         {editor.modifiedAt && <div><dt>Source last modified</dt><dd>{reportTimestamp(editor.modifiedAt)}</dd></div>}
@@ -435,10 +435,12 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
         <label>Allocated seconds<input type="number" min="1" step="1" value={p.seconds} onChange={e => setPortions(old => old.map((part, i) => i === index ? { ...part, seconds: Number(e.target.value) } : part))} /></label>
         <span>{reportHours(p.seconds)} h</span><button type="button" className="secure-secondary" onClick={() => setPortions(old => old.filter((_, i) => i !== index))}>Remove split</button></div>)}
       <label>Internal note<textarea value={annotations.internalNote} maxLength={4000} onChange={e => setAnnotations({ ...annotations, internalNote: e.target.value })} /></label>
-      <p>{remaining >= 0 ? reportHours(remaining) + " h will remain unallocated." : "The split exceeds the original recorded time."} One hour equals 3,600 seconds.</p>
+      <p>{remaining >= 0 ? reportHours(remaining) + " h will remain at the work order." : "The split exceeds the original recorded time."} One hour equals 3,600 seconds.</p>
       <div className="secure-actions"><button type="button" className="secure-secondary" disabled={busy || editor.conflict || portions.length >= 10} onClick={() => setPortions(old => [...old, { projectId: "", seconds: 0, description: "" }])}>Add split</button>
         {!portions.length && editor.seconds > 0 && <button type="button" className="secure-secondary" disabled={busy || editor.conflict} onClick={() => setPortions([{ projectId: "", seconds: editor.seconds, description: "" }])}>Assign full entry</button>}
         <button type="button" disabled={busy || editor.conflict || remaining < 0 || new Set(portions.map(p => p.projectId)).size !== portions.length || portions.some(p => !p.projectId || !Number.isSafeInteger(p.seconds) || p.seconds <= 0)} onClick={() => void save(editor, portions, draftAnnotations)}>Save allocation</button></div>
+      {!history && <button type="button" className="secure-secondary" disabled={busy} onClick={() => void revisions(editor)}>Activity History</button>}
+      {!linkedId && sourceLink && <PlatformLink href={sourceLink.href(editor.id)}>Link to this entry</PlatformLink>}
       {history?.length === 0 && <p>No allocation revisions yet.</p>}
       {history?.map(item => <details key={item.revision}><summary>Revision {item.revision} · {reportTimestamp(item.at)} · {reportHours(item.portions.reduce((sum,p) => sum + p.seconds, 0))} h</summary>
         <ul>{item.portions.map(part => <li key={part.projectId}>{projectName(part.projectId)} · {reportHours(part.seconds)} h</li>)}</ul>

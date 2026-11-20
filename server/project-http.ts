@@ -68,7 +68,7 @@ export async function projectRequest(
     }
     const mode = url.searchParams.get("mode");
     const scope = url.searchParams.get("scope") ?? undefined;
-    if ((mode !== "published" && mode !== "draft") || (mode === "published") !== Boolean(scope) ||
+    if ((mode !== "published" && mode !== "draft") || (mode === "draft" && Boolean(scope)) ||
       [...url.searchParams.keys()].some(key => !["month", "mode", "scope"].includes(key) || url.searchParams.getAll(key).length !== 1))
       throw Error("Invalid preview query");
     const report = await backend.report(token, preview[1], url.searchParams.get("month") ?? "", { mode, scope });

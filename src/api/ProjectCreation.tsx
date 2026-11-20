@@ -30,7 +30,6 @@ export function ProjectCreation({ projects, portfolio, busy, onDirty, onCancel, 
   const [kind, setKind] = useState<Delivery["kind"]>("engagement");
   const [name, setName] = useState("");
   const [parent, setParent] = useState("");
-  const [parentSearch, setParentSearch] = useState("");
   const [department, setDepartment] = useState("");
   const [area, setArea] = useState("");
   const [cap, setCap] = useState("none");
@@ -52,7 +51,7 @@ export function ProjectCreation({ projects, portfolio, busy, onDirty, onCancel, 
   const parentLabel = parents.find(item => item.id === parent)?.name;
   const departmentEntry = departments.find(item => item.id === department);
   const assignedArea = portfolio?.areas.find(item => item.id === area);
-  const parentOptions = parents.filter(item => item.id === parent || item.name.toLowerCase().includes(parentSearch.trim().toLowerCase()));
+  const parentOptions = parents;
   const canLocate = kind === "engagement" || Boolean(parentLabel &&
     (kind !== "service-area" || assignedArea) && (!department || departmentEntry));
   const canSave = Boolean(name.trim() && canLocate);
@@ -136,7 +135,6 @@ export function ProjectCreation({ projects, portfolio, busy, onDirty, onCancel, 
     <fieldset className="creation-fields" hidden={step !== 1} disabled={busy}>
       <legend className="creation-legend">Location in the hierarchy</legend>
       {kind === "engagement" ? <p>This engagement sits at the top of the client’s project hierarchy.</p> : parents.length ? <>
-        <label>Find a parent engagement<input type="search" value={parentSearch} onChange={e => setParentSearch(e.target.value)} /></label>
         <label>Parent engagement<select aria-label="Parent engagement" value={parent} onChange={e => { setParent(e.target.value); setDepartment(""); }}>
           <option value="">Choose a parent</option>{parentOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>

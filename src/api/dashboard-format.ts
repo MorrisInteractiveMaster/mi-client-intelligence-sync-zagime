@@ -32,6 +32,8 @@ export const today = () => deliveryDate();
 export const projectStatus = {
   planned: "Planned",
   active: "In progress",
-  paused: "Paused",
+  paused: "On hold",
   completed: "Completed",
+  closed: "Closed",
+  cancelled: "Cancelled",
 };
