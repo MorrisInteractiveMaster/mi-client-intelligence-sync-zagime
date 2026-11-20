@@ -35,6 +35,8 @@ export interface StaffSource {
   description: string;
   sourceWorkOrderId: string;
   workOrderName?: string;
+  sourceProjectId?: string;
+  classifiedSeconds?: number;
   sourcePersonId?: string;
   consultantName?: string;
   wordpressProfile?: { id: number; name: string; title?: string; photo?: string; alt?: string };
@@ -66,6 +68,9 @@ export interface SourceHours {
   recordedSeconds: number;
   allocatedSeconds: number;
   unallocatedSeconds: number;
+  attributedSeconds?: number;
+  remainingAtParentSeconds?: number;
+  classifiedSeconds?: number;
 }
 export interface SourceHoursGroup extends SourceHours {
   id: string | null;

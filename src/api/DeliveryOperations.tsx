@@ -61,6 +61,8 @@ export function readDeliveryForm(form: FormData, original?: Project, placement?:
   const hasTraining = type === "training" && (days > 0 || trainingDates.length > 0 || get("trainingPreparation") || get("trainingFollowUp") || get("trainingCompletion") || form.has("facilitatorIds"));
   return {
     kind, type,
+    ...(form.has("blockerEdited") ? { blocker: { active: form.has("blocked"), message: get("blockerMessage"), internal: get("blockerInternal") } } :
+      original?.delivery?.blocker ? { blocker: original.delivery.blocker } : {}),
     ...(structured && { structure: 2 as const }),
     parentId: optional("parentId"), areaId: optional("deliveryArea"),
     groupId: original?.delivery?.groupId ?? placement?.engagementId,
@@ -87,14 +89,13 @@ export function DeliveryFields({ project, projects, portfolio, mappings }: {
   const oldPlacement = portfolio?.placements.find(item => item.id === project?.id);
   const d = project?.delivery ?? { ...deliveryDefaults, areaId: oldPlacement?.areaId, groupId: oldPlacement?.engagementId,
     start: oldPlacement?.start, deadline: oldPlacement?.target, managerIds: oldPlacement?.leadId ? [oldPlacement.leadId] : [], teamIds: oldPlacement?.teamIds ?? [] };
-  const [projectSearch, setProjectSearch] = useState("");
   const [type, setType] = useState(d.type);
   const [kind, setKind] = useState(d.kind);
   const [structured, setStructured] = useState(d.structure === 2);
   const [parent, setParent] = useState(d.parentId ?? "");
   const validParent = (p: StaffProjectSummary) => !structured || (p.delivery?.kind === "engagement" && !p.delivery.parentId ||
     kind === "project" && p.delivery?.kind === "service-area" && p.delivery.structure === 2);
-  const list = projects.filter(p => p.id !== project?.id && (p.id === parent || validParent(p) && p.name.toLowerCase().includes(projectSearch.trim().toLowerCase())));
+  const list = projects.filter(p => p.id !== project?.id && (p.id === parent || validParent(p)));
   const assignedArea = projects.find(p => p.id === parent && p.delivery?.kind === "service-area")?.delivery?.areaId;
   const hourText = (value?: number) => value === undefined ? "" : String(value / 3600);
   return <div className="delivery-fields">
@@ -112,12 +113,18 @@ export function DeliveryFields({ project, projects, portfolio, mappings }: {
         setKind(e.target.value as Delivery["kind"]);
         if (structured) setParent("");
       }}>{Object.entries(deliveryKindNames).filter(([key]) => structured || key !== "service-area").map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
-      {structured && kind !== "engagement" && <><label>Find parent projects<input type="search" value={projectSearch} onChange={e => setProjectSearch(e.target.value)} /></label>
+      {structured && kind !== "engagement" && <>
       <label>Parent project<select name="parentId" required value={parent} onChange={e => setParent(e.target.value)}><option value="">Choose a location</option>
         {parent && !list.some(p => p.id === parent) && <option value={parent}>Current parent</option>}
         {list.map(p => <option key={p.id} value={p.id}>{p.name}{p.delivery?.kind === "service-area" ? " · Service area" : ""}</option>)}</select></label></>}
       {!structured && d.parentId && <p className="secure-field-wide">Current parent · {projects.find(p => p.id === d.parentId)?.name ?? "Existing relationship"}. Use the three-level structure to move this project.</p>}
     </fieldset>
+    {kind === "project" && <details className="delivery-details"><summary>Blocker and resolution</summary>
+      <input type="hidden" name="blockerEdited" value="1" />
+      <label className="secure-check"><input type="checkbox" name="blocked" defaultChecked={d.blocker?.active} /> Work is blocked</label>
+      <label>Client-facing blocker or resolution<textarea name="blockerMessage" maxLength={500} defaultValue={d.blocker?.message} /></label>
+      <label>Private blocker details<textarea name="blockerInternal" maxLength={2000} defaultValue={d.blocker?.internal} /></label>
+    </details>}
     <details className="delivery-details"><summary>Service area and work orders</summary><div className="secure-editor-grid">
       {(!structured || kind === "service-area") && <label>Service area<select name="deliveryArea" required={structured} defaultValue={d.areaId ?? ""}><option value="">Unclassified</option>
         {!portfolio && d.areaId && <option value={d.areaId}>Current department</option>}{portfolio?.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
@@ -230,9 +237,9 @@ export function DeliveryPreview({ client, tenant, month, standalone = false }: {
     }).catch(() => { if (!controller.signal.aborted) setError("Client access profiles are temporarily unavailable."); });
     return () => controller.abort();
   }, [client, tenant]);
-  const entitled = mode === "draft" || Boolean(scope);
+  const entitled = standalone || mode === "draft" || Boolean(scope);
   return <section aria-label="Preview as client">
-    <div className="delivery-section-heading"><div><h3>Preview as client</h3><p>Published preview follows the selected client access profile. Draft preview includes saved changes and private projects.</p></div>
+    <div className="delivery-section-heading"><div><h3>{standalone ? "Zagimē dashboard" : "Preview as client"}</h3><p>{standalone ? "The published view shows projects shared with all approved client profiles." : "Published preview follows the selected client access profile. Draft preview includes saved changes and private projects."}</p></div>
       {!standalone && <button type="button" className="secure-secondary" onClick={() => portalNavigate({
         staff: previewProject ? "projects" : "overview", editor: previewProject, previewProject: null, previewMode: null,
         view: null, q: null, status: null, present: null, chart: null,
@@ -242,11 +249,11 @@ export function DeliveryPreview({ client, tenant, month, standalone = false }: {
         previewMode: e.target.value === "draft" ? "draft" : null,
         view: previewProject ? "project:" + previewProject : location.get("view"), q: null, present: null, chart: null,
       }, true); }}><option value="published">Live published view</option><option value="draft">Staff-only draft preview</option></select></label>
-      {mode === "published" && <label>Client access profile<select value={scope} onChange={e => { portalNavigate({ previewScope: e.target.value || null }); setError(""); }}><option value="">Select an approved profile</option>{profiles?.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>}
+      {mode === "published" && !standalone && <label>Client access profile<select value={scope} onChange={e => { portalNavigate({ previewScope: e.target.value || null }); setError(""); }}><option value="">Select an approved profile</option>{profiles?.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>}
     </div>
     {error && <p role="alert">{error}</p>}
     {entitled && <div className="delivery-preview-frame"><p className="delivery-watermark">{mode === "draft" ? "DRAFT PREVIEW · MORRIS STAFF ONLY" : "LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW"}</p>
-      <ProjectClientReport client={client} tenant={tenant} month={month} preview={{ mode, ...(mode === "published" ? { scope } : {}) }}
+      <ProjectClientReport client={client} tenant={tenant} month={month} preview={{ mode, ...(mode === "published" && (!standalone ? scope : requestedScope && scope === requestedScope) ? { scope } : {}) }}
         onDenied={() => setError("This client access profile is no longer available.")} /></div>}
   </section>;
 }
@@ -307,7 +314,7 @@ export function DeliveryHealth({ projects, portfolio, healthOnly = false, onOpen
       </div>)}</dl></details>}
     <div className="delivery-filters"><label>Search hierarchy<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
       <label>Department<select value={area} onChange={e => setArea(e.target.value)}><option value="">All departments</option>{portfolio?.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-      <label>Reporting group<select value={group} onChange={e => setGroup(e.target.value)}><option value="">All groups</option>{portfolio?.engagements.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+      {healthOnly && <label>Legacy reporting group<select value={group} onChange={e => setGroup(e.target.value)}><option value="">All groups</option>{portfolio?.engagements.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
       <label>Layout<select value={layout} onChange={e => setLayout(e.target.value)}><option value="tree">Hierarchy</option><option value="table">Alphabetical table</option></select></label>
     </div>
     {!rows.length && <p className="secure-empty">No projects match.</p>}
@@ -330,7 +337,8 @@ export function DeliveryHealth({ projects, portfolio, healthOnly = false, onOpen
         {!!branch.length && <small>{departments} {departments === 1 ? "department" : "departments"} · {active} active · {completed} completed</small>}</th>
         <td>{portfolio?.areas.find(a => a.id === area)?.name ?? "Unclassified"}<small>{p.delivery?.kind ? deliveryKindNames[p.delivery.kind] : "Legacy project"} · {p.delivery?.type ?? "Engagement type not configured"}</small></td>
         <td>{managers.map(id => people.get(id)).filter(Boolean).join(", ") || "Unassigned"}</td>
-        <td>{reportHours(sum.monthly)} h monthly<small>{reportHours(sum.lifetime)} h lifetime</small></td>
+        <td>{reportHours(sum.monthly)} h monthly<small>{reportHours(sum.lifetime)} h lifetime</small>
+          {p.workOrderEffort && <small>{reportHours(p.workOrderEffort.recordedSeconds)} h work-order recorded · {reportHours(p.workOrderEffort.remainingSeconds)} h remaining at work order</small>}</td>
         <td>{result.monthlyRemaining === undefined ? "No monthly cap" : reportHours(result.monthlyRemaining) + " h monthly"}
           <small>{result.lifetimeRemaining === undefined ? "No lifetime cap" : reportHours(result.lifetimeRemaining) + " h lifetime"}</small>
           {p.delivery?.monthlyCap !== undefined && <small>{reportHours(cap.monthly)} of {reportHours(p.delivery.monthlyCap)} h used monthly</small>}
@@ -355,7 +363,7 @@ export function DeliveryMilestones({ client, tenant, projects, onSaved, onOpen }
     .filter(({ p, m, key }) => selected ? selected === key || selected === p.id :
       filter === "all" || (!m.completed && m.status !== "waived" && !completed.has(key)))
     .sort((a, b) => (a.m.date || "9999").localeCompare(b.m.date || "9999"));
-  async function complete(projectId: string, milestoneId: string) {
+  async function complete(projectId: string, milestoneId: string, reopen = false) {
     const key = projectId + ":" + milestoneId;
     setSaving(key); setError(""); setMessage("");
     try {
@@ -364,12 +372,14 @@ export function DeliveryMilestones({ client, tenant, projects, onSaved, onOpen }
       const { name, status, progress, description, internalNotes, plan, workOrderReference, updates, delivery } = project;
       await client.call(tenant, "projects/" + projectId, { method: "PATCH", body: {
         expectedRevision: revision, patch: { name, status, progress, description, internalNotes, plan, workOrderReference, updates, delivery,
-          milestones: project.milestones.map(m => m.id === milestoneId ? { ...m, completed: true, status: "completed", completedAt: today() } : m) },
+          milestones: project.milestones.map(m => m.id === milestoneId ?
+            (reopen ? { ...m, completed: false, status: "in-progress", completedAt: undefined } :
+              { ...m, completed: true, status: "completed", completedAt: today() }) : m) },
       } });
-      setCompleted(previous => new Set([...previous, key]));
+      setCompleted(previous => reopen ? new Set([...previous].filter(value => value !== key)) : new Set([...previous, key]));
       setMessage(project.published
         ? "Milestone completion saved to the draft. Publish changes from the project editor to update the client report."
-        : "Milestone completed. Delivery progress has been recalculated.");
+        : reopen ? "Milestone reopened. Delivery progress has been recalculated." : "Milestone completed. Delivery progress has been recalculated.");
       onSaved();
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save this milestone."); }
     finally { setSaving(undefined); }
@@ -385,6 +395,7 @@ export function DeliveryMilestones({ client, tenant, projects, onSaved, onOpen }
         <small>{p.name} · {m.date ? reportDay(m.date) : "No due date"} · {m.completed || completed.has(key) ? "Completed" : m.status?.replaceAll("-", " ") ?? "Not started"}</small></div>
       <button type="button" className="exec-text-button" onClick={() => onOpen(p.id)}>Open project</button>
       {!m.completed && m.status !== "waived" && !completed.has(key) && <button type="button" className="secure-secondary" disabled={Boolean(saving)} onClick={() => void complete(p.id, m.id)}>Mark complete</button>}
+      {(m.completed || completed.has(key)) && <button type="button" className="secure-secondary" disabled={Boolean(saving)} onClick={() => void complete(p.id, m.id, true)}>Reopen milestone</button>}
     </li>)}</ul>
   </section>;
 }

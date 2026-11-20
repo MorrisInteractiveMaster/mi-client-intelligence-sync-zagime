@@ -792,7 +792,6 @@ function ClientFixture() {
           exact: true,
         })
         .click();
-      await first.page.getByLabel("Progress (%)", { exact: true }).fill("45");
       await first.page
         .getByLabel("Internal notes", { exact: true })
         .fill("Browser synthetic private note");
@@ -821,7 +820,9 @@ function ClientFixture() {
           exact: true,
         }),
       });
-      await card.getByText(/45% progress/).waitFor();
+      await card.waitFor();
+      await first.page.getByRole("button", { name: "Table", exact: true }).click();
+      await first.page.getByRole("region", { name: "Projects table" }).waitFor();
       first.page.once("dialog", dialog => void dialog.accept());
       await first.page
         .getByRole("button", {
@@ -835,12 +836,13 @@ function ClientFixture() {
           exact: true,
         })
         .waitFor();
+      await first.page.getByRole("button", { name: "Project list", exact: true }).click();
       await first.page.getByRole("button", { name: "Time Allocation", exact: true }).click();
       await first.page
         .getByRole("button", { name: "Load authorized time", exact: true })
         .click();
       await first.page
-        .getByRole("button", { name: "Allocate recorded hours", exact: true })
+        .getByRole("button", { name: "Manage Time", exact: true })
         .click();
       await first.page.getByLabel("Reporting description", { exact: true }).fill("Reviewed delivery preparation");
       await first.page.getByLabel("Internal note", { exact: true }).fill("Private allocation review");
@@ -922,8 +924,9 @@ function ClientFixture() {
         .getByRole("button", { name: "Load authorized time", exact: true })
         .click();
       await first.page
-        .getByRole("button", { name: "Allocation history", exact: true })
+        .getByRole("button", { name: "Manage Time", exact: true })
         .click();
+      await first.page.getByRole("button", { name: "Activity History", exact: true }).click();
       await first.page.getByText(/Revision 2 ·/).waitFor();
       await first.page.getByRole("button", { name: "Close allocation", exact: true }).click();
       await first.page.getByRole("navigation").getByRole("button", { name: "Audit & Settings", exact: true }).click();
@@ -977,7 +980,6 @@ function ClientFixture() {
             exact: true,
           }),
         });
-        await saved.getByText(/45% progress/).waitFor();
         await saved.locator("dd").first().filter({ hasText: /^0\.5 h$/ }).waitFor();
         assert.ok(
           await second.page.evaluate(
@@ -1124,16 +1126,16 @@ function ClientFixture() {
             await page.getByRole("alert").filter({ hasText: "The published report could not be loaded" }).waitFor();
             assert.equal(await portfolio.count(), 0);
             await filter.fill("2026-11");
-            await portfolio.getByText("Allocated hours · November 2026").waitFor();
+            await portfolio.getByText("Reported effort · November 2026").waitFor();
             await portfolio.getByText("0.5 h", { exact: true }).waitFor();
             assert.equal(await page.getByRole("alert").count(), 0);
             await page.evaluate(() => (window as any).__reportRace.release());
             await page.waitForFunction(() => (window as any).__reportRace.delivered);
-            assert.equal(await portfolio.getByText("Allocated hours · November 2026").count(), 1);
+            assert.equal(await portfolio.getByText("Reported effort · November 2026").count(), 1);
             assert.equal(await portfolio.getByText("0.5 h", { exact: true }).count(), 1);
 
             await filter.fill("2026-10");
-            await portfolio.getByText("Allocated hours · October 2026").waitFor();
+            await portfolio.getByText("Reported effort · October 2026").waitFor();
             await portfolio.getByText("0 h", { exact: true }).waitFor();
             const octoberProject = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Browser saved project", exact: true }) });
             assert.equal(await octoberProject.locator("dd").first().textContent(), "0 h");
@@ -1198,7 +1200,7 @@ function ClientFixture() {
           await contextual.waitFor({ state: "hidden" });
           await nav.getByRole("button", { name: "Leadership summary", exact: true }).click();
         }
-        const help = page.getByRole("button", { name: "How are allocated hours calculated?" });
+        const help = page.getByRole("button", { name: "How are reported hours calculated?" });
         await help.focus();
         const tooltip = page.getByRole("tooltip");
         await tooltip.waitFor();

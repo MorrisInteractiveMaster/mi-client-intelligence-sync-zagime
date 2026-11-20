@@ -37,6 +37,8 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
         {placement?.archived ? "Archived" : projectStatus[project.status]}
       </p>
       <h3>{project.name}</h3>
+      {delivery?.blocker && <p className={delivery.blocker.active ? "secure-message secure-error" : "secure-message"}>
+        <b>{delivery.blocker.active ? "Blocked" : "Resolved"}</b> · {delivery.blocker.message}</p>}
       {placement?.start && <p className="secure-muted">Start {reportDay(placement.start)}</p>}
       {placement?.target && <p className="secure-muted">Target {reportDay(placement.target)}</p>}
       {delivery?.start && <p className="secure-muted">Start {reportDay(delivery.start)}</p>}
@@ -55,12 +57,16 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
         />}
       </div>
       <dl className="secure-project-hours">
+        {project.workOrderEffort && <>
+          <div><dt>Work-order recorded</dt><dd>{reportHours(project.workOrderEffort.recordedSeconds)} h</dd></div>
+          <div><dt>Remaining at work order</dt><dd>{reportHours(project.workOrderEffort.remainingSeconds)} h</dd></div>
+        </>}
         <div>
-          <dt>{period} allocated</dt>
+          <dt>{period} {project.workOrderEffort ? "reported effort" : "allocated"}</dt>
           <dd>{reportHours(project.seconds)} h</dd>
         </div>
         <div>
-          <dt>Lifetime allocated</dt>
+          <dt>{project.workOrderEffort ? "Total reported effort" : "Lifetime allocated"}</dt>
           <dd>{reportHours(project.lifetimeSeconds)} h</dd>
         </div>
         {project.plan.targetSeconds > 0 && (

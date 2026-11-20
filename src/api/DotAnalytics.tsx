@@ -9,12 +9,12 @@ export const chartKinds: ChartKind[] = ["distribution", "trend", "plan"];
 type Row = { id: string; label: string; seconds: number; projectIds: string[]; destination?: string; month?: string };
 export const chartTitles = {
   distribution: "Delivery by service area",
-  trend: "Six-month delivery",
+  trend: "Monthly delivery history",
   plan: "Allocated against monthly plans",
 };
 const descriptions = {
   distribution: "Approved reporting allocations for the selected month. Choose an area to trace the hours to published projects.",
-  trend: "Monthly allocations for projects you can currently access. A month with zero approved allocations may still have work in progress.",
+  trend: "Monthly reported effort for projects you can currently access, including remaining work-order time.",
   plan: "Compares allocated hours with staff-entered monthly targets on the same set of published projects.",
 };
 
@@ -34,7 +34,7 @@ export function chartRows(report: ProjectReport, kind: ChartKind): Row[] {
     ];
   }
   const placements = new Map(report.portfolio?.placements.map(item => [item.id, item.areaId]));
-  return areaHours(projects, report.portfolio).sort((a, b) => b.seconds - a.seconds).map(area => ({
+  return areaHours(projects.map(project => ({ ...project, seconds: project.workOrderEffort?.assignedSeconds ?? project.seconds })), report.portfolio).sort((a, b) => b.seconds - a.seconds).map(area => ({
     id: area.id || "unassigned", label: area.name, seconds: area.seconds,
     projectIds: projects.filter(p => (placements.get(p.id) || "") === area.id && p.seconds > 0).map(p => p.id),
     ...(area.id && { destination: "area:" + area.id }),

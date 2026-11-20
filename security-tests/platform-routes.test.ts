@@ -30,6 +30,17 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     description: "The approved November delivery summary.", internalNotes: "Private staff status discussion",
   };
   const batch = runtime.db.batch();
+  const parentId = "synthetic-planning";
+  const parentRef = root.collection("projects").doc(parentId);
+  const recordedParent: Project = { ...(await parentRef.get()).data() as Project, name: "Regular Consulting fixture", published: true };
+  batch.set(parentRef, recordedParent);
+  batch.set(root.collection("projectViews").doc(parentId), projectView(recordedParent, 0));
+  for (const period of [month, "lifetime"])
+    batch.set(root.collection("timeProjectTotals").doc(parentId).collection("periods").doc(period), { recorded: 74700, allocated: 0 });
+  batch.set(root.collection("rawTime").doc("recorded-order-fixture"), {
+    schemaVersion: 2, source: "quickbooks-time", scopeProjectId: parentId, deleted: false,
+    record: { id: "recorded-order-fixture", tenantId: tenant, sourceWorkOrderId: "132160684", date: month + "-03", revision: "fixture-revision", seconds: 74700 },
+  });
   batch.set(projectRef, backendProject);
   batch.set(root.collection("projectViews").doc(projectId), projectView(backendProject, 10800));
   batch.set(root.collection("projectPeriods").doc(key(month, projectId)), { projectId, month, seconds: 7200 });
@@ -136,9 +147,20 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await admin.page.setViewportSize({ width: 1440, height: 1000 });
     await admin.page.getByRole("link", { name: "Back to Morris Workspace" }).click();
     await admin.page.waitForURL(route("/workspace"));
-    await admin.page.getByRole("link", { name: "View as Zagimē", exact: true }).waitFor();
+    await admin.page.getByRole("link", { name: "View Zagimē Dashboard", exact: true }).first().waitFor();
     await admin.page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
+    await admin.page.getByText("20.75 h", { exact: true }).first().waitFor();
+    for (const [label, expected] of [["Remaining at parent level", "20.75 h"], ["Hours without a verified work-order association", "2 h"]]) {
+      const metric = admin.page.locator("dl div").filter({ has: admin.page.getByText(label, { exact: true }) });
+      await metric.getByText(expected, { exact: true }).waitFor();
+    }
     await admin.page.screenshot({ path: join(evidence, "morris-workspace-native-overview.png"), fullPage: true, animations: "disabled" });
+    await admin.page.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Projects", exact: true }).click();
+    await admin.page.getByRole("button", { name: "By Parent Engagement" }).click();
+    await admin.page.getByRole("button", { name: "Open Regular Consulting fixture" }).click();
+    const engagement = admin.page.getByRole("region", { name: "Engagement overview" });
+    await engagement.getByText("20.75 h", { exact: true }).first().waitFor();
+    await engagement.screenshot({ path: join(evidence, "parent-recorded-effort.png"), animations: "disabled" });
     await admin.context.close();
 
     const staff = await session(mainBrowser, "staff");
@@ -184,7 +206,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await dialog.getByRole("heading", { name: "Hours by Delivery Project", exact: true }).waitFor();
     await dialog.getByRole("button", { name: /Board reporting pilot.*2 h/ }).waitFor();
     await dialog.getByText("Show data table", { exact: true }).click();
-    await dialog.getByRole("table", { name: "Approved allocated hours by project" }).getByRole("cell", { name: "2 h", exact: true }).waitFor();
+    await dialog.getByRole("table", { name: "Approved reported hours by project" }).getByRole("cell", { name: "2 h", exact: true }).waitFor();
     assert.equal(await dialog.getByText(/Private staff status|Synthetic planning project/).count(), 0);
     await client.page.screenshot({ path: join(evidence, "client-presentation-linked-chart.png"), animations: "disabled" });
     await client.page.reload();
@@ -212,8 +234,8 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
           await mobile.page.goto(route(presentationPath, "&chapter=3"));
           const scene = mobile.page.getByRole("dialog");
           await scene.getByRole("heading", { name: "Historical Hours and Effort" }).waitFor();
-          await scene.getByRole("img", { name: "Approved allocated hours by month" }).waitFor();
-          await scene.getByRole("button", { name: /November 2026.*2 h/ }).waitFor();
+          await scene.getByRole("img", { name: "Approved reported hours by month" }).waitFor();
+          await scene.getByRole("button", { name: /November 2026.*22.75 h/ }).waitFor();
           assert.equal(await mobile.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
           await mobile.page.screenshot({ path: join(evidence, "client-presentation-" + engine.name() + "-390.png"), animations: "disabled" });
           await scene.getByRole("button", { name: "Close presentation" }).click();

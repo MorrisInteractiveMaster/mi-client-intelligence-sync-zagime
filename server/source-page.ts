@@ -48,12 +48,16 @@ async function fetchByPath(tx: Transaction, refs: DocumentReference[]): Promise<
   return values;
 }
 
-type SourceNames = { title: string; areaId?: string };
+type SourceNames = { title: string; areaId?: string; kind?: string };
 const emptyHours = (): SourceHours => ({ recordedSeconds: 0, allocatedSeconds: 0, unallocatedSeconds: 0 });
 function addHours(total: SourceHours, row: StaffSource) {
   total.recordedSeconds += row.seconds;
   total.allocatedSeconds += row.seconds - row.unallocatedSeconds;
   total.unallocatedSeconds += row.unallocatedSeconds;
+  const isMapped = row.sourceProjectId && row.provider === "quickbooks-time";
+  total.attributedSeconds = (total.attributedSeconds ?? 0) + (isMapped ? row.seconds : 0);
+  total.remainingAtParentSeconds = (total.remainingAtParentSeconds ?? 0) + (isMapped ? row.seconds - (row.classifiedSeconds ?? 0) : 0);
+  total.classifiedSeconds = (total.classifiedSeconds ?? 0) + (row.classifiedSeconds ?? 0);
   if (!Number.isSafeInteger(total.recordedSeconds)) throw Error("Invalid scoped source hours");
 }
 function addGroup(groups: Map<string | null, SourceHoursGroup>, id: string | null, label: string, row: StaffSource) {
@@ -81,7 +85,7 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
       filters.consultant && (filters.consultant === "unavailable" ? Boolean(person) : filters.consultant !== person) ||
       filters.from && row.date < filters.from || filters.through && row.date > filters.through ||
       filters.area && row.annotations?.areaId !== filters.area && !row.portions.some(p => projects.get(p.projectId)?.areaId === filters.area) ||
-      filters.project && !row.portions.some(p => p.projectId === filters.project)) continue;
+      filters.project && row.sourceProjectId !== filters.project && !row.portions.some(p => p.projectId === filters.project)) continue;
     const searchable = [workOrder, row.workOrderName, person, row.consultantName, row.description, row.annotations?.reportingDescription,
       row.annotations?.parentId && projects.get(row.annotations.parentId)?.title, ...row.portions.map(p => projects.get(p.projectId)?.title)];
     if (filters.search && !searchable.some(value => value && normalized(value).includes(filters.search))) continue;
@@ -172,7 +176,7 @@ export async function readSourcePage(tx: Transaction, root: DocumentReference, s
   for (const [id, ref] of projectRefs) {
     const project = projects.get(ref.path);
     if (project?.tenantId === root.id && project?.schemaVersion === 2) {
-      projectNames.set(id, { title: String(project.name ?? ""), areaId: project.delivery?.areaId ?? placement.get(id) });
+      projectNames.set(id, { title: String(project.name ?? ""), areaId: project.delivery?.areaId ?? placement.get(id), kind: project.delivery?.kind });
     }
   }
   const rows = docs.map(doc => {
@@ -186,7 +190,7 @@ export async function readSourcePage(tx: Transaction, root: DocumentReference, s
       ? profiles.get(timeEmployeeKey(data.sourceCompanyId, sourceDetails.personId)) : undefined;
     return projectSource(doc, heads.get(root.collection("allocationHeads").doc(doc.id).path), root.id,
       mapRef ? mappings.get(mapRef.path)?.sourceJob?.name : projects.get(scopedProject.path)?.workOrderReference,
-      sourceDetails, profile);
+      sourceDetails, profile, projectNames);
   });
   const { matches, summary } = summarize(rows, filters, projectNames, window);
   // Include the matching row identities so a sidecar-only enrichment can
@@ -210,7 +214,8 @@ export async function readSourcePage(tx: Transaction, root: DocumentReference, s
 }
 
 function projectSource(doc: DocumentSnapshot, head: DocumentData | undefined, tenant: string, workOrderName: unknown,
-  sourceDetails?: ReturnType<typeof readTimeDetails>, wordpressProfile?: StaffSource["wordpressProfile"]): StaffSource {
+  sourceDetails: ReturnType<typeof readTimeDetails>, wordpressProfile: StaffSource["wordpressProfile"],
+  projects: Map<string, SourceNames>): StaffSource {
   const data = doc.data()!;
   const row = data.record;
   if (row?.tenantId !== tenant || !calendarDate(row.date) || !Number.isSafeInteger(row.seconds) || row.seconds < 0)
@@ -224,6 +229,11 @@ function projectSource(doc: DocumentSnapshot, head: DocumentData | undefined, te
     id: doc.id, date: row.date, seconds: row.seconds,
     description: sourceDetails?.notes ?? description,
     sourceWorkOrderId: row.sourceWorkOrderId,
+    sourceProjectId: data.scopeProjectId,
+    classifiedSeconds: applied.filter(part => {
+      const kind = projects.get(part.projectId)?.kind;
+      return kind !== "engagement" && kind !== "service-area";
+    }).reduce((total, part) => total + part.seconds, 0),
     ...(personId ? { sourcePersonId: personId } : {}),
     ...(sourceDetails?.consultantName ? { consultantName: sourceDetails.consultantName } : {}),
     ...(wordpressProfile ? { wordpressProfile } : {}),

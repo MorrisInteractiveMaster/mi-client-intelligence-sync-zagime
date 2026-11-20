@@ -39,7 +39,7 @@ export interface Project {
     state: "active" | "removed" | "inaccessible";
   };
   name: string;
-  status: "planned" | "active" | "paused" | "completed";
+  status: "planned" | "active" | "paused" | "completed" | "closed" | "cancelled";
   progress: number;
   description: string;
   internalNotes: string;
@@ -86,6 +86,7 @@ export type ProjectView = Pick<
 
 export type StaffProjectSummary = ProjectView & {
   seconds: number;
+  workOrderEffort?: import("./effort").WorkOrderEffort;
   draft?: ProjectDraftMetadata;
   delivery?: Delivery;
   deliveryMilestones?: ProjectMilestone[];
@@ -121,12 +122,14 @@ export interface ProjectReport {
   hierarchy?: Record<string, {
     parentId?: string; kind?: Delivery["kind"]; type?: Delivery["type"]; completion?: number; start?: string; deadline?: string;
     monthlyCap?: number; lifetimeCap?: number; monthlyCapUsed?: number; lifetimeCapUsed?: number; managerIds?: string[];
+    blocker?: { active: boolean; message: string };
   }>;
   projects: (Omit<
     ProjectView,
     "published" | "tenantId" | "updates" | "milestones"
   > & {
     seconds: number;
+    workOrderEffort?: import("./effort").WorkOrderEffort;
     updates?: Omit<ProjectUpdate, "visible">[];
     milestones?: Omit<ProjectMilestone, "visible">[];
   })[];
@@ -271,7 +274,7 @@ export function managedProject(input: unknown): ManagedProject {
     typeof p.name !== "string" ||
     !p.name.trim() ||
     p.name.trim().length > 200 ||
-    !["planned", "active", "paused", "completed"].includes(p.status) ||
+    !["planned", "active", "paused", "completed", "closed", "cancelled"].includes(p.status) ||
     !Number.isFinite(p.progress) ||
     p.progress < 0 ||
     p.progress > 100 ||

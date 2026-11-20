@@ -1,4 +1,5 @@
 import { readSourcePage } from "./source-page";
+import { readWorkOrderEffort, timeProjectTotal, type TimeTotals } from "./time-totals";
 import { portfolioLimits, previousReportingMonth, type PortfolioSection, type PortfolioTotals, type WordPressProfile } from "../src/projects/portfolio";
 import { portfolioRef, publishedPortfolio, readPortfolio, savePortfolioRecord } from "./portfolio";
 import { mergeDirectory, wordpressProfiles } from "./wordpress-team";
@@ -375,12 +376,17 @@ export class ProjectStore {
       if (a.staff !== Boolean(preview)) throw Error("Forbidden");
       let projectIds = a.projectIds;
       if (preview?.mode === "published") {
-        if (!preview.scope) throw Error("Invalid preview scope");
-        const member = (await tx.get(a.root.collection("memberships").doc(safeId(preview.scope)))).data();
-        if (member?.schemaVersion !== 2 || member.tenantId !== tenant || member.role !== "client" || !member.enabled || !member.approved ||
-          (assertProjectDatabase(this.db).mode === "production" && (typeof member.googleSubject !== "string" || !member.googleSubject)) ||
-          !Array.isArray(member.projectIds) || member.projectIds.length > 100) throw Error("Forbidden");
-        projectIds = [...new Set<string>(member.projectIds.map((id: string) => safeId(id)))].sort();
+        const collection = a.root.collection("memberships");
+        const docs = preview.scope ? [await tx.get(collection.doc(safeId(preview.scope)))] :
+          (await tx.get(collection.where("role", "==", "client").limit(251))).docs;
+        if (docs.length > 250) throw Error("Invalid preview scope");
+        const members = docs.map(doc => doc.data()).filter(member =>
+          member?.schemaVersion === 2 && member.tenantId === tenant && member.role === "client" && member.enabled === true && member.approved === true &&
+          (assertProjectDatabase(this.db).mode !== "production" || Boolean(member.googleSubject && typeof member.googleSubject === "string")) &&
+          Array.isArray(member.projectIds) && member.projectIds.length <= 100);
+        if (preview.scope && !members.length) throw Error("Forbidden");
+        const grants = members.map(member => new Set<string>(member!.projectIds.map((id: string) => safeId(id))));
+        projectIds = [...(grants[0] ?? [])].filter(id => grants.every(grant => grant.has(id))).sort();
       }
       const views = preview?.mode === "draft"
         ? (await tx.get(a.root.collection("projectViews").where("schemaVersion", "==", 2).limit(MAX_DELIVERY_PROJECTS + 1))).docs
@@ -420,6 +426,8 @@ export class ProjectStore {
         const draft = readProjectDraft(pending[i], tenant);
         return draft ? overlayProject(project, draft.content) : project;
       });
+      const effort = await readWorkOrderEffort(tx, a.root, visible.map(v => v.id),
+        month, visible.map((v, i) => periodSeconds(periods[i], v.id, month)));
       const projects = visible.map((v, i) => {
         const view = v.data() as ProjectView;
         const project = projectDetails[i];
@@ -428,18 +436,36 @@ export class ProjectStore {
           : project.milestones?.some(m => !m.date && m.visible)
             ? { ...view, milestones: approvedProjectContent(project).milestones }
             : view;
-        return publicProject(projected, periodSeconds(periods[i], v.id, month));
+        const hours = effort[i];
+        return {
+          ...publicProject({ ...projected, lifetimeSeconds: projected.lifetimeSeconds + hours.lifetimeRemainingSeconds },
+            hours.assignedSeconds + hours.remainingSeconds),
+          ...(hours.lifetimeRecordedSeconds || hours.recordedSeconds ? { workOrderEffort: hours } : {}),
+        };
       });
-      const historicalMonths = [];
+      const historicalMonths: string[] = [];
       for (let prior = previousReportingMonth(month); prior && historicalMonths.length < 5; prior = previousReportingMonth(prior))
         historicalMonths.unshift(prior);
-      const history = await Promise.all(historicalMonths.map(async prior => {
-        const periods = visible.length ? await tx.getAll(...visible.map(v =>
-          a.root.collection("projectPeriods").doc(key(prior, v.id)))) : [];
-        const seconds = periods.reduce((n, period, i) => n + periodSeconds(period, visible[i].id, prior), 0);
+      const historyFloor = String(Math.max(1000, Number(month.slice(0, 4)) - 10)) + month.slice(4);
+      const timeMonths = visible.length ? await tx.get(a.root.collection("timeMonthlyTotals")
+        .where(FieldPath.documentId(), ">=", historyFloor).where(FieldPath.documentId(), "<", month)
+        .orderBy(FieldPath.documentId()).limit(120)) : undefined;
+      const recent = new Set(historicalMonths);
+      const months = [...new Set([...historicalMonths, ...(timeMonths?.docs.map(doc => doc.id) ?? [])])].sort();
+      const history: { month: string; seconds: number }[] = [];
+      for (const prior of months) {
+        const documents = visible.length ? await tx.getAll(...visible.flatMap(v => [
+          a.root.collection("projectPeriods").doc(key(prior, v.id)), timeProjectTotal(a.root, v.id, prior),
+        ])) : [];
+        const seconds = visible.reduce((total, view, index) => {
+          const fact = (documents[index * 2 + 1].data() as TimeTotals | undefined) ?? { recorded: 0, allocated: 0 };
+          const remainder = fact.recorded - fact.allocated;
+          if (!Number.isSafeInteger(remainder) || remainder < 0) throw Error("Invalid reporting summary");
+          return total + periodSeconds(documents[index * 2], view.id, prior) + remainder;
+        }, 0);
         if (!Number.isSafeInteger(seconds)) throw Error("Invalid reporting summary");
-        return { month: prior, seconds };
-      }));
+        if (seconds || recent.has(prior)) history.push({ month: prior, seconds });
+      }
       const config = await readPortfolio(tx, a.root);
       const delivery: Map<string, Delivery> = new Map();
       const visibleIds = new Set(projects.map(project => project.id));
@@ -458,6 +484,7 @@ export class ProjectStore {
         const summary = measureDelivery({ ...publishedView, milestones: project.milestones?.filter(m => m.visible), delivery: settings },
           cap, deliveryDate());
         hierarchy[project.id] = {
+          ...(settings.blocker?.message ? { blocker: { active: settings.blocker.active, message: settings.blocker.message } } : {}),
           ...(settings.structure === 2 ? { kind: settings.kind } : {}),
           ...(settings.parentId && visibleIds.has(settings.parentId) ? { parentId: settings.parentId } : {}),
           ...(summary.completion !== undefined ? { completion: summary.completion } : {}),
@@ -626,6 +653,8 @@ export class ProjectStore {
           : [];
         const draftDocs = docs.filter(d => d.data().published === true).map(d => draftRef(a.root, d.id));
         const drafts = new Map((draftDocs.length ? await tx.getAll(...draftDocs) : []).map(d => [d.id, readProjectDraft(d, tenant)]));
+        const effort = await readWorkOrderEffort(tx, a.root, docs.map(d => d.id), query.month,
+          docs.map((d, i) => periodSeconds(periods[i], d.id, query.month)));
         const summaries = docs.map((d, i) => {
           if (d.data().tenantId !== tenant || d.data().id !== d.id)
             throw Error("Forbidden");
@@ -640,8 +669,9 @@ export class ProjectStore {
           const draft = drafts.get(d.id);
           const milestones = draft?.content.milestones ?? project.milestones;
           return {
-            ...projectView(project, views[i].data()!.lifetimeSeconds),
-            seconds: periodSeconds(periods[i], d.id, query.month),
+            ...projectView(project, views[i].data()!.lifetimeSeconds + effort[i].lifetimeRemainingSeconds),
+            seconds: effort[i].assignedSeconds + effort[i].remainingSeconds,
+            ...(effort[i].lifetimeRecordedSeconds || effort[i].recordedSeconds ? { workOrderEffort: effort[i] } : {}),
             ...(draft && { draft: draftMetadata(draft) }),
             ...(d.data().delivery ? { delivery: d.data().delivery as Delivery } : {}),
             ...(milestones && { deliveryMilestones: milestones }),

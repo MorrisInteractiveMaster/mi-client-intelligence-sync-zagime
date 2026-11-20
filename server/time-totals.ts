@@ -1,8 +1,18 @@
 import type { DocumentReference, Transaction } from "firebase-admin/firestore";
+import { workOrderEffort } from "../src/projects/effort";
 
 export interface TimeTotals {
   recorded: number;
   allocated: number;
+}
+export async function readWorkOrderEffort(tx: Transaction, root: DocumentReference, ids: string[],
+  month: string, assigned: readonly number[]) {
+  if (!ids.length) return [];
+  const docs = await tx.getAll(...ids.flatMap(id => [timeProjectTotal(root, id, month), timeProjectTotal(root, id, "lifetime")]));
+  const zero = { recorded: 0, allocated: 0 };
+  return ids.map((_, index) => workOrderEffort(
+    (docs[index * 2].data() as TimeTotals | undefined) ?? zero,
+    (docs[index * 2 + 1].data() as TimeTotals | undefined) ?? zero, assigned[index]));
 }
 export function timeProjectTotal(
   root: DocumentReference,
