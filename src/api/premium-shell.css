@@ -207,3 +207,8 @@
 .platform-shell .mi-progress-fields .mi-blocker-toggle input { width: auto; }
 .platform-shell .reporting-period__label { text-wrap: nowrap; }
 .mi-legacy-sign-in { display: contents; }
+.nordic.secure-shell.platform-shell :is(h1,h2,h3,h4) { font-family: inherit; }
+.nordic.secure-shell.platform-shell .platform-sign-in { max-width: 62rem; margin: clamp(12px,3vw,40px) auto 24px; }
+.nordic.secure-shell.platform-shell .platform-sign-in .mi-sign-in-panel p { color: #42556a; }
+.nordic.secure-shell.platform-shell .platform-sign-in .mi-sign-in-panel > svg { width: 28px; height: 28px; }
+.nordic.secure-shell.platform-shell .platform-sign-in .mi-sign-in-story p { color: #f5df8e; }
