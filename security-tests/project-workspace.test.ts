@@ -1533,7 +1533,9 @@ function ClientFixture() {
       await wizard.getByLabel("Milestone template", { exact: true }).selectOption("CFW");
       await wizard.getByLabel("Confirm community priorities", { exact: true }).check();
       await wizard.getByRole("button", { name: "Next", exact: true }).click();
-      await wizard.getByText("Consulting engagement fixture / Community planning area fixture / Community readiness fixture", { exact: true }).waitFor();
+      await wizard.getByRole("definition").filter({
+        hasText: /^Consulting engagement fixture \/ Community planning area fixture \/ Community readiness fixture$/,
+      }).waitFor();
       await wizard.screenshot({ path: join(evidence, "project-creation-review.png"), animations: "disabled" });
       await wizard.getByRole("button", { name: "Save draft", exact: true }).click();
       await bulkPage.getByRole("heading", { name: "Community readiness fixture", exact: true }).waitFor();
