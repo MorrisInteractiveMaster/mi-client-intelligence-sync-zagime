@@ -792,6 +792,16 @@ function ClientFixture() {
           exact: true,
         })
         .click();
+      await first.page.getByText("Project lifecycle", { exact: true }).click();
+      first.page.once("dialog", dialog => void dialog.accept());
+      await first.page.getByRole("button", { name: "Mark completed", exact: true }).click();
+      await first.page.getByText("Project status saved.", { exact: true }).waitFor();
+      await first.page.locator('select[name="status"] option:checked').filter({ hasText: /^Completed$/ }).waitFor({ state: "attached" });
+      await first.page.getByText("Project lifecycle", { exact: true }).click();
+      first.page.once("dialog", dialog => void dialog.accept());
+      await first.page.getByRole("button", { name: "Reopen project", exact: true }).click();
+      await first.page.getByText("Project status saved.", { exact: true }).waitFor();
+      await first.page.locator('select[name="status"] option:checked').filter({ hasText: /^In progress$/i }).waitFor({ state: "attached" });
       await first.page
         .getByLabel("Internal notes", { exact: true })
         .fill("Browser synthetic private note");
@@ -898,6 +908,12 @@ function ClientFixture() {
       await historicRow.getByText("Approval not verified", { exact: true }).waitFor();
       await historicRow.getByText("5 h", { exact: true }).waitFor();
       await first.page.screenshot({ path: join(evidence, "historical-time.png"), fullPage: true, animations: "disabled" });
+      await historicRow.getByRole("button", { name: "Manage Time", exact: true }).click();
+      await first.page.getByLabel("Reporting description", { exact: true }).fill("Historical review");
+      await first.page.getByRole("button", { name: "Save notes", exact: true }).click();
+      await first.page.getByText("Notes saved.", { exact: true }).waitFor();
+      await historicRow.getByText("Historical review", { exact: true }).waitFor();
+      assert.equal((await historic.get()).data()?.record.seconds, 18000);
       await first.page.getByRole("button", { name: "Save reporting scope", exact: true }).click();
       await first.page.getByText("Reporting scope saved on this device.", { exact: true }).waitFor();
       await first.page.getByLabel("Period", { exact: true }).selectOption("specific");

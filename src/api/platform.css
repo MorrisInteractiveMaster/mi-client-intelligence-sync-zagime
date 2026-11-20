@@ -235,3 +235,18 @@
 @media (prefers-reduced-motion: reduce) {
   .nordic.secure-shell :is(.platform-workspace, .platform-control) button { transition: none !important; }
 }
+
+.nordic.secure-shell.platform-shell .platform-primary-action:where(a, button):not(:disabled) {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 44px;
+  border-radius: .65rem;
+  padding: .55rem .9rem;
+  background: var(--platform-primary);
+  color: #fff;
+  box-shadow: 0 3px 9px #0e284629;
+  text-decoration: none;
+}
+.nordic.secure-shell .intel-chart-table :is(th, td) { min-width: 0; }
+.nordic.secure-shell .intel-chart-table .intel-dot-field { width: min(100%, 9rem); display: block; }

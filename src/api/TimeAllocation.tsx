@@ -403,7 +403,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
           {(source.annotations?.parentId || source.annotations?.areaId) && <small>Reporting: {source.annotations.parentId ? projectName(source.annotations.parentId) + " · " : ""}{areaLabel(source.annotations.areaId ?? "")}</small>}</td>
         <td>{sourceStatusLabels[sourceStatus(source)]}<small>{reportHours(source.unallocatedSeconds)} h at work order</small>
           <small>{approvalLabel(source)}</small></td>
-        <td><button type="button" className="exec-text-button" disabled={busy} onClick={() => edit(source)}>Manage Time</button></td>
+        <td><button type="button" className="platform-primary-action" disabled={busy} onClick={() => edit(source)}>Manage Time</button></td>
       </tr>)}</tbody></table></div>}
     {cursor && <button type="button" className="secure-secondary" disabled={busy} onClick={() => void load(cursor)}>More recorded time</button>}
     {editor && <dialog className="time-alloc-drawer" ref={drawer} aria-label="Time allocation" onCancel={e => { e.preventDefault(); if (!busy) close(); }}>

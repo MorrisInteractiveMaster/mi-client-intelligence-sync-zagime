@@ -41,6 +41,35 @@ export function chartRows(report: ProjectReport, kind: ChartKind): Row[] {
   }));
 }
 
+export function comparableYears(month: string, rows: Row[]) {
+  const year = Number(month.slice(0, 4));
+  const latestMonth = Number(month.slice(5, 7));
+  const byMonth = new Map(rows.map(row => [row.month, row]));
+  return Array.from({ length: latestMonth }, (_, index) => {
+    const suffix = String(index + 1).padStart(2, "0");
+    return { month: reportMonth(year + "-" + suffix).split(" ")[0],
+      prior: byMonth.get((year - 1) + "-" + suffix), current: byMonth.get(year + "-" + suffix) };
+  });
+}
+
+function YearComparison({ month, rows, onLink }: { month: string; rows: Row[]; onLink: Props["onLink"] }) {
+  const comparable = comparableYears(month, rows);
+  const year = Number(month.slice(0, 4));
+  const unit = dotScale(Math.max(0, ...comparable.flatMap(({ prior, current }) => [prior?.seconds ?? 0, current?.seconds ?? 0])));
+  return <details className="intel-chart-table"><summary>Compare with previous year</summary>
+    <p>Compare the same months through {reportMonth(month)}. A dash means the approved report has no entry for that month.</p>
+    <table><caption>Approved reported hours by year</caption>
+      <thead><tr><th scope="col">Month</th><th scope="col">{year - 1}</th><th scope="col">{year}</th></tr></thead>
+      <tbody>{comparable.map(({ month: label, prior, current }) => <tr key={label}>
+        <th scope="row">{label}</th>{[prior, current].map((row, index) => <td key={index}>{row
+          ? <button className="exec-text-button" onClick={() => onLink("projects", row.month)} aria-label={row.label + ", " + reportHours(row.seconds) + " hours"}>
+            <DotField value={row.seconds} unit={unit} /><span>{reportHours(row.seconds)} h</span>
+          </button> : "—"}</td>)}
+      </tr>)}</tbody>
+    </table>
+  </details>;
+}
+
 export function dotScale(maximum: number, capacity = 48) {
   return Math.max(1, Math.ceil(maximum / capacity));
 }
@@ -105,6 +134,7 @@ export function DotChart({ report, kind, onLink, onOpen, expanded }: Props) {
         <ul>{selectedProjects.map(project => <li key={project.id}><button className="exec-text-button" onClick={() => onLink("project:" + project.id)}>
           {project.name} <span>{reportHours(project.seconds)} h</span>
         </button></li>)}</ul></div>}
+      {trend && expanded && <YearComparison month={report.month} rows={rows} onLink={onLink} />}
       <details className="intel-chart-table"><summary>Show data table</summary><table>
         <caption>{chartTitles[kind]} in hours</caption><thead><tr><th scope="col">{trend ? "Month" : "Group"}</th><th scope="col">Hours</th></tr></thead>
         <tbody>{rows.map(row => <tr key={row.id}><th scope="row">{row.label}</th><td>{reportHours(row.seconds)}</td></tr>)}</tbody>

@@ -302,6 +302,20 @@ export function ProjectStaffWorkspace({
     portalNavigate({ staff: "preview", editor: null, previewProject: projectId, previewMode: "draft",
       view: "project:" + projectId, chart: null, present: null, q: null, status: null });
   }
+  function changeLifecycle(project: Project, status: Project["status"], label: string) {
+    const visibility = project.published ? " This saves a draft for publication review." : "";
+    if (!window.confirm(label + " for " + project.name + "?" + visibility)) return;
+    const { name, progress, description, internalNotes, plan, workOrderReference, updates, milestones, delivery } = project;
+    void perform(async () => {
+      await client.call(tenant, "projects/" + project.id, {
+        method: "PATCH", body: { expectedRevision: page.revision, patch: {
+          name, status, progress, description, internalNotes, plan, workOrderReference, updates, milestones, delivery,
+        } },
+      });
+      setEpoch(value => value + 1);
+      setNotice(project.published ? "Status saved to the draft." : "Project status saved.");
+    });
+  }
   function changePublication(project: StaffProjectSummary) {
     if (!window.confirm(project.published ? "Remove this project from client reporting?" : "Publish approved project information to authorized clients?")) return;
     void perform(async () => {
@@ -418,7 +432,7 @@ export function ProjectStaffWorkspace({
           <button type="button" className="secure-secondary" onClick={() => changeArea("hours")}>Allocate Hours</button>
           <button type="button" className="secure-secondary" onClick={() => changeArea("directory")}>Assign Team</button>
           {nativeWorkspace ? <>
-            <PlatformLink href={periodHref(clientBase, month)}>View Zagimē Dashboard</PlatformLink>
+            <PlatformLink className="platform-primary-action" href={periodHref(clientBase, month)}>View Zagimē Dashboard</PlatformLink>
             <PlatformLink href={periodHref(clientBase, month, { previewMode: "draft" })}>Preview Draft Changes</PlatformLink>
             <PlatformLink href={periodHref(staffPath("hours"), month, { period: "all" })}>Browse All History</PlatformLink>
           </> : <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button>}
@@ -578,7 +592,7 @@ export function ProjectStaffWorkspace({
         {editing && editing !== "new" && (
           <form
             className="secure-form secure-project-editor"
-            key={editing.id}
+            key={editing.id + ":" + editing.status}
             onChange={() => setEditorDirty(true)}
             onSubmit={(e) => {
               e.preventDefault();
@@ -619,6 +633,17 @@ export function ProjectStaffWorkspace({
             <h3 ref={editorHeading} tabIndex={-1}>
               Edit project
             </h3>
+            <details className="delivery-details">
+              <summary>Project lifecycle</summary>
+              <p>{editing.published ? "Status changes need publication before clients will see them." : "The project remains private."}</p>
+              <div className="secure-actions">
+                {["completed", "closed", "cancelled"].includes(editing.status)
+                  ? <button type="button" className="secure-secondary" disabled={busy || editorDirty} onClick={() => changeLifecycle(editing, "active", "Reopen project")}>Reopen project</button>
+                  : <button type="button" className="secure-secondary" disabled={busy || editorDirty} onClick={() => changeLifecycle(editing, "completed", "Mark completed")}>Mark completed</button>}
+                {editing.status !== "closed" && <button type="button" className="secure-secondary" disabled={busy || editorDirty} onClick={() => changeLifecycle(editing, "closed", "Close project")}>Close project</button>}
+                {editing.status !== "cancelled" && <button type="button" className="secure-secondary" disabled={busy || editorDirty} onClick={() => changeLifecycle(editing, "cancelled", "Cancel project")}>Cancel project</button>}
+              </div>
+            </details>
             <fieldset className="secure-editor-grid" disabled={busy}>
               <label>
                 Project name
