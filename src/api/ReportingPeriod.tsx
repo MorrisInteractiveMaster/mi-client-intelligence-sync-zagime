@@ -7,12 +7,13 @@ import { followingTimeMonth, historyRange, reportingMonthOptions, type Reporting
 import "./reporting-period.css";
 
 export function ReportingPeriod({ month, currentMonth = reportingTimeMonth(), availableMonths = [], latestMonth, empty,
-  onMonth, range, onRange }: {
+  onMonth, range, onRange, pending }: {
   month: string;
   currentMonth?: string;
   availableMonths?: readonly string[];
   latestMonth?: string;
   empty?: boolean;
+  pending?: boolean;
   onMonth: (month: string) => void;
   range?: ReportingMonthRange;
   onRange?: (range: ReportingMonthRange) => void;
@@ -59,7 +60,7 @@ export function ReportingPeriod({ month, currentMonth = reportingTimeMonth(), av
         onClick={() => selectMonth(latest)}>Latest available month</button>}
       <div className="reporting-period__presets" data-open={optionsOpen}>
         <button type="button" className="secure-secondary reporting-period__options" aria-expanded={optionsOpen}
-          aria-controls={control + "-options"} onClick={() => setOptionsOpen(value => !value)}>Period options</button>
+          aria-controls={control + "-options"} disabled={pending} onClick={() => setOptionsOpen(value => !value)}>Period options</button>
         {optionsOpen && <div className="reporting-period__choices" id={control + "-options"}>
           <button className="secure-secondary" type="button" onClick={() => selectMonth(currentMonth)}>This Month</button>
           <button className="secure-secondary" type="button" onClick={() => selectMonth(precedingTimeMonth(currentMonth))}>Previous Month</button>

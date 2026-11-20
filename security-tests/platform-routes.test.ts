@@ -256,7 +256,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.waitForURL(route(reportRoute));
     await monthControl.waitFor();
     assert.equal(await monthControl.inputValue(), "2026-11");
-    await timeline.getByText("Period options", { exact: true }).click();
+    await timeline.getByRole("button", { name: "Period options", exact: true }).click();
     await timeline.getByRole("button", { name: "Custom Range" }).click();
     await timeline.getByLabel("From month").fill("2026-09");
     await timeline.getByLabel("Through month").fill("2026-10");

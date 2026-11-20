@@ -128,7 +128,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   ].filter(candidate => candidate <= currentMonth).sort().at(-1);
   const periodToolbar = <ReportingPeriod month={month} currentMonth={currentMonth}
     availableMonths={availableMonths} latestMonth={latestMonth} empty={report?.totalSeconds === 0}
-    range={monthRange}
+    range={monthRange} pending={!report && !current}
     onMonth={selected => portalNavigate({ month: selected, "period-scope": null, "from-month": null, "through-month": null })}
     onRange={range => portalNavigate({ view: "history", "period-scope": range.preset,
       "from-month": range.preset === "custom" ? range.from ?? null : null,
