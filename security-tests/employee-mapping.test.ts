@@ -172,7 +172,7 @@ test("admin links verified Time employees to one unique WordPress profile with r
     assert.ok(hours?.byMorrisProfile);
     assert.equal(hours.byMorrisProfile.length, 1);
     assert.equal(hours.byMorrisProfile[0].recordedSeconds, 36000);
-    assert.equal(hours.byConsultant.filter(person => ["9001", "9002"].includes(person.id)).length, 2);
+    assert.equal(hours.byConsultant.filter(person => person.id === "9001" || person.id === "9002").length, 2);
     const events = (await root.collection("audits").get()).docs.map(doc => doc.data()).filter(event => event.entityId === firstKey);
     assert.deepEqual(events.map(event => [event.action, event.previousProfileId, event.nextProfileId]).sort(), [
       ["time-employee-linked", null, 705], ["time-employee-linked", null, 705], ["time-employee-unlinked", 705, null],
