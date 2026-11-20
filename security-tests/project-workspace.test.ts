@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtemp, writeFile, mkdir, rm, copyFile } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir, rm, cp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { build } from "esbuild";
@@ -105,7 +105,7 @@ test(
     // Fixture entry only: no production test hook, token value in bundle, browser storage or real OAuth.
     await build({
       stdin: {
-        contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {ProjectStaffWorkspace} from './src/api/ProjectWorkspace'; import {ProjectClientReport} from './src/api/ProjectClientReport'; import {SecuredApiClient} from './src/api/client'; import './src/api/secure.css'; import './src/reporting/nordic.css'; const identity=window.__localProjectFixture; async function fixtureRequest(input, init) {
+        contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {ProjectStaffWorkspace} from './src/api/ProjectWorkspace'; import {ProjectClientReport} from './src/api/ProjectClientReport'; import {SecuredApiClient} from './src/api/client'; import {portalNavigate,useReportingMonth} from './src/api/portal-location'; import './src/api/secure.css'; import './src/reporting/nordic.css'; const identity=window.__localProjectFixture; async function fixtureRequest(input, init) {
   const race = window.__reportRace;
   const url = new URL(input);
   if (race && url.pathname.endsWith("/report")) {
@@ -124,15 +124,21 @@ test(
       return response;
     }
   }
-  return fetch(input, init);
+  const response=await fetch(input, init);
+  if (url.pathname.endsWith('/report') && response.ok) {
+    const payload=await response.json();
+    payload.tenant.name='Zagimē Anishinabēk Nation';
+    return new Response(JSON.stringify(payload),{status:response.status,headers:response.headers});
+  }
+  return response;
 }
 const client=new SecuredApiClient(true, location.origin, async()=>identity.token, fixtureRequest, ()=>identity.proof, 'projects');
 const denied=()=>document.body.textContent='Access denied';
 function ClientFixture() {
-  const [month, setMonth] = React.useState("2026-11");
-  return <><label>Reporting month<input type="month" value={month} onChange={(event)=>setMonth(event.target.value)}/></label><ProjectClientReport client={client} tenant="${tenant}" month={month} onDenied={denied}/></>;
+  const month=useReportingMonth("2026-11");
+  return <><form className="secure-period"><label>Reporting month<input type="month" value={month} onChange={(event)=>portalNavigate({month:event.target.value})}/></label></form><ProjectClientReport client={client} tenant="${tenant}" month={month} onDenied={denied}/></>;
 }
- client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElementById('root')).render(<main className="nordic secure-shell"><h1>Synthetic secured project workspace</h1>{workspace.role === "staff" ? <ProjectStaffWorkspace client={client} tenant="${tenant}" workspace={workspace} month="2026-11" onDenied={()=>document.body.textContent='Access denied'}/> : <ClientFixture/>}</main>)).catch(()=>document.body.textContent='Access denied');`,
+ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElementById('root')).render(<main className="nordic secure-shell"><header className="secure-masthead"><div className="secure-brandmarks"><img alt="Zagimē Anishinabēk" src="/branding/zagime/zagime-main-logo.png" style={{background:'#01264f',padding:'4px'}}/><img alt="Morris Interactive" src="/branding/morris/morris-wordmark.png"/></div><div className="secure-identity"><h1>Client Intelligence</h1></div></header>{workspace.role === "staff" ? <ProjectStaffWorkspace client={client} tenant="${tenant}" workspace={{...workspace,tenant:{...workspace.tenant,name:'Zagimē Anishinabēk Nation'}}} month="2026-11" onDenied={()=>document.body.textContent='Access denied'}/> : <ClientFixture/>}</main>)).catch(()=>document.body.textContent='Access denied');`,
         loader: "jsx",
         resolveDir: process.cwd(),
       },
@@ -143,14 +149,14 @@ function ClientFixture() {
       jsx: "automatic",
       define: { "process.env.NODE_ENV": '"production"', "import.meta.env": '{"BASE_URL":"/"}' },
       loader: { ".woff2": "file", ".woff": "file" },
+      external: ["/branding/*"],
       minify: true,
     });
     await writeFile(
       join(directory, "index.html"),
       '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js" defer></script></body></html>',
     );
-    await mkdir(join(directory, "branding", "zagime"), { recursive: true });
-    await copyFile(resolve("public/branding/zagime/zagime-main-logo.png"), join(directory, "branding", "zagime", "zagime-main-logo.png"));
+    await cp(resolve("public/branding"), join(directory, "branding"), { recursive: true });
     const options = {
       time: new TimeSync(new ProjectStore(runtime.db)),
       frontend: directory,
@@ -684,6 +690,7 @@ function ClientFixture() {
         const fresh = role === "staff" ? await signStaff() : await authenticate("signInWithPassword", { email: "project-client@example.com", password, returnSecureToken: true });
         const context = await engine.newContext({
           viewport: { width, height: 1000 },
+          hasTouch: width <= 430,
         });
         await context.addInitScript(
           (identity) => {
@@ -738,11 +745,17 @@ function ClientFixture() {
           name: "Project hours · Synthetic planning project",
         })
         .waitFor();
+      await first.page.screenshot({ path: join(evidence, "hours-and-allocations.png"), animations: "disabled" });
+      const staffNavigation = first.page.getByRole("navigation", { name: "Morris workspace sections" });
       await first.page
         .getByRole("navigation", { name: "Morris workspace sections" })
         .getByRole("button", { name: "Projects", exact: true })
         .click();
       await first.page.getByRole("button", { name: "Clear search", exact: true }).click();
+      await staffNavigation.getByRole("button", { name: "Integrations", exact: true }).click();
+      await first.page.getByRole("heading", { name: "Integrations", exact: true }).last().waitFor();
+      await first.page.screenshot({ path: join(evidence, "integration-status.png"), animations: "disabled" });
+      await staffNavigation.getByRole("button", { name: "Projects", exact: true }).click();
       await first.page
         .getByRole("heading", { name: "HIDDEN-PROJECT", exact: true })
         .waitFor();
@@ -755,6 +768,7 @@ function ClientFixture() {
       await first.page
         .getByLabel("Planned hours", { exact: true })
         .fill("1.25");
+      await first.page.screenshot({ path: join(evidence, "project-editor.png"), animations: "disabled" });
       await first.page
         .getByRole("button", { name: "Save project", exact: true })
         .click();
@@ -1016,16 +1030,60 @@ function ClientFixture() {
 
         await page.getByLabel("Reporting month").fill("2026-11");
         const nav = page.getByRole("navigation", { name: "Client workspace", exact: true });
-        await nav.getByRole("button", { name: "Health", exact: true }).click();
+        const visit = async (name: string) => {
+          const menu = page.getByRole("button", { name: "Workspace navigation", exact: true });
+          if (await menu.isVisible()) await menu.click();
+          await nav.getByRole("button", { name, exact: true }).click();
+        };
+        await visit("Health");
         await page.getByText("Approved health service area.").waitFor();
         await page.getByText("Approved delivery group", { exact: true }).waitFor();
         await page.screenshot({ path: join(evidence, "area-" + width + ".png"), fullPage: true });
-        await nav.getByRole("button", { name: "MI Directory", exact: true }).click();
+        await visit("MI Directory");
         await page.getByRole("heading", { name: "Approved synthetic contact" }).waitFor();
         assert.doesNotMatch(await page.locator("body").innerText(), /INTERNAL-CONTACT|PRIVATE-DIRECTORY|UNLINKED-DIRECTORY/);
         await page.screenshot({ path: join(evidence, "directory-" + width + ".png"), fullPage: true });
-        await nav.getByRole("button", { name: "Leadership summary", exact: true }).click();
+        await visit("Leadership summary");
         await page.waitForFunction(() => document.activeElement?.classList.contains("exec-content"));
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: join(evidence, "leadership-" + width + ".png"), animations: "disabled" });
+        if (width === 1440) {
+          for (const area of ["Finance", "HR", "CFW", "Health", "Miscellaneous", "Training"]) {
+            await nav.getByRole("button", { name: area, exact: true }).click();
+            await page.getByRole("heading", { name: area, exact: true }).waitFor();
+            assert.match(await page.title(), new RegExp(area));
+            await page.screenshot({ path: join(evidence, "service-" + area.toLowerCase() + ".png"), animations: "disabled" });
+          }
+          await nav.getByRole("button", { name: "Leadership summary", exact: true }).click();
+          const expand = page.getByRole("button", { name: "Expand delivery by service area" });
+          await expand.click();
+          const analytics = page.getByRole("dialog", { name: "Delivery by service area analysis" });
+          await analytics.getByRole("button", { name: "Health, 0.5 hours" }).click();
+          assert.ok(await analytics.locator('[data-filled="true"]').count());
+          await analytics.getByText("Show data table").click();
+          await analytics.getByRole("table").waitFor();
+          await page.screenshot({ path: join(evidence, "analytics.png"), animations: "disabled" });
+          await analytics.getByRole("button", { name: /Browser saved project/ }).click();
+          await page.getByRole("heading", { name: "Browser saved project", level: 2, exact: true }).waitFor();
+          await page.reload({ waitUntil: "networkidle" });
+          await page.getByRole("heading", { name: "Browser saved project", level: 2, exact: true }).waitFor();
+          await page.screenshot({ path: join(evidence, "project-detail.png"), animations: "disabled" });
+          await page.getByRole("button", { name: "Project timeline", exact: true }).click();
+          await page.getByRole("heading", { name: "Project timeline", exact: true }).waitFor();
+          await page.screenshot({ path: join(evidence, "project-timeline.png"), animations: "disabled" });
+          await page.goBack();
+          await page.getByRole("heading", { name: "Browser saved project", level: 2, exact: true }).waitFor();
+          await page.goForward();
+          await page.getByRole("heading", { name: "Project timeline", exact: true }).waitFor();
+          await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Browser saved project", exact: true }).click();
+          await page.getByRole("button", { name: "Present this view" }).click();
+          const contextual = page.getByRole("dialog");
+          await contextual.getByRole("heading", { name: "Browser saved project", exact: true }).waitFor();
+          await page.screenshot({ path: join(evidence, "presentation-project.png"), animations: "disabled" });
+          await contextual.getByRole("button", { name: "Close presentation" }).click();
+          await contextual.waitFor({ state: "hidden" });
+          await nav.getByRole("button", { name: "Leadership summary", exact: true }).click();
+        }
         const help = page.getByRole("button", { name: "How are allocated hours calculated?" });
         await help.focus();
         const tooltip = page.getByRole("tooltip");
@@ -1035,14 +1093,24 @@ function ClientFixture() {
         await page.keyboard.press("Escape");
         await tooltip.waitFor({ state: "hidden" });
         const trigger = page.getByRole("button", { name: "At a Glance", exact: true });
-        await trigger.click();
+        if (width <= 430) await trigger.tap();
+        else await trigger.click();
         const presentation = page.getByRole("dialog");
+        if (width === 1440) {
+          await presentation.waitFor();
+          await page.waitForFunction(() => {
+            const scene = document.querySelector(".exec-scene");
+            return scene && Number(getComputedStyle(scene).opacity) >= .99;
+          });
+          await page.screenshot({ path: join(evidence, "presentation-opening.png"), animations: "disabled" });
+        }
         await presentation.getByRole("button", { name: "Next chapter" }).click();
         await presentation.getByRole("heading", { name: "Reporting period" }).waitFor();
         await page.keyboard.press("ArrowRight");
         await presentation.getByRole("heading", { name: "Published delivery" }).waitFor();
         await presentation.getByText("0.5 h", { exact: true }).waitFor();
         if (width === 1440) {
+          await page.screenshot({ path: join(evidence, "presentation-dots.png"), animations: "disabled" });
           const maximize = presentation.getByRole("button", { name: "Toggle fullscreen" });
           if (await maximize.count()) {
             await maximize.click();
@@ -1065,9 +1133,9 @@ function ClientFixture() {
           await page.getByRole("button", { name: "Expand sidebar" }).waitFor();
           await page.screenshot({ path: join(evidence, "collapsed-navigation.png"), fullPage: true });
           await page.getByRole("button", { name: "Expand sidebar" }).click();
-          for (const viewport of [320, 390, 768, 1024, 1280, 1440, 1920]) {
-            await page.setViewportSize({ width: viewport, height: 760 });
-            assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "client overflow at " + viewport);
+          for (const [width, height] of [[320,440],[360,640],[390,844],[430,932],[768,1024],[1024,768],[1280,800],[1440,900],[1920,1080],[2560,1440]]) {
+            await page.setViewportSize({ width, height });
+            assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "client overflow at " + width);
           }
           await page.setViewportSize({ width: 1280, height: 720 });
           await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
@@ -1075,6 +1143,8 @@ function ClientFixture() {
           assert.ok(zoomBounds && zoomBounds.x >= 0 && zoomBounds.x + zoomBounds.width <= 1280);
           await page.evaluate(() => { document.documentElement.style.zoom = ""; });
         } else {
+          await page.setViewportSize({ width: 844, height: 390 });
+          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
           await page.setViewportSize({ width: 390, height: 440 });
           for (const [vertical, horizontal] of [["top", "left"], ["top", "right"], ["bottom", "left"], ["bottom", "right"]] as const) {
             await help.evaluate((button, [y, x]) => Object.assign(button.style, { position: "fixed", [y]: "0px", [x]: "0px" }), [vertical, horizontal]);
@@ -1109,7 +1179,7 @@ function ClientFixture() {
               await page.setViewportSize({ width: 390, height: 640 });
               await page.getByRole("button", { name: "At a Glance", exact: true }).click();
               const dialog = page.getByRole("dialog");
-              await dialog.getByRole("heading", { name: /synthetic/i }).waitFor();
+              await dialog.getByRole("heading", { name: "Zagimē Anishinabēk Nation", exact: true }).waitFor();
               await dialog.getByRole("button", { name: "Next chapter" }).click();
               await dialog.getByRole("heading", { name: "Reporting period" }).waitFor();
               assert.equal(await dialog.locator(".exec-scene").evaluate(element => getComputedStyle(element).animationName), "none");
@@ -1173,7 +1243,7 @@ function ClientFixture() {
             independentSession: true,
             publication: true,
             approvedClientViewports: [1440, 390],
-            clientLayoutWidths: [320, 390, 768, 1024, 1280, 1440, 1920],
+            clientLayoutWidths: [320, 360, 390, 430, 768, 1024, 1280, 1440, 1920, 2560],
             tooltipCorners: true,
             browserMeasurements,
             publishedTimeline: true,

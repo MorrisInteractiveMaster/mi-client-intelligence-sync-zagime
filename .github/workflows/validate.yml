@@ -23,6 +23,9 @@ jobs:
           distribution: temurin
           java-version: "21"
       - run: npm ci --ignore-scripts
+      - run: php -l wordpress/morris-client-intelligence/morris-client-intelligence.php
+      - run: php scripts/test-wordpress-portal.php
+      - run: unzip -t wordpress/morris-client-intelligence.zip
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: node scripts/validate-m8-build.cjs
       - run: node --test scripts/validate-m8-build.test.cjs
@@ -81,3 +84,7 @@ jobs:
           name: production-container-browser-evidence
           path: test-results/
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: morris-client-intelligence-wordpress
+          path: wordpress/morris-client-intelligence.zip

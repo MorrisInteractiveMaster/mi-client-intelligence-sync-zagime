@@ -1,0 +1,12 @@
+{
+  "apiVersion": 3,
+  "name": "morris/client-intelligence",
+  "title": "Morris Client Intelligence",
+  "category": "widgets",
+  "description": "Launch the authorized Morris client workspace.",
+  "icon": "chart-area",
+  "attributes": { "view": { "type": "string", "default": "overview" } },
+  "supports": { "html": false },
+  "editorScript": "file:./editor.js",
+  "style": "mici-portal"
+}

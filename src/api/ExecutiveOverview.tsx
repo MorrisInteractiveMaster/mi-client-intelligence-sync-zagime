@@ -1,89 +1,64 @@
-import { ArrowDownRight, ArrowUpRight, CalendarDays, LayoutGrid, Presentation } from "lucide-react";
+import { ArrowUpRight, Presentation } from "lucide-react";
 import type { ProjectReport } from "../projects/model";
-import { areaHours } from "../projects/portfolio";
 import { ContextHelp } from "./ContextHelp";
+import { chartKinds, DotChart, DotField, dotScale, type ChartKind } from "./DotAnalytics";
 import { reportDay, reportHours, reportMonth, reportTimestamp } from "./dashboard-format";
 
-export function ExecutiveOverview({ report, onPresentation, onArea }: {
-  report: ProjectReport; onPresentation: () => void; onArea: (id: string) => void;
+export function ExecutiveOverview({ report, onPresentation, onLink, onChart }: {
+  report: ProjectReport;
+  onPresentation: () => void;
+  onLink: (view: string, month?: string) => void;
+  onChart: (kind: ChartKind) => void;
 }) {
   const { portfolio, projects } = report;
   const period = reportMonth(report.month);
-  const areas = areaHours(projects, portfolio).sort((a, b) => b.seconds - a.seconds);
-  const maxArea = Math.max(1, ...areas.map(a => a.seconds));
-  const previous = portfolio?.history.at(-1)?.seconds;
-  const change = previous === undefined ? null : report.totalSeconds - previous;
-  const history = [...(portfolio?.history ?? []), { month: report.month, seconds: report.totalSeconds }];
-  const maximum = Math.max(1, ...history.map(row => row.seconds));
-  const milestones = projects.flatMap(p => (p.milestones ?? []).filter(m => !m.completed && m.date >= report.month + "-01").map(m => ({ ...m, project: p.name, projectId: p.id })))
-    .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
-  const monthly = projects.filter(x => x.plan.basis === "monthly" && x.plan.targetSeconds > 0);
-  const planned = monthly.reduce((sum, x) => sum + x.plan.targetSeconds, 0);
-  const againstPlan = monthly.reduce((sum, x) => sum + x.seconds, 0);
+  const milestones = projects.flatMap(p => (p.milestones ?? []).filter(m => !m.completed && m.date >= report.month + "-01")
+    .map(m => ({ ...m, project: p.name, projectId: p.id })))
+    .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4);
   const archived = new Set(portfolio?.placements.filter(p => p.archived).map(p => p.id));
   const active = projects.filter(p => !archived.has(p.id));
-  const paused = active.filter(p => p.status === "paused");
+  const lastMonth = portfolio?.history.at(-1);
+  const change = lastMonth && report.totalSeconds - lastMonth.seconds;
+  const ceiling = Math.max(1, report.totalSeconds, lastMonth?.seconds ?? 0);
   return <>
-    <section className="exec-hero" aria-labelledby="executive-title">
-      <div className="exec-hero-copy">
+    <section className="intel-hero" aria-labelledby="executive-title">
+      <div className="intel-hero-copy">
         <span className="exec-kicker">{period}</span>
-        <h2 id="executive-title">Leadership summary</h2>
+        <h2 id="executive-title">Leadership<br />summary</h2>
         <p>{report.tenant.name}</p>
-        {report.sourceUpdatedAt && <p className="exec-source-freshness">Source updated <time dateTime={report.sourceUpdatedAt}>{reportTimestamp(report.sourceUpdatedAt)}</time></p>}
         <button className="exec-hero-action" type="button" onClick={onPresentation}><Presentation size={18} aria-hidden="true" /> At a Glance</button>
       </div>
-      <div className="exec-hero-art" aria-hidden="true">
-        {Array.from({ length: 96 }, (_, i) => <i key={i} data-lit={(i * 13 + Math.floor(i / 12) * 3) % 23 < 9} />)}
+      <div className="intel-hero-delivery" aria-label="Published portfolio summary">
+        <div className="intel-hero-label">Allocated hours · {period}<ContextHelp label="How are allocated hours calculated?">Only reporting allocations approved for the projects you can see contribute to this figure.</ContextHelp></div>
+        <strong>{reportHours(report.totalSeconds)} h</strong>
+        <DotField value={report.totalSeconds} unit={dotScale(ceiling, 80)} capacity={80} />
+        <p>{change === undefined ? "Prior month unavailable" : change === 0 ? "No change from the prior month" : reportHours(Math.abs(change)) + " h " + (change > 0 ? "more" : "less") + " than the prior month"}</p>
       </div>
     </section>
-    <dl className="secure-metrics exec-metrics" aria-label="Published portfolio summary">
-      <div className="exec-metric-primary">
-        <dt>Allocated hours · {period}<ContextHelp label="How are allocated hours calculated?">These are reporting allocations approved for the projects you can see. Unassigned source time is excluded.</ContextHelp></dt>
-        <dd>{reportHours(report.totalSeconds)} h</dd>
+    <section className="intel-pulse" aria-label="Delivery at a glance">
+      {([["Active projects", active.filter(p => p.status === "active").length, "active"], ["Completed projects", projects.filter(p => p.status === "completed").length, "completed"], ["Upcoming work", active.filter(p => p.status === "planned").length, "planned"]] as const)
+        .map(([label, value, status]) => <button key={label} className="intel-pulse-item" type="button" onClick={() => onLink("projects:" + status)}>
+          <span>{label}</span><b>{value}</b><ArrowUpRight size={16} aria-hidden="true" />
+        </button>)}
+      {report.sourceUpdatedAt && <p className="intel-freshness">Source updated <time dateTime={report.sourceUpdatedAt}>{reportTimestamp(report.sourceUpdatedAt)}</time></p>}
+    </section>
+    <section className="intel-analysis" aria-label="Delivery analysis">
+      {chartKinds.map(kind => <DotChart key={kind} report={report} kind={kind} onLink={onLink} onOpen={() => onChart(kind)} />)}
+    </section>
+    <section className="intel-editorial" aria-label="Delivery stories">
+      <div><h3>Upcoming milestones</h3>
+        {milestones.length ? <ul className="exec-activity">{milestones.map(m => <li key={m.projectId + ":" + m.id}>
+          <time dateTime={m.date}>{reportDay(m.date)}</time><div>
+            <button className="exec-text-button" onClick={() => onLink("milestone:" + m.projectId + ":" + m.id)}>{m.title}</button><span>{m.project}</span>
+          </div></li>)}</ul> : <p>No upcoming milestones have been published.</p>}
+        <button type="button" className="exec-text-button" onClick={() => onLink("milestones")}>View milestones</button>
       </div>
-      <div><dt>Active projects</dt><dd>{active.filter(p => p.status === "active").length}</dd></div>
-      <div><dt>Completed projects</dt><dd>{projects.filter(p => p.status === "completed").length}</dd></div>
-      <div><dt>Upcoming work</dt><dd>{active.filter(p => p.status === "planned").length}</dd></div>
-    </dl>
-    <div className="exec-overview-grid">
-      <section className="exec-panel">
-        <span className="exec-panel-icon"><LayoutGrid size={17} aria-hidden="true" /></span>
-        <h3>Hours by service area</h3>
-        {areas.length ? <ul className="exec-chart" aria-label="Allocated hours by service area">
-          {areas.map(a => <li key={a.id}>
-            <div>{a.id ? <button type="button" className="exec-text-button" onClick={() => onArea(a.id)}>{a.name}</button> : <span>{a.name}</span>} <b>{reportHours(a.seconds)} h</b></div>
-            <div className="exec-bar" aria-hidden="true"><i style={{ width: (a.seconds / maxArea * 100) + "%" }} /></div>
-          </li>)}
-        </ul> : <p className="secure-muted">No published delivery hours for this period.</p>}
-      </section>
-      <section className="exec-panel">
-        <h3>Monthly delivery</h3>
-        {projects.length > 0 ? <>
-          <ul className="exec-chart exec-chart--trend" aria-label="Monthly delivery history">
-            {history.map(row => <li key={row.month}>
-              <div><span>{reportMonth(row.month)}</span><b>{reportHours(row.seconds)} h</b></div>
-              <div className="exec-bar" aria-hidden="true"><i style={{ width: (row.seconds / maximum * 100) + "%" }} /></div>
-            </li>)}
-          </ul>
-          {change !== null && <p className="exec-comparison">{change < 0 ? <ArrowDownRight size={16} /> : <ArrowUpRight size={16} />} {change === 0 ? "No change from the prior period" : reportHours(Math.abs(change)) + " h " + (change > 0 ? "more" : "less") + " than the prior period"}</p>}
-        </> : <p className="secure-muted">No published delivery history is available.</p>}
-        {planned > 0 && <p className="exec-planned"><b>{reportHours(againstPlan)} h</b> of {reportHours(planned)} h planned across projects with monthly targets.</p>}
-      </section>
-      <section className="exec-panel">
-        <span className="exec-panel-icon"><CalendarDays size={17} aria-hidden="true" /></span>
-        <h3>Upcoming milestones</h3>
-        {milestones.length ? <ul className="exec-activity">
-          {milestones.map(m => <li key={m.projectId + ":" + m.id}><time dateTime={m.date}>{reportDay(m.date)}</time><div><b>{m.title}</b><span>{m.project}</span></div></li>)}
-        </ul> : <p className="secure-muted">No upcoming milestones have been published.</p>}
-      </section>
-      <section className="exec-panel exec-brief">
-        <h3>Executive notes</h3>
-        {portfolio?.narrative || portfolio?.action ? <>
-          {portfolio.narrative && <p className="exec-copy">{portfolio.narrative}</p>}
-          {portfolio.action && <p className="exec-copy"><b>Next decision</b><br />{portfolio.action}</p>}
-        </> : <p className="secure-muted">No executive notes have been published for this period.</p>}
-        {paused.length > 0 && <p><b>Paused projects</b><br />{paused.map(p => p.name).join(", ")}</p>}
-      </section>
-    </div>
+      <div><h3>Executive notes</h3>
+        {portfolio?.narrative || portfolio?.action ? <><p>{(portfolio.narrative || portfolio.action).slice(0, 175)}{(portfolio.narrative || portfolio.action).length > 175 && "…"}</p>
+          {portfolio.action && <p><b>Next decision</b> · {portfolio.action}</p>}
+          <button type="button" className="exec-text-button" onClick={() => onLink("notes")}>Read executive notes</button></>
+          : <p>No executive notes have been published for this period.</p>}
+      </div>
+    </section>
   </>;
 }

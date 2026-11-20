@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 700" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="plane" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#537895"/><stop offset=".4" stop-color="#173957"/><stop offset="1" stop-color="#071e34"/>
+    </linearGradient>
+    <linearGradient id="edge" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#748fa8"/><stop offset="1" stop-color="#183953"/>
+    </linearGradient>
+    <pattern id="etch" width="34" height="34" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.4" fill="#aaccde" opacity=".3"/></pattern>
+  </defs>
+  <path fill="#071c32" d="M0 0h1440v700H0z"/>
+  <path fill="url(#etch)" d="M720 0h720v700H720z"/>
+  <path fill="#0d2944" d="M525 700 1108 0h332v700z"/>
+  <path fill="url(#plane)" d="M847 700 1326 45l114 48v607z"/>
+  <path fill="#061b30" d="M1003 700 1326 45l114 48-259 607z"/>
+  <path fill="url(#edge)" opacity=".72" d="m1003 700 323-655 9 4-320 651z"/>
+  <ellipse cx="1250" cy="284" rx="157" ry="77" transform="rotate(-37 1250 284)" fill="#688da5" opacity=".13" stroke="#aac5d9" stroke-opacity=".45" stroke-width="2"/>
+  <path d="M1016 646c118-59 291-196 400-348" fill="none" stroke="#99b6cc" stroke-opacity=".34" stroke-width="2"/>
+  <g fill="#fff33a"><circle cx="1116" cy="584" r="4"/><circle cx="1162" cy="550" r="3"/><circle cx="1206" cy="514" r="3"/><circle cx="1243" cy="482" r="2.5"/></g>
+</svg>

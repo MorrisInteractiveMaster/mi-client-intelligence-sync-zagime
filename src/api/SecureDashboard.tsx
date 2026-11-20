@@ -8,6 +8,7 @@ import { SecuredApiClient } from "./client";
 import { branding, brandAsset } from "../config/branding";
 import { ProjectClientReport } from "./ProjectClientReport";
 import { today } from "./dashboard-format";
+import { portalNavigate, useReportingMonth } from "./portal-location";
 import "../reporting/nordic.css";
 const enabled = import.meta.env.VITE_ENABLE_SECURE_API === "true";
 const production = import.meta.env.VITE_DASHBOARD_DEPLOYMENT === "production";
@@ -23,7 +24,8 @@ export function SecureDashboard() {
   const [retry, setRetry] = useState(0);
   const [error, setError] = useState("");
   const [unsaved, setUnsaved] = useState(false);
-  const [month, setMonth] = useState(() => today().slice(0, 7));
+  const month = useReportingMonth(today().slice(0, 7));
+  const setMonth = (value: string) => portalNavigate({ month: value });
   const [nativeMonthPicker] = useState(() => {
     const input = document.createElement("input");
     input.type = "month";
