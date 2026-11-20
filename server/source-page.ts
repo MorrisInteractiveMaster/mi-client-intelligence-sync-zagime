@@ -54,7 +54,9 @@ function addHours(total: SourceHours, row: StaffSource) {
   total.recordedSeconds += row.seconds;
   total.allocatedSeconds += row.seconds - row.unallocatedSeconds;
   total.unallocatedSeconds += row.unallocatedSeconds;
-  total.attributedSeconds = (total.attributedSeconds ?? 0) + (row.sourceProjectId && row.provider === "quickbooks-time" ? row.seconds : 0);
+  const isMapped = row.sourceProjectId && row.provider === "quickbooks-time";
+  total.attributedSeconds = (total.attributedSeconds ?? 0) + (isMapped ? row.seconds : 0);
+  total.remainingAtParentSeconds = (total.remainingAtParentSeconds ?? 0) + (isMapped ? row.seconds - (row.classifiedSeconds ?? 0) : 0);
   total.classifiedSeconds = (total.classifiedSeconds ?? 0) + (row.classifiedSeconds ?? 0);
   if (!Number.isSafeInteger(total.recordedSeconds)) throw Error("Invalid scoped source hours");
 }

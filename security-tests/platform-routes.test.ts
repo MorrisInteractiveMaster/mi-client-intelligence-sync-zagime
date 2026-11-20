@@ -147,9 +147,13 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await admin.page.setViewportSize({ width: 1440, height: 1000 });
     await admin.page.getByRole("link", { name: "Back to Morris Workspace" }).click();
     await admin.page.waitForURL(route("/workspace"));
-    await admin.page.getByRole("link", { name: "View as Zagimē", exact: true }).waitFor();
+    await admin.page.getByRole("link", { name: "View Zagimē Dashboard", exact: true }).first().waitFor();
     await admin.page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
     await admin.page.getByText("20.75 h", { exact: true }).first().waitFor();
+    for (const [label, expected] of [["Remaining at parent level", "20.75 h"], ["Hours without a verified work-order association", "2 h"]]) {
+      const metric = admin.page.locator("dl div").filter({ has: admin.page.getByText(label, { exact: true }) });
+      await metric.getByText(expected, { exact: true }).waitFor();
+    }
     await admin.page.screenshot({ path: join(evidence, "morris-workspace-native-overview.png"), fullPage: true, animations: "disabled" });
     await admin.page.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Projects", exact: true }).click();
     await admin.page.getByRole("button", { name: "By Parent Engagement" }).click();

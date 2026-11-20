@@ -153,7 +153,7 @@ export function measureDelivery(
   const health = project.status === "completed" ? "Completed"
     : schedule !== undefined && schedule < 0 ? "Overdue"
       : (monthlyRemaining ?? 0) < 0 || (lifetimeRemaining ?? 0) < 0 ? "Over budget"
-        : applicable.some(m => m.status === "blocked") || schedule !== undefined && schedule <= 7 ? "Attention needed"
+        : settings?.blocker?.active || applicable.some(m => m.status === "blocked") || schedule !== undefined && schedule <= 7 ? "Attention needed"
           : completion !== undefined || schedule !== undefined || monthlyRemaining !== undefined || lifetimeRemaining !== undefined ? "On track" : "Not configured";
   return { completion, monthlyRemaining, lifetimeRemaining, upcoming, health };
 }

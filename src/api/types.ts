@@ -69,6 +69,7 @@ export interface SourceHours {
   allocatedSeconds: number;
   unallocatedSeconds: number;
   attributedSeconds?: number;
+  remainingAtParentSeconds?: number;
   classifiedSeconds?: number;
 }
 export interface SourceHoursGroup extends SourceHours {

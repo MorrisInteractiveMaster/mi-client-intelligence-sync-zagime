@@ -43,7 +43,7 @@ export function PlatformApplication({ client, workspace, month, unsaved, onUnsav
   return <>
     {staff && <nav className="platform-context" aria-label="Platform destinations">
       <PlatformLink href={periodHref("/", month)} beforeNavigate={permit}><Home aria-hidden="true" size={17} /> Morris Home</PlatformLink>
-      {route.kind === "staff" && <PlatformLink href={periodHref(clientBase, month)} beforeNavigate={permit}><Building2 aria-hidden="true" size={17} /> View as Zagimē</PlatformLink>}
+      {route.kind === "staff" && <PlatformLink href={periodHref(clientBase, month)} beforeNavigate={permit}><Building2 aria-hidden="true" size={17} /> View Zagimē Dashboard</PlatformLink>}
       {route.kind === "client" && <PlatformLink href={periodHref("/workspace", month)} beforeNavigate={permit}><ArrowLeft aria-hidden="true" size={17} /> Back to Morris Workspace</PlatformLink>}
     </nav>}
     {route.kind === "staff" && <main id="platform-content">

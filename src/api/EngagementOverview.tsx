@@ -22,8 +22,17 @@ export function EngagementOverview({ projects, onOpen }: { projects: StaffProjec
       <button type="button" onClick={() => portalNavigate({ engagement: p.id, "service-area": null })}>Open {p.name}</button>
     </article>)}</div>
   </section>;
-  const cap = consumption.get(parent.id)!;
-  const health = measureDelivery({ ...parent, milestones: parent.deliveryMilestones }, cap, today());
+  const branch = service ?? parent;
+  const cap = consumption.get(branch.id)!;
+  const now = today();
+  const health = measureDelivery({ ...branch, milestones: branch.deliveryMilestones }, cap, now);
+  const serviceIds = new Set(services.map(p => p.id));
+  const branchProjects = service ? delivery : projects.filter(p => p.delivery?.kind !== "service-area" &&
+    (p.delivery?.parentId === parent.id || serviceIds.has(p.delivery?.parentId ?? "")));
+  const deadlines = branchProjects.flatMap(p => p.delivery?.deadline && p.delivery.deadline >= now &&
+    !["completed", "closed", "cancelled"].includes(p.status) ? [{ id: p.id, date: p.delivery.deadline, name: p.name }] : [])
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const blockers = [branch, ...branchProjects].filter(p => p.delivery?.blocker?.active);
   return <section aria-label="Engagement overview">
     <nav className="secure-actions" aria-label="Engagement location">
       <button type="button" className="secure-secondary" onClick={() => portalNavigate({ engagement: null, "service-area": null })}>All engagements</button>
@@ -32,11 +41,22 @@ export function EngagementOverview({ projects, onOpen }: { projects: StaffProjec
     <h3>{service?.name ?? parent.name}</h3>
     <dl className="secure-metrics">
       <div><dt>Work-order recorded</dt><dd>{reportHours(parent.workOrderEffort?.recordedSeconds ?? 0)} h</dd></div>
-      <div><dt>Reported effort for branch</dt><dd>{reportHours(effort.get((service ?? parent).id)?.monthly ?? 0)} h</dd></div>
+      <div><dt>Reported effort for branch</dt><dd>{reportHours(effort.get(branch.id)?.monthly ?? 0)} h</dd></div>
       <div><dt>Monthly hours charged to cap</dt><dd>{reportHours(cap.monthly)} h</dd></div>
       <div><dt>Monthly hours remaining</dt><dd>{health.monthlyRemaining === undefined ? "No cap" : reportHours(health.monthlyRemaining) + " h"}</dd></div>
       <div><dt>Lifetime hours remaining</dt><dd>{health.lifetimeRemaining === undefined ? "No cap" : reportHours(health.lifetimeRemaining) + " h"}</dd></div>
     </dl>
+    <dl className="secure-metrics">
+      {!service && <div><dt>Service areas</dt><dd>{services.length}</dd></div>}
+      <div><dt>Delivery projects</dt><dd>{branchProjects.length}</dd></div>
+      <div><dt>In progress</dt><dd>{branchProjects.filter(p => p.status === "active").length}</dd></div>
+      <div><dt>Completed</dt><dd>{branchProjects.filter(p => p.status === "completed").length}</dd></div>
+      <div><dt>Delivery health</dt><dd>{blockers.length && ["Not configured", "On track"].includes(health.health) ? "Attention needed" : health.health}</dd></div>
+      <div><dt>Next delivery deadline</dt><dd>{deadlines[0] ? reportDay(deadlines[0].date) : "None scheduled"}</dd></div>
+    </dl>
+    {!!blockers.length && <section aria-label="Current blockers"><h4>Current blockers</h4>
+      <ul>{blockers.map(p => <li key={p.id}>Blocked · {p.name}</li>)}</ul>
+    </section>}
     {!service && !!services.length && <><h4>Service areas</h4><div className="secure-project-grid">{services.map(p => <article className="secure-card" key={p.id}>
       <h4>{p.name}</h4><p>{projects.filter(child => child.delivery?.parentId === p.id).length} delivery projects</p>
       <button type="button" onClick={() => portalNavigate({ "service-area": p.id })}>Open {p.name}</button>

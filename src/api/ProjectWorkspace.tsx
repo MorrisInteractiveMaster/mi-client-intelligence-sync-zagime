@@ -393,8 +393,11 @@ export function ProjectStaffWorkspace({
           <div><dt>Registered work orders</dt><dd>{timeStatus?.mappings.length ?? "Unavailable"}</dd></div>
           <div><dt>Hours recorded</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.recordedSeconds) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
           <div><dt>Work-order attributed</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.attributedSeconds ?? 0) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
-          <div><dt>Remaining at parent level</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.recordedSeconds - (overviewTime.hours.classifiedSeconds ?? 0)) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
+          <div><dt>Remaining at parent level</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.remainingAtParentSeconds ?? 0) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
           <div><dt>Classified hours</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.classifiedSeconds ?? 0) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
+          {overviewTime?.hours && overviewTime.hours.recordedSeconds > (overviewTime.hours.attributedSeconds ?? 0) &&
+            <div><dt>Hours without a verified work-order association</dt><dd>{reportHours(overviewTime.hours.recordedSeconds - (overviewTime.hours.attributedSeconds ?? 0))} h</dd></div>}
+          <div><dt>Work orders with activity</dt><dd>{overviewTime?.hours.byWorkOrder.filter(order => order.id !== null && order.recordedSeconds > 0).length ?? "—"}</dd></div>
           <div><dt>Allocations awaiting review</dt><dd>{overviewTime?.counts.review ?? "—"}</dd></div>
           <div><dt>Last successful Time sync</dt><dd>{timeStatus?.lastDailySuccess ? reportTimestamp(timeStatus.lastDailySuccess) : "Unavailable"}</dd></div>
           <div><dt>Blocked milestones</dt><dd>{catalog?.flatMap(p => p.deliveryMilestones ?? []).filter(m => m.status === "blocked").length ?? "—"}</dd></div>
@@ -405,7 +408,7 @@ export function ProjectStaffWorkspace({
           <button type="button" className="secure-secondary" onClick={() => changeArea("hours")}>Allocate Hours</button>
           <button type="button" className="secure-secondary" onClick={() => changeArea("directory")}>Assign Team</button>
           {nativeWorkspace ? <>
-            <PlatformLink href={periodHref(clientBase, month)}>View Client Dashboard</PlatformLink>
+            <PlatformLink href={periodHref(clientBase, month)}>View Zagimē Dashboard</PlatformLink>
             <PlatformLink href={periodHref(clientBase, month, { previewMode: "draft" })}>Preview Draft Changes</PlatformLink>
             <PlatformLink href={periodHref(staffPath("hours"), month, { period: "all" })}>Browse All History</PlatformLink>
           </> : <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button>}
