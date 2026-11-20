@@ -235,7 +235,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
             {selectedArea && <p>{scoped.length ? reportHours(presentReport.totalSeconds) + " h allocated · " + scoped.length + " published projects" : "No published projects for this period"}</p>}
             {contact && <p>{contact.role}</p>}
           </div>
-          {!unavailable && <button className="exec-hero-action" type="button" onClick={() => openOverlay("present", "1")}><PresentationIcon size={16} aria-hidden="true" /> Present this view</button>}
+          {!unavailable && <button className="exec-hero-action platform-primary-action" type="button" onClick={() => openOverlay("present", "1")}><PresentationIcon size={16} aria-hidden="true" /> Present this view</button>}
           {selectedArea && <DotField value={presentReport.totalSeconds} unit={dotScale(Math.max(report.totalSeconds, 1))} />}
         </section>}
         {view === "projects" && Object.values(hierarchy).some(item => item.parentId) && <details className="delivery-details">

@@ -135,11 +135,12 @@ function entryDetails(row: JsonObject, reply?: JsonObject, account?: string): Ti
       consultantName = timeName(user.display_name) ??
         timeName([timeName(user.first_name), timeName(user.last_name)].filter(Boolean).join(" "));
   }
-  return personId || notes ? {
+  const notesState = notes === undefined ? "unavailable" : "empty";
+  return {
     ...(personId && { personId }),
     ...(consultantName && { consultantName }),
-    ...(notes && { notes }),
-  } : undefined;
+    ...(notes?.trim() ? { notes } : { notesState }),
+  };
 }
 
 const optionalObject = (value: unknown) =>
@@ -181,6 +182,7 @@ export class TimeClient {
       | "timesheets"
       | "timesheets_deleted"
       | "current_user"
+      | "users"
       | "projects",
     query: Record<string, string>,
   ) {
@@ -231,7 +233,7 @@ export class TimeClient {
       const status = response?.status;
       const retry = response?.headers.get("Retry-After");
       await response?.body?.cancel();
-      if (path === "projects" && (status === 403 || status === 404))
+      if ((path === "projects" || path === "users") && (status === 403 || status === 404))
         return null;
       if (status === 401 || status === 403)
         throw Error("Time authorization unavailable");
@@ -452,7 +454,7 @@ export class TimeClient {
     }))!;
     if (reply.more !== false || (reply.company_id !== undefined && timeId(reply.company_id) !== company))
       throw Error("Time detail scope mismatch");
-    return rows(reply, "timesheets").map(([key, value]) => {
+    const entries = rows(reply, "timesheets").map(([key, value]) => {
       const row = object(value);
       const id = timeId(row.id);
       const rowJob = timeId(row.jobcode_id);
@@ -471,6 +473,30 @@ export class TimeClient {
         deleted: false,
         ...(details && { details }),
       };
+    });
+    const users = optionalObject(optionalObject(reply.supplemental_data)?.users);
+    const missing = new Set(entries.flatMap(({ details }) => details?.personId && !details.consultantName &&
+      !(users && Object.hasOwn(users, details.personId)) ? [details.personId] : []));
+    if (!missing.size) return entries;
+    // An exact identifier filter also permits lookup of historical, archived staff.
+    const fallback = await this.get("users", { ids: [...missing].join(","), active: "both",
+      supplemental_data: "no", limit: String(missing.size) });
+    if (!fallback) return entries;
+    if (fallback.more !== false || (fallback.company_id !== undefined && timeId(fallback.company_id) !== company))
+      throw Error("Time employee scope mismatch");
+    const names = new Map<string, string>();
+    for (const [key, value] of rows(fallback, "users")) {
+      const user = object(value);
+      if (!missing.has(key) || timePersonId(user.id) !== key ||
+        (user.company_id !== undefined && timePersonId(user.company_id) !== company))
+        throw Error("Time employee scope mismatch");
+      const name = timeName(user.display_name) ?? timeName([timeName(user.first_name), timeName(user.last_name)].filter(Boolean).join(" "));
+      if (name) names.set(key, name);
+    }
+    return entries.map(entry => {
+      const details = entry.details;
+      const name = details?.personId ? names.get(details.personId) : undefined;
+      return name ? { ...entry, details: { ...details, consultantName: name } } : entry;
     });
   }
 

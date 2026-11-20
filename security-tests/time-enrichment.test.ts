@@ -109,7 +109,7 @@ test("Time detail enrichment preserves the named database ledger, even for corre
     const inventory = await sync.inventoryDetails(tenant);
     assert.deepEqual(inventory, { scanned: 6, outsideAccount: 0, months: [{ month, recordedSeconds: 18000, active: 5,
       deleted: 1, outsideCurrentMapping: 1, missingCurrentDetails: 4, missingConsultantId: 4,
-      missingConsultantName: 4, missingOriginalNotes: 4 }] });
+      missingConsultantName: 4, missingOriginalNotes: 4, consultantIds: 0, consultantNames: 0, verifiedNotes: 0, emptyNotes: 0, unavailableNotes: 0 }] });
     assert.deepEqual(requested, []);
     await assert.rejects(sync.inventoryDetails(tenant, "invalid"), /Invalid Time details cursor/);
 
@@ -127,6 +127,8 @@ test("Time detail enrichment preserves the named database ledger, even for corre
     assert.equal(saved?.email, undefined);
     const afterInventory = (await sync.inventoryDetails(tenant)).months[0];
     assert.equal(afterInventory.recordedSeconds, inventory.months[0].recordedSeconds);
+    assert.equal(afterInventory.consultantNames, 1);
+    assert.equal(afterInventory.verifiedNotes, 1);
     assert.equal(afterInventory.missingCurrentDetails, inventory.months[0].missingCurrentDetails - 1);
     assert.equal(afterInventory.missingConsultantName, inventory.months[0].missingConsultantName - 1);
     const after = await sync.enrichDetails(tenant, { month, apply: true });

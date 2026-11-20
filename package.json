@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
-    "test": "node --import tsx --test src/domain/*.test.ts src/services/*.test.ts src/reporting/*.test.ts server/*.test.ts src/api/*.test.ts src/projects/*.test.ts",
+    "test": "node --import tsx --test src/domain/*.test.ts src/services/*.test.ts src/reporting/*.test.ts server/*.test.ts src/api/*.test.ts src/projects/*.test.ts scripts/recover-time-details.test.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test:security": "node scripts/run-security-emulator.cjs",

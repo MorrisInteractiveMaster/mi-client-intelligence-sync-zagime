@@ -5,6 +5,7 @@ export interface TimeEntryDetails {
   personId?: string;
   consultantName?: string;
   notes?: string;
+  notesState?: "empty" | "unavailable";
 }
 
 export interface StoredTimeDetails extends TimeEntryDetails {
@@ -23,7 +24,7 @@ export const timePersonId = (value: unknown): string | undefined =>
     ? String(value) : undefined;
 
 export const timeNotes = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length <= 4000 && value.trim() && !/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value)
+  typeof value === "string" && value.length <= 4000 && !/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value)
     ? value : undefined;
 
 export const timeName = (value: unknown): string | undefined =>
@@ -39,9 +40,12 @@ export function readTimeDetails(value: unknown, sourceRevision: string, sourceMo
   const personId = timePersonId(row.personId);
   const consultantName = personId ? timeName(row.consultantName) : undefined;
   const notes = timeNotes(row.notes);
+  const notesState = notes !== undefined && !notes.trim() ? "empty"
+    : notes === undefined && (row.notesState === "empty" || row.notesState === "unavailable") ? row.notesState : undefined;
   return {
     ...(personId && { personId }),
     ...(consultantName && { consultantName }),
-    ...(notes && { notes }),
+    ...(notes?.trim() && { notes }),
+    ...(notesState && { notesState }),
   };
 }

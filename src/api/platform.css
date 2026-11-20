@@ -207,3 +207,46 @@
   .platform-print-deck table { border-collapse: collapse; }
   .platform-print-deck th, .platform-print-deck td { border-block-end: 1px solid #bbb; text-align: start; padding: 3pt 7pt; }
 }
+.nordic.secure-shell.platform-shell {
+  --platform-primary: linear-gradient(110deg, #102a47, #235580 55%, #1c4268);
+}
+.nordic.secure-shell .platform-workspace button:not(.secure-secondary, .exec-text-button, .intel-icon, [aria-pressed], [role="tab"]),
+.nordic.secure-shell .platform-control :is(.secure-form, .employee-mapping) button:not(.secure-secondary, .exec-text-button) {
+  min-height: 44px;
+  padding-block: .55rem;
+}
+.nordic.secure-shell .platform-workspace :is(.secure-actions, .secure-form, .project-creation) button:not(.secure-secondary, .exec-text-button, .intel-icon, [aria-pressed], [type="reset"]):enabled,
+.nordic.secure-shell .platform-control :is(.secure-form, .employee-mapping) button:not(.secure-secondary, .exec-text-button):enabled {
+  background-image: var(--platform-primary);
+  background-size: 145% 100%;
+  color: #fff;
+  box-shadow: 0 3px 9px #0e284629;
+  transition: background-position 180ms ease, box-shadow 180ms ease;
+}
+.nordic.secure-shell .platform-workspace button:not(.secure-secondary):enabled:hover,
+.nordic.secure-shell .platform-control button:not(.secure-secondary):enabled:hover {
+  background-position: 85% 50%;
+}
+.nordic.secure-shell .platform-workspace button:not(.secure-secondary):enabled:active,
+.nordic.secure-shell .platform-control button:not(.secure-secondary):enabled:active {
+  box-shadow: inset 0 2px 4px #0b20365c;
+}
+.time-original-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  .nordic.secure-shell :is(.platform-workspace, .platform-control) button { transition: none !important; }
+}
+
+.nordic.secure-shell.platform-shell .platform-primary-action:where(a, button):not(:disabled) {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 44px;
+  border-radius: .65rem;
+  padding: .55rem .9rem;
+  background: var(--platform-primary);
+  color: #fff;
+  box-shadow: 0 3px 9px #0e284629;
+  text-decoration: none;
+}
+.nordic.secure-shell .intel-chart-table :is(th, td) { min-width: 0; }
+.nordic.secure-shell .intel-chart-table .intel-dot-field { width: min(100%, 9rem); display: block; }

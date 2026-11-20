@@ -95,7 +95,7 @@ function EmployeeMappingPage({ client, tenant, onDenied, onViewTime }: Props) {
   const employee = page?.candidates.find(person => person.employeeKey === employeeKey);
   const current = page?.links.find(link => link.employeeKey === employeeKey);
   const profile = page?.profiles.find(person => String(person.id) === profileId);
-  const occupied = new Set((page?.links ?? []).filter(link => link.employeeKey !== employeeKey).map(link => link.profileId));
+  const linkedProfiles = new Set((page?.links ?? []).filter(link => link.employeeKey !== employeeKey).map(link => link.profileId));
   const selectablePeople = page?.candidates.filter(person => person.employeeKey === employeeKey ||
     searchText([person.providerName, person.userId].join(" ")).includes(searchText(peopleSearch))) ?? [];
   const selectableProfiles = page?.profiles.filter(person => String(person.id) === profileId ||
@@ -105,7 +105,7 @@ function EmployeeMappingPage({ client, tenant, onDenied, onViewTime }: Props) {
     <header className="employee-mapping__heading">
       <div>
         <h2 id={heading}>Employee Mapping</h2>
-        <p>Connect a verified QuickBooks Time employee to their Morris WordPress profile. Hours and original names still come from QuickBooks Time. Links are private to Morris.</p>
+        <p>Connect a verified QuickBooks Time employee to their Morris WordPress profile. Hours and original names still come from QuickBooks Time. You can link several verified Time IDs to the same person. Links are private to Morris.</p>
       </div>
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => void load()}>Reload employees</button>
     </header>
@@ -117,7 +117,7 @@ function EmployeeMappingPage({ client, tenant, onDenied, onViewTime }: Props) {
       {!page.profiles.length && <p className="secure-empty">No active WordPress profiles. Sync the Morris Team Directory before linking an employee.</p>}
       <form onSubmit={event => {
         event.preventDefault();
-        if (employee && profile && current?.profileId !== profile.id && !occupied.has(profile.id))
+        if (employee && profile && current?.profileId !== profile.id)
           void save({ action: "link", expectedRevision: page.revision, employeeKey, sourceId: employee.sourceId, sourceRevision: employee.sourceRevision, profileId: profile.id });
       }}>
         <div className="employee-mapping__pair">
@@ -142,7 +142,7 @@ function EmployeeMappingPage({ client, tenant, onDenied, onViewTime }: Props) {
             <label>Search WordPress profiles<input type="search" value={profileSearch} maxLength={120} onChange={e => setProfileSearch(e.target.value)} /></label>
             <div className="employee-mapping__field"><label htmlFor={profilePicker}>WordPress profile</label><select id={profilePicker} value={profileId} onChange={e => setProfileId(e.target.value)}>
               <option value="">Choose a profile</option>
-              {selectableProfiles.map(person => <option key={person.id} value={person.id} disabled={occupied.has(person.id)}>{person.name} · Profile {person.id}{occupied.has(person.id) ? " (linked)" : ""}</option>)}
+              {selectableProfiles.map(person => <option key={person.id} value={person.id}>{person.name} · Profile {person.id}{linkedProfiles.has(person.id) ? " (another Time identity linked)" : ""}</option>)}
             </select></div>
             {profile && <div className="employee-mapping__photo">
               <PersonPhoto name={profile.name} photo={profile.photo} alt={profile.alt} />
@@ -151,7 +151,7 @@ function EmployeeMappingPage({ client, tenant, onDenied, onViewTime }: Props) {
           </fieldset>
         </div>
         <div className="employee-mapping__actions">
-          <button type="submit" disabled={busy || !employee || !profile || current?.profileId === profile.id || occupied.has(profile.id)}><Link2 size={17} aria-hidden="true" />Confirm employee link</button>
+          <button type="submit" disabled={busy || !employee || !profile || current?.profileId === profile.id}><Link2 size={17} aria-hidden="true" />Confirm employee link</button>
           {page.nextCursor && <button type="button" className="secure-secondary" disabled={busy} onClick={() => void load(page.nextCursor)}>Scan more imported time</button>}
           <span>{page.candidates.length} verified {page.candidates.length === 1 ? "employee" : "employees"} found</span>
         </div>

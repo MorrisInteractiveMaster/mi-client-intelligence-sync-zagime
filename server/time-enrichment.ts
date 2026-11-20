@@ -85,12 +85,14 @@ export async function inventoryTimeDetails(scope: Scope, after?: string) {
     const months = new Map<string, {
       month: string; recordedSeconds: number; active: number; deleted: number; outsideCurrentMapping: number;
       missingCurrentDetails: number; missingConsultantId: number; missingConsultantName: number; missingOriginalNotes: number;
+      consultantIds: number; consultantNames: number; verifiedNotes: number; emptyNotes: number; unavailableNotes: number;
     }>();
     for (const source of sources) {
       const month = source.date.slice(0, 7);
       const counts = months.get(month) ?? {
         month, recordedSeconds: 0, active: 0, deleted: 0, outsideCurrentMapping: 0,
         missingCurrentDetails: 0, missingConsultantId: 0, missingConsultantName: 0, missingOriginalNotes: 0,
+        consultantIds: 0, consultantNames: 0, verifiedNotes: 0, emptyNotes: 0, unavailableNotes: 0,
       };
       months.set(month, counts);
       if (source.deleted) { counts.deleted++; continue; }
@@ -98,10 +100,13 @@ export async function inventoryTimeDetails(scope: Scope, after?: string) {
       counts.active++;
       if (!bySource.has(source.id)) { counts.outsideCurrentMapping++; continue; }
       const saved = bySource.get(source.id);
-      if (!saved || (!saved.personId && !saved.notes)) counts.missingCurrentDetails++;
-      if (!saved?.personId) counts.missingConsultantId++;
-      if (!saved?.consultantName) counts.missingConsultantName++;
-      if (!saved?.notes) counts.missingOriginalNotes++;
+      const hasVerifiedNotes = Boolean(saved?.notes || saved?.notesState === "empty");
+      if (!saved?.consultantName || !hasVerifiedNotes) counts.missingCurrentDetails++;
+      if (saved?.personId) counts.consultantIds++; else counts.missingConsultantId++;
+      if (saved?.consultantName) counts.consultantNames++; else counts.missingConsultantName++;
+      if (hasVerifiedNotes) counts.verifiedNotes++; else counts.missingOriginalNotes++;
+      if (saved?.notesState === "empty") counts.emptyNotes++;
+      if (saved?.notesState === "unavailable") counts.unavailableNotes++;
     }
     const last = scanned.at(-1);
     const nextCursor = result.size > scanLimit && last
@@ -194,11 +199,15 @@ export async function enrichTimeDetails(scope: Scope, client: TimeClient, jobsBy
       const old = readTimeDetails(previous[index].data(), source.sourceRevision, source.sourceModifiedAt);
       if ((previous[index].exists && !old) ||
         (old?.personId && row.details.personId && old.personId !== row.details.personId) ||
-        (old?.notes && row.details.notes && old.notes !== row.details.notes)) {
+        (old?.notes && row.details.notes && old.notes !== row.details.notes) ||
+        (old?.notes && row.details.notesState === "empty") ||
+        (old?.notesState === "empty" && row.details.notes)) {
         counts.conflicts++;
         return;
       }
       const details = { ...row.details, ...old };
+      if (details.notes) delete details.notesState;
+      else if (old?.notesState === "empty" || row.details.notesState === "empty") details.notesState = "empty";
       if (isDeepStrictEqual(old, details)) { counts.unchanged++; return; }
       counts.wouldWrite++;
       if (!options.apply) return;

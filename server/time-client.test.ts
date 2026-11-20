@@ -135,7 +135,7 @@ test("exact Time lookups associate notes and the assigned consultant without ret
   assert.deepEqual((await lookup())[0].details, { personId: "71", consultantName: "Avery Example", notes: "Planning\nConsultation" });
   assert.deepEqual((await lookup())[0].details, { personId: "71", consultantName: "A. Example", notes: "Planning\nConsultation" });
   assert.deepEqual((await lookup())[0].details, { personId: "71", notes: "Planning\nConsultation" });
-  assert.equal((await lookup())[0].details, undefined);
+  assert.deepEqual((await lookup())[0].details, { notesState: "empty" });
   const moved = (await lookup())[0];
   assert.equal(moved.jobcodeId, "43");
   assert.equal(moved.details, undefined);
@@ -143,6 +143,21 @@ test("exact Time lookups associate notes and the assigned consultant without ret
   await assert.rejects(client.detailsById("42", ["8", "8"], "99"), /batch/);
   await assert.rejects(client.detailsById("42", Array.from({ length: 21 }, (_, index) => String(index + 1)), "99"), /batch/);
   assert.equal(calls, replies.length);
+});
+
+test("missing supplemental users are looked up by exact ID and blank notes remain verified", async () => {
+  const calls: URL[] = [];
+  const client = new TimeClient(async () => "fixture", async input => {
+    const url = new URL(String(input)); calls.push(url);
+    return calls.length === 1
+      ? Response.json({ results: { timesheets: { 8: { ...row, user_id: 71, notes: "" } } }, more: false })
+      : Response.json({ results: { users: { 71: { id: 71, company_id: 99, first_name: "Avery", last_name: "Example", email: "private@example.test" } } }, more: false });
+  }, async () => {});
+  const [entry] = await client.detailsById("42", ["8"], "99");
+  assert.deepEqual(entry.details, { personId: "71", notesState: "empty", consultantName: "Avery Example" });
+  assert.equal(calls[1].pathname, "/api/v1/users");
+  assert.equal(calls[1].searchParams.get("ids"), "71");
+  assert.equal(calls[1].searchParams.get("active"), "both");
 });
 
 test("oversized supplemental responses leave normal scoped Time import available", async () => {
@@ -172,7 +187,7 @@ test("private Time details are projected only for the exact revision and valid p
   assert.equal(readTimeDetails(stored, "corrected", sourceModifiedAt), undefined);
   assert.equal(readTimeDetails(stored, "rev", "different"), undefined);
   assert.equal(readTimeDetails({ ...stored, retrievedVia: "unknown" }, "rev", sourceModifiedAt), undefined);
-  assert.deepEqual(readTimeDetails({ ...stored, personId: 0, notes: "" }, "rev", sourceModifiedAt), {});
+  assert.deepEqual(readTimeDetails({ ...stored, personId: 0, notes: "" }, "rev", sourceModifiedAt), { notesState: "empty" });
 });
 test("OAuth grant requires exact HTTPS callback, one-use actor-bound state and correct company", async () => {
   const attempt = {

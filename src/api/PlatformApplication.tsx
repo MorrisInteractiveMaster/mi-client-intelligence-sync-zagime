@@ -46,7 +46,7 @@ export function PlatformApplication({ client, workspace, month, unsaved, onUnsav
       {route.kind === "staff" && <PlatformLink href={periodHref(clientBase, month)} beforeNavigate={permit}><Building2 aria-hidden="true" size={17} /> View Zagimē Dashboard</PlatformLink>}
       {route.kind === "client" && <PlatformLink href={periodHref("/workspace", month)} beforeNavigate={permit}><ArrowLeft aria-hidden="true" size={17} /> Back to Morris Workspace</PlatformLink>}
     </nav>}
-    {route.kind === "staff" && <main id="platform-content">
+    {route.kind === "staff" && <main id="platform-content" className="platform-workspace">
       <ProjectStaffWorkspace client={client} tenant={tenant} workspace={workspace} month={month} onDenied={onDenied} onUnsavedChange={onUnsavedChange} />
     </main>}
     {route.kind === "control" && <Suspense fallback={<p role="status">Opening Control Panel…</p>}>

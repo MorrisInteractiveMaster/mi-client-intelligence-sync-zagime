@@ -150,6 +150,10 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await admin.page.getByRole("link", { name: "View Zagimē Dashboard", exact: true }).first().waitFor();
     await admin.page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
     await admin.page.getByText("20.75 h", { exact: true }).first().waitFor();
+    const createProject = admin.page.getByRole("button", { name: "Create Project", exact: true });
+    await createProject.waitFor();
+    assert.match(await createProject.evaluate(button => getComputedStyle(button).backgroundImage), /linear-gradient/);
+    assert.ok((await createProject.boundingBox())!.height >= 44);
     for (const [label, expected] of [["Remaining at parent level", "20.75 h"], ["Hours without a verified work-order association", "2 h"]]) {
       const metric = admin.page.locator("dl div").filter({ has: admin.page.getByText(label, { exact: true }) });
       await metric.getByText(expected, { exact: true }).waitFor();
