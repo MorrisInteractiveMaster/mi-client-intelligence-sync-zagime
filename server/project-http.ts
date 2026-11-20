@@ -11,6 +11,29 @@ export async function projectRequest(
   disconnected?: AbortSignal,
 ) {
   const url = new URL(req.url!, "http://local");
+  const directorySync = /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/directory\/wordpress-sync$/.exec(url.pathname);
+  if (directorySync) {
+    if (url.search || req.method !== "POST") return { status: 405, body: { error: "method_not_allowed" } };
+    if (Object.keys(await readBody()).length) throw Error("Invalid directory request");
+    return { status: 200, body: await backend.syncDirectory(req.headers.authorization ?? "", directorySync[1]) };
+  }
+  const preview = /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/client-preview(?:\/(scopes))?$/.exec(url.pathname);
+  if (preview) {
+    if (req.method !== "GET") return { status: 405, body: { error: "method_not_allowed" } };
+    const token = req.headers.authorization ?? "";
+    if (preview[2]) {
+      if (url.search) throw Error("Invalid query");
+      return { status: 200, body: await backend.previewScopes(token, preview[1]) };
+    }
+    const mode = url.searchParams.get("mode");
+    const scope = url.searchParams.get("scope") ?? undefined;
+    if ((mode !== "published" && mode !== "draft") || (mode === "published") !== Boolean(scope) ||
+      [...url.searchParams.keys()].some(key => !["month", "mode", "scope"].includes(key) || url.searchParams.getAll(key).length !== 1))
+      throw Error("Invalid preview query");
+    const report = await backend.report(token, preview[1], url.searchParams.get("month") ?? "", { mode, scope });
+    const sourceUpdatedAt = mode === "published" ? await time?.reportFreshness(preview[1]) : undefined;
+    return { status: 200, body: sourceUpdatedAt ? { ...report, sourceUpdatedAt } : report };
+  }
   const timeRoute =
     /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/time(?:\/(mapping|sync))?$/.exec(
       url.pathname,
@@ -182,7 +205,9 @@ export async function projectRequest(
       );
     }
     if (resource === "allocations" && !action) {
-      only(b, ["expectedRevision", "portions"]);
+      only(b, ["expectedRevision", "portions", "expectedSourceRevision", "annotations"]);
+      const review = b.expectedSourceRevision === undefined && b.annotations === undefined ? undefined :
+        { expectedSourceRevision: b.expectedSourceRevision, annotations: b.annotations };
       return ok(
         await backend.allocate(
           token,
@@ -190,6 +215,7 @@ export async function projectRequest(
           id,
           b.expectedRevision,
           b.portions,
+          review,
         ),
       );
     }

@@ -19,8 +19,8 @@ function dotPosition(index: number, chapter: number) {
   return { left: (6 + column * 8) + "%", top: (14 + row * 12 + offset) + "%" };
 }
 
-export default function ExecutivePresentation({ report, onClose, scope = "overview", scopeTitle, onLink }: {
-  report: ProjectReport; onClose: () => void; scope?: string; scopeTitle?: string; onLink?: (view: string) => void;
+export default function ExecutivePresentation({ report, onClose, scope = "overview", scopeTitle, onLink, draft }: {
+  report: ProjectReport; onClose: () => void; scope?: string; scopeTitle?: string; onLink?: (view: string) => void; draft?: boolean;
 }) {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -101,6 +101,7 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
     <div className="exec-presentation-stage intel-presentation-stage" data-chapter={index} ref={stage}>
     <header className="exec-presentation-top">
       <img src={brandAsset("branding/zagime/zagime-main-logo.png")} alt="Zagimē Anishinabēk" />
+      {draft && <strong className="delivery-watermark">DRAFT · MORRIS STAFF ONLY</strong>}
       <button className="exec-icon" type="button" aria-label="Close presentation" onClick={onClose}><X size={20} /></button>
     </header>
     <div className="exec-presentation-body">

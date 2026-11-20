@@ -13,6 +13,7 @@ import {
   type ReportingScope,
 } from "../src/reporting/model";
 import { approvedMember, canAccessProject } from "./authorization";
+import { readPortfolio } from "./portfolio";
 import {
   safeId,
   type TenantStore,
@@ -353,8 +354,17 @@ export class FirestoreTenantStore implements TenantStore {
     expectedRevision: number,
     portions: import("../src/reporting/model").Allocation[],
     now: number,
+    review?: { expectedSourceRevision: string; annotations: import("../src/api/types").AllocationAnnotations },
   ) {
     safeId(sourceId);
+    if (review && (this.expectedSchemaVersion !== 2 || typeof review.expectedSourceRevision !== "string" ||
+      !review.expectedSourceRevision || review.expectedSourceRevision.length > 256 ||
+      !review.annotations || typeof review.annotations !== "object" || Array.isArray(review.annotations) ||
+      Object.keys(review.annotations).some(key => !["reportingDescription", "internalNote", "parentId", "areaId"].includes(key)) ||
+      typeof review.annotations.reportingDescription !== "string" || review.annotations.reportingDescription.length > 1000 ||
+      typeof review.annotations.internalNote !== "string" || review.annotations.internalNote.length > 4000 ||
+      [review.annotations.parentId, review.annotations.areaId].some(value => value !== undefined && (typeof value !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(value)))))
+      throw Error("Invalid allocation annotations");
     if (
       !Array.isArray(portions) ||
       portions.length > 10 ||
@@ -377,6 +387,7 @@ export class FirestoreTenantStore implements TenantStore {
         const { root, record } = await this.base(tx, tenantId, subject);
         const m = approvedMember(record, tenantId, subject);
         if (m.role === "client") throw Error("Forbidden");
+        if (review && m.role !== "administrator") throw Error("Forbidden");
         if (record.revision !== expectedRevision)
           throw Error("Revision conflict");
         const rawRef = root.collection("rawTime").doc(sourceId);
@@ -392,6 +403,7 @@ export class FirestoreTenantStore implements TenantStore {
           if (!scoped.exists || scoped.data()!.schemaVersion !== 2 || scoped.data()!.tenantId !== tenantId) throw Error("Forbidden");
         }
         const raw = source.data()!.record;
+        if (review && review.expectedSourceRevision !== raw.revision) throw Error("Source conflict");
         if (
           raw.tenantId !== tenantId ||
           !/^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(raw.date)
@@ -411,6 +423,16 @@ export class FirestoreTenantStore implements TenantStore {
         )
           throw Error("Source conflict");
         const previous = head.appliedPortions ?? head.portions;
+        const annotations = review?.annotations ?? head.annotations;
+        if (review?.annotations.parentId) {
+          const parent = (await tx.get(root.collection("projects").doc(review.annotations.parentId))).data();
+          if (parent?.schemaVersion !== 2 || parent.tenantId !== tenantId || parent.id !== review.annotations.parentId)
+            throw Error("Invalid allocation parent");
+        }
+        if (review?.annotations.areaId) {
+          const portfolio = await readPortfolio(tx, root);
+          if (!portfolio.areas.some(area => area.id === review.annotations.areaId)) throw Error("Invalid allocation department");
+        }
         if (m.role !== "administrator" && !previous.length)
           throw Error("Forbidden");
         if (previous.length > 10) throw Error("Reporting capacity exceeded");
@@ -447,7 +469,9 @@ export class FirestoreTenantStore implements TenantStore {
         if (this.expectedSchemaVersion === 2 && ps.some(d => d.data()!.schemaVersion !== 2 || d.data()!.tenantId !== tenantId || d.data()!.id !== d.id)) throw Error("Forbidden");
         if (
           JSON.stringify(head.portions) === JSON.stringify(portions) &&
-          JSON.stringify(previous) === JSON.stringify(portions)
+          JSON.stringify(previous) === JSON.stringify(portions) &&
+          !head.needsReview &&
+          JSON.stringify(head.annotations) === JSON.stringify(annotations)
         )
           return { revision: record.revision, changed: false };
         const month = raw.date.slice(0, 7);
@@ -476,6 +500,8 @@ export class FirestoreTenantStore implements TenantStore {
             sourceId,
             revision,
             portions,
+            sourceRevision: raw.revision,
+            ...(annotations ? { annotations } : {}),
             actor: subject,
             at: new Date(now).toISOString(),
           },
@@ -485,6 +511,7 @@ export class FirestoreTenantStore implements TenantStore {
           portions,
           appliedPortions: portions,
           sourceRevision: raw.revision,
+          ...(annotations ? { annotations } : {}),
         });
         ids.forEach((id, i) => {
           if (!views[i].exists) throw Error("Invalid reporting summary");

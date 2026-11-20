@@ -258,7 +258,9 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
     await data(
       await req(`allocations/${id}`, {
         expectedRevision: (await root.get()).data()!.revision,
+        expectedSourceRevision: first.record.revision,
         portions: [{ projectId, seconds: 1800, description: "Manual split" }],
+        annotations: { reportingDescription: "Approved reporting text", internalNote: "Morris-only reconciliation note" },
       }),
     );
     assert.equal((await view.get()).data()!.lifetimeSeconds, 1800);
@@ -326,6 +328,9 @@ test("named emulator Time mapping, sync, replay, summary reversal and private re
       0,
     );
     assert.equal((await head.get()).data()!.needsReview, true);
+    assert.deepEqual((await head.get()).data()!.annotations, {
+      reportingDescription: "Approved reporting text", internalNote: "Morris-only reconciliation note",
+    });
     const moved = await data(
       await req("time?month=2026-10&project=synthetic-planning"),
     );

@@ -90,7 +90,7 @@ async function observe(context, page) {
   page.on("response", (r) => {
     const url = new URL(r.url());
     if (url.origin !== base.origin) return;
-    if (/\.(js|css|woff2|png|jpg|jpeg|svg|ico)$/.test(url.pathname)) {
+    if (/\.(js|css|woff2|png|jpg|jpeg|webp|svg|ico)$/.test(url.pathname)) {
       const mime = r.headers()["content-type"] ?? "";
       const asset = {
         path: url.pathname,
@@ -108,6 +108,8 @@ async function observe(context, page) {
         report.failedAssets.push({ ...asset, reason: "wrong font MIME" });
       if (/\.(jpg|jpeg)$/.test(url.pathname) && mime !== "image/jpeg")
         report.failedAssets.push({ ...asset, reason: "wrong JPEG MIME" });
+      if (url.pathname.endsWith(".webp") && mime !== "image/webp")
+        report.failedAssets.push({ ...asset, reason: "wrong WebP MIME" });
     }
   });
 }

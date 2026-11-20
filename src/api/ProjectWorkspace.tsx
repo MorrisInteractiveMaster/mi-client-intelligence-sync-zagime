@@ -9,15 +9,19 @@ import type {
   ProjectWorkspace,
 } from "../projects/model";
 import { publicProject } from "../projects/model";
-import type { StaffSource, HistoryRow } from "./types";
-import type { Allocation } from "../reporting/model";
 import { hoursToSeconds } from "../projects/duration";
-import { Activity, Clock3, FolderKanban, Layers3, LayoutGrid, Plug } from "lucide-react";
+import { Activity, Building2, CalendarDays, ChartNoAxesCombined, Clock3, FolderKanban, Layers3, LayoutGrid, Monitor, Plug, UsersRound } from "lucide-react";
 import { PortfolioAdmin } from "./PortfolioAdmin";
 import { ProjectReportPreview } from "./ProjectReportingCard";
 import { ContextHelp } from "./ContextHelp";
 import "./executive.css";
 import "./intelligence.css";
+import "./delivery-operations.css";
+import { DeliveryDirectory, DeliveryFields, DeliveryHealth, DeliveryMilestones, DeliveryPreview, projectCatalog, readDeliveryForm } from "./DeliveryOperations";
+import { TimeAllocation } from "./TimeAllocation";
+import type { Portfolio } from "../projects/portfolio";
+import type { TimeStatus } from "../projects/time";
+import { measureDelivery, rollup } from "../projects/delivery";
 import { closePortalOverlay, portalNavigate, usePortalLocation } from "./portal-location";
 import { TimeConnectionPanel } from "./TimeConnectionPanel";
 import { ProjectTimelineFields } from "./ProjectTimelineFields";
@@ -27,18 +31,25 @@ import {
   reportHours,
   reportMonth,
   reportTimestamp,
+  today,
 } from "./dashboard-format";
 
 const sections = {
-  overview: "Morris Overview",
+  overview: "Overview",
+  clients: "Clients",
   projects: "Projects",
-  portfolio: "Portfolio management",
-  hours: "Hours & allocations",
-  activity: "Audit history",
+  hours: "Time Allocation",
+  directory: "Team Directory",
+  milestones: "Milestones",
+  health: "Budgets & Delivery Health",
+  preview: "Client Preview",
   integrations: "Integrations",
+  portfolio: "Portfolio management",
+  activity: "Audit & Settings",
 };
 type Area = keyof typeof sections;
-const sectionIcons = { overview: LayoutGrid, projects: FolderKanban, portfolio: Layers3, hours: Clock3, activity: Activity, integrations: Plug };
+const sectionIcons = { overview: LayoutGrid, projects: FolderKanban, portfolio: Layers3, hours: Clock3, activity: Activity, integrations: Plug,
+  clients: Building2, directory: UsersRound, milestones: CalendarDays, health: ChartNoAxesCombined, preview: Monitor };
 const StaffPresentation = lazy(() => import("./ExecutivePresentation"));
 export function ProjectStaffWorkspace({
   client,
@@ -63,8 +74,10 @@ export function ProjectStaffWorkspace({
     revision: workspace.revision,
     projects: [],
   });
-  const [sources, setSources] = useState<StaffSource[]>();
-  const [sourceCursor, setSourceCursor] = useState<string>();
+  const [catalog, setCatalog] = useState<StaffProjectSummary[]>();
+  const [portfolio, setPortfolio] = useState<Portfolio>();
+  const [timeStatus, setTimeStatus] = useState<TimeStatus>();
+  const [catalogError, setCatalogError] = useState("");
   const [audits, setAudits] = useState<ProjectPage["audits"]>();
   const [auditCursor, setAuditCursor] = useState<string>();
   const [editing, setEditing] = useState<Project | "new">();
@@ -75,7 +88,17 @@ export function ProjectStaffWorkspace({
   const area: Area = staffRoute === "time" ? "integrations" : staffRoute && Object.hasOwn(sections, staffRoute) ? staffRoute as Area : "projects";
   const editorRoute = location.get("editor");
   const tableView = location.get("staff-layout") === "table";
-  const preview = page.projects?.find(p => p.id === location.get("staff-preview"));
+  const treeView = location.get("staff-layout") === "tree";
+  const allProjects = catalog ?? page.projects ?? [];
+  const overviewTotals = area === "overview" && catalog ? rollup(catalog) : undefined;
+  const deliveryOverview = overviewTotals && catalog ? catalog.map(p => ({
+    project: p, health: measureDelivery({ ...p, milestones: p.deliveryMilestones }, overviewTotals.get(p.id)!, today()),
+  })) : [];
+  const upcoming = deliveryOverview.filter(row => row.health.upcoming && row.health.upcoming >= today()).sort((a,b) =>
+    a.health.upcoming!.localeCompare(b.health.upcoming!)).slice(0, 5);
+  const trainings = catalog?.flatMap(p => (p.delivery?.training?.dates ?? []).filter(date => date >= today()).map(date => ({ p, date })))
+    .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5) ?? [];
+  const preview = allProjects.find(p => p.id === location.get("staff-preview"));
   const previewButton = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!editorDirty && !portfolioDirty) return;
@@ -89,11 +112,6 @@ export function ProjectStaffWorkspace({
   }, [editorDirty, portfolioDirty, location.toString()]);
   const areaHeading = useRef<HTMLHeadingElement>(null);
   const editorHeading = useRef<HTMLHeadingElement>(null);
-  const allocationHeading = useRef<HTMLHeadingElement>(null);
-  const [selected, setSelected] = useState<StaffSource>();
-  const [portions, setPortions] = useState<Allocation[]>([]);
-  const [history, setHistory] = useState<HistoryRow[]>();
-  const [historyCursor, setHistoryCursor] = useState<string>();
   const [error, setError] = useState("");
   const [listError, setListError] = useState(false);
   const [notice, setNotice] = useState("");
@@ -115,7 +133,8 @@ export function ProjectStaffWorkspace({
       setSearch("");
       setDraftSearch("");
     }
-    portalNavigate({ staff: next, editor: null, subsection: next === "portfolio" && organizing ? "placements" : null });
+    portalNavigate({ staff: next, editor: null, subsection: next === "portfolio" && organizing ? "placements" : null,
+      view: null, chart: null, present: null, q: null, status: null });
   };
   useEffect(() => {
     const original = document.title;
@@ -132,9 +151,6 @@ export function ProjectStaffWorkspace({
     if (editing) editorHeading.current?.focus();
     setEditorDirty(false);
   }, [editing]);
-  useEffect(() => {
-    if (selected) allocationHeading.current?.focus();
-  }, [selected]);
   useEffect(() => {
     if (!editorDirty) return;
     const prevent = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -159,14 +175,9 @@ export function ProjectStaffWorkspace({
     const abort = new AbortController();
     setListError(false);
     setPage({ revision: 0, projects: [] });
-    setSources(undefined);
     setAudits(undefined);
-    setSelected(undefined);
     setEditing(undefined);
-    setHistory(undefined);
-    setSourceCursor(undefined);
     setAuditCursor(undefined);
-    setHistoryCursor(undefined);
     client
       .call<ProjectPage>(tenant, "projects?" + projectQuery(), {
         signal: abort.signal,
@@ -184,6 +195,20 @@ export function ProjectStaffWorkspace({
       });
     return () => abort.abort();
   }, [client, tenant, month, epoch, search]);
+  useEffect(() => {
+    const abort = new AbortController();
+    setCatalogError("");
+    projectCatalog(client, tenant, month, abort.signal).then(value => {
+      if (!abort.signal.aborted) setCatalog(value);
+    }).catch(e => { if (!abort.signal.aborted) { setCatalog(undefined); setCatalogError(e.message); } });
+    client.call<{ portfolio: Portfolio }>(tenant, "portfolio", { signal: abort.signal }).then(value => {
+      if (!abort.signal.aborted) setPortfolio(value.portfolio);
+    }).catch(e => { if (!abort.signal.aborted) setCatalogError(e.message); });
+    client.call<TimeStatus>(tenant, "time?month=" + month, { signal: abort.signal }).then(value => {
+      if (!abort.signal.aborted) setTimeStatus(value);
+    }).catch(() => { if (!abort.signal.aborted) setTimeStatus(undefined); });
+    return () => abort.abort();
+  }, [client, tenant, month, epoch]);
   useEffect(() => {
     if (area !== "projects" || !editorRoute) { setEditing(undefined); return; }
     if (!page.revision) return;
@@ -229,6 +254,7 @@ export function ProjectStaffWorkspace({
     setEpoch((x) => x + 1);
     setNotice("Saved to the protected workspace.");
   };
+  const openDeliveryProject = (id: string) => portalNavigate({ staff: "projects", editor: id });
   async function moreProjects() {
     const p = await client.call<ProjectPage>(
       tenant,
@@ -237,29 +263,11 @@ export function ProjectStaffWorkspace({
     consistent(p);
     setPage((old) => ({ ...p, projects: [...old.projects!, ...p.projects!] }));
   }
-  async function loadSources(cursor?: string) {
-    const p = await client.call<ProjectPage>(
-      tenant,
-      "sources?" + query(cursor),
-    );
-    consistent(p);
-    setSources((old) => (cursor ? [...old!, ...p.sources!] : p.sources));
-    setSourceCursor(p.nextCursor);
-  }
   async function loadAudits(cursor?: string) {
     const p = await client.call<ProjectPage>(tenant, "audits?" + query(cursor));
     consistent(p);
     setAudits((old) => (cursor ? [...old!, ...p.audits!] : p.audits));
     setAuditCursor(p.nextCursor);
-  }
-  async function loadHistory(s: StaffSource, cursor?: string) {
-    const p = await client.call<ProjectPage>(
-      tenant,
-      `sources/${s.id}/history?` + query(cursor),
-    );
-    consistent(p);
-    setHistory((old) => (cursor ? [...old!, ...p.history!] : p.history));
-    setHistoryCursor(p.nextCursor);
   }
   return (
     <section className="secure-staff intel-staff" aria-label="Project administration">
@@ -268,7 +276,7 @@ export function ProjectStaffWorkspace({
           <p className="secure-eyebrow">
             Morris administration · {reportMonth(month)}
           </p>
-          <h2>{staffRoute === "time" ? "QuickBooks Time status" : sections[area]}</h2>
+          <h2>{staffRoute === "time" ? "QuickBooks Time status" : area === "projects" && editing ? "Project workspace" : sections[area]}</h2>
           <p>{workspace.tenant.name}</p>
         </div>
       </div>
@@ -303,14 +311,41 @@ export function ProjectStaffWorkspace({
         <span aria-current="page">{sections[area]}</span>
       </nav>}
       {area === "overview" && <section aria-label="Morris operating overview">
-        <div className="intel-pulse" aria-label="Projects on the current page">
+        <div className="intel-pulse" aria-label="Project status">
           {(["active", "planned", "completed"] as const).map(status => <button className="intel-pulse-item" key={status}
-            type="button" onClick={() => changeArea("projects")}><span>{projectStatus[status]}</span><b>{page.projects?.filter(p => p.status === status).length ?? 0}</b></button>)}
+            type="button" onClick={() => changeArea("projects")}><span>{projectStatus[status]}</span><b>{catalog?.filter(p => p.status === status).length ?? "—"}</b></button>)}
+        </div>
+        <dl className="secure-metrics">
+          <div><dt>Client workspace</dt><dd>{workspace.tenant.name}</dd></div>
+          <div><dt>Registered work orders</dt><dd>{timeStatus?.mappings.length ?? "Unavailable"}</dd></div>
+          <div><dt>Hours awaiting allocation</dt><dd>{timeStatus?.unallocatedSeconds !== undefined ? reportHours(timeStatus.unallocatedSeconds) + " h" : "Unavailable"}</dd></div>
+          <div><dt>Hours allocated</dt><dd>{catalog ? reportHours(catalog.reduce((sum, p) => sum + p.seconds, 0)) + " h" : "Loading"}</dd></div>
+          <div><dt>Blocked milestones</dt><dd>{catalog?.flatMap(p => p.deliveryMilestones ?? []).filter(m => m.status === "blocked").length ?? "—"}</dd></div>
+          <div><dt>Over cap</dt><dd>{overviewTotals ? deliveryOverview.filter(row => (row.health.monthlyRemaining ?? 0) < 0 || (row.health.lifetimeRemaining ?? 0) < 0).length : "—"}</dd></div>
+        </dl>
+        <div className="secure-actions">
+          <button type="button" onClick={() => openDeliveryProject("new")}>Create Project</button>
+          <button type="button" className="secure-secondary" onClick={() => changeArea("hours")}>Allocate Hours</button>
+          <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button>
+        </div>
+        <div className="intel-editorial">
+          <section><h3>Upcoming deadlines</h3>{upcoming.length ? <ul>{upcoming.map(({ project, health }) => <li key={project.id}><button type="button" className="exec-text-button" onClick={() => openDeliveryProject(project.id)}>{project.name}</button> · {reportDay(health.upcoming!)}</li>)}</ul> : <p className="secure-muted">No deadlines are recorded for upcoming work.</p>}</section>
+          <section><h3>Upcoming training</h3>{trainings.length ? <ul>{trainings.map(({ p, date }) => <li key={p.id + date}><button type="button" className="exec-text-button" onClick={() => openDeliveryProject(p.id)}>{p.name}</button> · {reportDay(date)}</li>)}</ul> : <p className="secure-muted">No upcoming sessions are recorded.</p>}</section>
         </div>
         <h3>Workspace</h3>
         <div className="intel-staff-overview">{Object.entries(sections).filter(([key]) => key !== "overview").map(([key,label]) =>
           <button type="button" key={key} onClick={() => changeArea(key as Area)}>{label}</button>)}</div>
       </section>}
+      {catalogError && <p role="alert" className="secure-message secure-error">{catalogError} <button type="button" className="secure-secondary" onClick={() => setEpoch(value => value + 1)}>Reload workspace lists</button></p>}
+      {area === "clients" && <section aria-label="Clients">
+        <h3>{workspace.tenant.name}</h3><p>This workspace shows the client assigned to your Morris account.</p>
+        <div className="secure-actions"><button type="button" onClick={() => changeArea("projects")}>Open client projects</button>
+          <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button></div>
+      </section>}
+      {area === "directory" && <DeliveryDirectory client={client} tenant={tenant} portfolio={portfolio} revision={page.revision} onSaved={refresh} onDenied={onDenied} />}
+      {area === "health" && <DeliveryHealth projects={allProjects} portfolio={portfolio} healthOnly onOpen={openDeliveryProject} />}
+      {area === "milestones" && <DeliveryMilestones client={client} tenant={tenant} projects={allProjects} onSaved={refresh} onOpen={openDeliveryProject} />}
+      {area === "preview" && <DeliveryPreview client={client} tenant={tenant} month={month} />}
       {error && (
         <p className="secure-message secure-error" role="alert">
           {error}
@@ -431,6 +466,7 @@ export function ProjectStaffWorkspace({
                   description: String(f.get("description")),
                   internalNotes: String(f.get("notes")),
                   workOrderReference: String(f.get("workOrder")),
+                  delivery: readDeliveryForm(f, original, portfolio?.placements.find(p => p.id === original?.id)),
                   plan: {
                     basis: String(f.get("basis")),
                     targetSeconds:
@@ -490,8 +526,8 @@ export function ProjectStaffWorkspace({
                   type="number"
                   min={0}
                   max={100}
-                  required
-                  defaultValue={editing === "new" ? 0 : editing.progress}
+                  placeholder="Not configured"
+                  defaultValue={editing === "new" ? "" : (editing.delivery?.manualCompletion ?? (editing.progress || ""))}
                 />
               </label>
               <label>
@@ -546,9 +582,11 @@ export function ProjectStaffWorkspace({
                 />
               </label>
             </fieldset>
+            <DeliveryFields project={editing === "new" ? undefined : editing} projects={allProjects} portfolio={portfolio} mappings={timeStatus?.mappings} />
             <ProjectTimelineFields
               {...{ updates, milestones, setUpdates, setMilestones }}
               disabled={busy}
+              people={portfolio?.directory}
             />
             <p>
               {editing !== "new" && editing.published
@@ -570,7 +608,8 @@ export function ProjectStaffWorkspace({
           </form>
         )}
         <div className="intel-workspace-toolbar" aria-label="Project layout">
-          <button type="button" aria-pressed={!tableView} className="secure-secondary" onClick={() => portalNavigate({ "staff-layout": null })}>Cards</button>
+          <button type="button" aria-pressed={!tableView && !treeView} className="secure-secondary" onClick={() => portalNavigate({ "staff-layout": null })}>Project list</button>
+          <button type="button" aria-pressed={treeView} className="secure-secondary" onClick={() => portalNavigate({ "staff-layout": "tree" })}>Hierarchy</button>
           <button type="button" aria-pressed={tableView} className="secure-secondary" onClick={() => portalNavigate({ "staff-layout": "table" })}>Table</button>
         </div>
         {tableView && <div className="intel-table-scroll" tabIndex={0} role="region" aria-label="Projects table">
@@ -580,7 +619,8 @@ export function ProjectStaffWorkspace({
             <td>{projectStatus[p.status]}</td><td>{p.published ? "Published" : "Unpublished"}</td><td>{reportHours(p.seconds)} h</td><td>{p.workOrderReference || "—"}</td>
           </tr>)}</tbody></table>
         </div>}
-        <div hidden={tableView} className="secure-project-grid">
+        {treeView && <DeliveryHealth projects={allProjects} portfolio={portfolio} onOpen={openDeliveryProject} />}
+        <div hidden={tableView || treeView} className="secure-project-grid delivery-project-index">
           {page.projects?.map((p) => (
             <article className="secure-card" key={p.id}>
               <div className="secure-card-flags">
@@ -600,14 +640,10 @@ export function ProjectStaffWorkspace({
                   {p.workOrderReference}
                 </p>
               )}
-              <div className="secure-progress">
-                <span>{p.progress}% progress</span>
-                <progress
-                  aria-label={p.name + " progress"}
-                  max={100}
-                  value={p.progress}
-                />
-              </div>
+              {p.progress > 0 && <div className="secure-progress">
+                <span>{p.progress}% progress · manual assessment</span>
+                <progress aria-label={p.name + " manual assessment"} max={100} value={p.progress} />
+              </div>}
               <dl className="secure-project-hours">
                 <div>
                   <dt>Allocated in {month}</dt>
@@ -653,7 +689,8 @@ export function ProjectStaffWorkspace({
                   className="secure-secondary"
                   disabled={busy}
                   aria-label={`${p.published ? "Unpublish" : "Publish"} ${p.name}`}
-                  onClick={() =>
+                  onClick={() => {
+                    if (!window.confirm(p.published ? "Remove this project from client reporting?" : "Publish approved project information to authorized clients?")) return;
                     void perform(async () => {
                       await client.call(
                         tenant,
@@ -667,8 +704,8 @@ export function ProjectStaffWorkspace({
                         },
                       );
                       refresh();
-                    })
-                  }
+                    });
+                  }}
                 >
                   {p.published ? "Unpublish" : "Publish"}
                 </button>
@@ -730,7 +767,7 @@ export function ProjectStaffWorkspace({
             month={month}
             projectId={selectedProject?.id}
             refreshVersion={epoch}
-            projects={page.projects ?? []}
+            projects={allProjects}
             busy={busy}
             run={perform}
             onChanged={() => setEpoch((x) => x + 1)}
@@ -738,242 +775,8 @@ export function ProjectStaffWorkspace({
             manage={false}
           />
         )}
-        <h3>Recorded time across projects</h3>
-        <p>
-          Splits change reporting hours. The original source entry stays intact.
-        </p>
-        {search && (
-          <button
-            className="secure-secondary"
-            disabled={busy}
-            onClick={() => {
-              setSearch("");
-              setDraftSearch("");
-            }}
-          >
-            Show all project choices
-          </button>
-        )}
-        {page.nextCursor && (
-          <button disabled={busy} onClick={() => void perform(moreProjects)}>
-            More project choices
-          </button>
-        )}
-        {!sources && (
-          <button
-            disabled={busy || page.revision === 0}
-            onClick={() => void perform(() => loadSources())}
-          >
-            Load authorized time
-          </button>
-        )}
-        {sources?.length === 0 && (
-          <p className="secure-empty">
-            No source time is available for {reportMonth(month)}.
-          </p>
-        )}
-        {sources?.map((s) => (
-          <article className="secure-card" key={s.id}>
-            <h3>
-              {reportDay(s.date)} · {reportHours(s.seconds)} h recorded
-            </h3>
-            <p>{s.description}</p>
-            <p>Approval: {s.approval ?? "unknown"}</p>
-            {s.modifiedAt && (
-              <p>
-                Source updated {reportTimestamp(s.modifiedAt)}
-                {s.deleted ? " · Deleted in QuickBooks Time" : ""}
-              </p>
-            )}
-            {s.needsReview && !s.deleted && (
-              <p role="status">
-                Source changed. Review the prior split before saving a new
-                allocation.
-              </p>
-            )}
-            <p>
-              {!s.deleted && (
-                <>
-                  {reportHours(s.seconds - s.unallocatedSeconds)} h allocated
-                  ·{" "}
-                </>
-              )}
-              {reportHours(s.unallocatedSeconds)} h unallocated
-              {s.conflict
-                ? " · Source conflict: review required before changing allocations."
-                : ""}
-            </p>
-            <button
-              disabled={busy || s.conflict}
-              onClick={() => {
-                setSelected(s);
-                setPortions(s.portions);
-                setHistory(undefined);
-                setHistoryCursor(undefined);
-              }}
-            >
-              Allocate recorded hours
-            </button>
-            <button
-              disabled={busy}
-              onClick={() =>
-                void perform(async () => {
-                  setSelected(s);
-                  setPortions(s.portions);
-                  await loadHistory(s);
-                })
-              }
-            >
-              Allocation history
-            </button>
-          </article>
-        ))}
-        {sourceCursor && (
-          <button
-            disabled={busy}
-            onClick={() => void perform(() => loadSources(sourceCursor))}
-          >
-            More recorded time
-          </button>
-        )}
-        {selected && (
-          <section
-            className="secure-card secure-allocation"
-            aria-label="Time allocation"
-          >
-            <h3 ref={allocationHeading} tabIndex={-1}>
-              Allocate {reportHours(selected.seconds)} recorded hours
-            </h3>
-            {portions.map((p, i) => (
-              <div className="secure-split" key={i}>
-                <label>
-                  Delivery project
-                  <select
-                    aria-label="Delivery project"
-                    value={p.projectId}
-                    onChange={(e) =>
-                      setPortions((old) =>
-                        old.map((v, n) =>
-                          n === i ? { ...v, projectId: e.target.value } : v,
-                        ),
-                      )
-                    }
-                  >
-                    <option value="">Choose project</option>
-                    {!page.projects?.some((v) => v.id === p.projectId) &&
-                      p.projectId && (
-                        <option value={p.projectId}>
-                          Existing project {p.projectId}
-                        </option>
-                      )}
-                    {page.projects?.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Allocated seconds
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={p.seconds}
-                    onChange={(e) =>
-                      setPortions((old) =>
-                        old.map((v, n) =>
-                          n === i
-                            ? { ...v, seconds: Number(e.target.value) }
-                            : v,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-                <span>{reportHours(p.seconds)} h</span>
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    setPortions((old) => old.filter((_, n) => n !== i))
-                  }
-                >
-                  Remove split
-                </button>
-              </div>
-            ))}
-            <p>
-              {reportHours(
-                portions.reduce((sum, portion) => sum + portion.seconds, 0),
-              )}{" "}
-              h in this split · {reportHours(selected.seconds)} h recorded.
-              Enter split durations in seconds (1 h = 3,600 seconds).
-            </p>
-            <button
-              disabled={busy || portions.length >= 10 || selected.conflict}
-              onClick={() =>
-                setPortions((old) => [
-                  ...old,
-                  { projectId: "", seconds: 0, description: "" },
-                ])
-              }
-            >
-              Add split
-            </button>
-            <button
-              disabled={
-                busy ||
-                selected.conflict ||
-                portions.some(
-                  (p) =>
-                    !p.projectId ||
-                    !Number.isSafeInteger(p.seconds) ||
-                    p.seconds <= 0,
-                ) ||
-                new Set(portions.map((p) => p.projectId)).size !==
-                  portions.length ||
-                portions.reduce((sum, p) => sum + p.seconds, 0) >
-                  selected.seconds
-              }
-              onClick={() =>
-                void perform(async () => {
-                  await client.call(tenant, `allocations/${selected.id}`, {
-                    method: "PATCH",
-                    body: { expectedRevision: page.revision, portions },
-                  });
-                  refresh();
-                })
-              }
-            >
-              Save allocation
-            </button>
-            <button
-              className="secure-secondary"
-              disabled={busy}
-              onClick={() => setSelected(undefined)}
-            >
-              Close allocation
-            </button>
-            {history?.length === 0 && <p>No allocation revisions yet.</p>}
-            {history?.map((r) => (
-              <p key={r.revision}>
-                Revision {r.revision} · {reportTimestamp(r.at)} ·{" "}
-                {reportHours(r.portions.reduce((n, p) => n + p.seconds, 0))} h
-                allocated
-              </p>
-            ))}
-            {historyCursor && (
-              <button
-                disabled={busy}
-                onClick={() =>
-                  void perform(() => loadHistory(selected, historyCursor))
-                }
-              >
-                More allocation history
-              </button>
-            )}
-          </section>
-        )}
+        {area === "hours" && <TimeAllocation client={client} tenant={tenant} month={month} projects={allProjects}
+          portfolio={portfolio} onDenied={onDenied} onSaved={() => setEpoch(value => value + 1)} />}
       </section>
       <section hidden={area !== "activity"} aria-labelledby="staff-audits">
         <h2
@@ -1045,7 +848,7 @@ export function ProjectStaffWorkspace({
               tenant={tenant}
               month={month}
               refreshVersion={epoch}
-              projects={page.projects ?? []}
+            projects={allProjects}
               busy={busy}
               run={perform}
               onChanged={() => setEpoch((value) => value + 1)}

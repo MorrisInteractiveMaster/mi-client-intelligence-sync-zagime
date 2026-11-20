@@ -1,5 +1,6 @@
-import { previousReportingMonth, type PortfolioSection, type PortfolioTotals } from "../src/projects/portfolio";
-import { publishedPortfolio, readPortfolio, savePortfolioRecord } from "./portfolio";
+import { portfolioLimits, previousReportingMonth, type PortfolioSection, type PortfolioTotals, type WordPressProfile } from "../src/projects/portfolio";
+import { portfolioRef, publishedPortfolio, readPortfolio, savePortfolioRecord } from "./portfolio";
+import { mergeDirectory, wordpressProfiles } from "./wordpress-team";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -28,8 +29,9 @@ import {
   type ProjectReport,
   type ProjectPage,
 } from "../src/projects/model";
-import type { PageQuery } from "../src/api/types";
+import type { AllocationAnnotations, PageQuery } from "../src/api/types";
 import type { Allocation } from "../src/reporting/model";
+import { checkHierarchy, deliveryDate, MAX_DELIVERY_PROJECTS, measureDelivery, type Delivery } from "../src/projects/delivery";
 
 /** Project operations require a verified named database and its tenant binding. */
 export class ProjectStore {
@@ -178,12 +180,39 @@ export class ProjectStore {
                   plan: old.plan,
                   ...(managed.updates === undefined ? {} : { updates: old.updates ?? [] }),
                   ...(managed.milestones === undefined ? {} : { milestones: old.milestones ?? [] }),
+                  ...(managed.delivery === undefined ? {} : { delivery: old.delivery }),
                 }),
                 managed,
               )
             : old.published === options.published)
         )
           return { id, revision: a.meta.revision, changed: false };
+        if (managed?.delivery || managed?.milestones?.some(m => m.ownerId)) {
+          const portfolio = await readPortfolio(tx, a.root);
+          const delivery = managed.delivery;
+          const people = new Set(portfolio.directory.map(person => person.id));
+          if ([...(delivery?.managerIds ?? []), ...(delivery?.teamIds ?? []),
+            ...(delivery?.training?.facilitatorIds ?? []), ...(managed.milestones ?? []).flatMap(m => m.ownerId ? [m.ownerId] : [])].some(person => !people.has(person)) ||
+            (delivery?.areaId && !portfolio.areas.some(area => area.id === delivery.areaId)) ||
+            (delivery?.groupId && !portfolio.engagements.some(group => group.id === delivery.groupId))) throw Error("Invalid delivery references");
+          if (delivery?.parentId !== old?.delivery?.parentId) {
+            const nodes = await tx.get(a.root.collection("projects").where("schemaVersion", "==", 2).limit(MAX_DELIVERY_PROJECTS + 1));
+            if (nodes.size + (old ? 0 : 1) > MAX_DELIVERY_PROJECTS) throw Error("Invalid hierarchy capacity");
+            const parents = new Map(nodes.docs.map(node => {
+              const row = node.data() as Project;
+              if (row.tenantId !== tenant || row.id !== node.id) throw Error("Forbidden");
+              return [node.id, row.delivery?.parentId] as const;
+            }));
+            parents.set(id, delivery?.parentId);
+            checkHierarchy(parents);
+          }
+          const jobs = delivery?.workOrderIds;
+          if (jobs?.length && !isDeepStrictEqual(jobs, old?.delivery?.workOrderIds)) {
+            const verified = await tx.get(a.root.collection("timeMappings").where("jobcodeId", "in", jobs).limit(100));
+            if (jobs.some(job => !verified.docs.some(doc => doc.data().jobcodeId === job && doc.data().sourceJob?.missing !== true)))
+              throw Error("Invalid work order selection");
+          }
+        }
         const at = new Date(now).toISOString();
         const p: Project = old
           ? {
@@ -221,7 +250,7 @@ export class ProjectStore {
         tx.set(ref, p);
         tx.set(viewRef, {
           ...projectView(p, view?.data()?.lifetimeSeconds ?? 0),
-          ...approvedProjectContent(p),
+          ...approvedProjectContent(p, false),
         });
         const auditId = randomUUID();
         tx.create(a.root.collection("audits").doc(auditId), {
@@ -308,23 +337,36 @@ export class ProjectStore {
     tenant: string,
     who: VerifiedIdentity,
     month: string,
+    preview?: { mode: "published" | "draft"; scope?: string },
   ): Promise<ProjectReport> {
     checkMonth(month);
     return this.db.runTransaction(async (tx) => {
       const a = await this.access(tx, tenant, who);
-      if (a.staff) throw Error("Invalid staff report; use project pages");
-      const views = a.projectIds.length
+      if (a.staff !== Boolean(preview)) throw Error("Forbidden");
+      let projectIds = a.projectIds;
+      if (preview?.mode === "published") {
+        if (!preview.scope) throw Error("Invalid preview scope");
+        const member = (await tx.get(a.root.collection("memberships").doc(safeId(preview.scope)))).data();
+        if (member?.schemaVersion !== 2 || member.tenantId !== tenant || member.role !== "client" || !member.enabled || !member.approved ||
+          (assertProjectDatabase(this.db).mode === "production" && (typeof member.googleSubject !== "string" || !member.googleSubject)) ||
+          !Array.isArray(member.projectIds) || member.projectIds.length > 100) throw Error("Forbidden");
+        projectIds = [...new Set<string>(member.projectIds.map((id: string) => safeId(id)))].sort();
+      }
+      const views = preview?.mode === "draft"
+        ? (await tx.get(a.root.collection("projectViews").where("schemaVersion", "==", 2).limit(MAX_DELIVERY_PROJECTS + 1))).docs
+        : projectIds.length
         ? await tx.getAll(
-            ...a.projectIds.map((id) =>
+            ...projectIds.map((id) =>
               a.root.collection("projectViews").doc(id),
             ),
           )
         : [];
+      if (views.length > MAX_DELIVERY_PROJECTS) throw Error("Invalid hierarchy capacity");
       const visible = views.filter(
         (v) =>
           v.exists &&
           v.data()!.schemaVersion === 2 &&
-          v.data()!.published === true,
+          (v.data()!.published === true || preview?.mode === "draft"),
       );
       if (
         visible.some(
@@ -352,7 +394,38 @@ export class ProjectStore {
         if (!Number.isSafeInteger(seconds)) throw Error("Invalid reporting summary");
         return { month: prior, seconds };
       }));
-      const portfolio = publishedPortfolio(await readPortfolio(tx, a.root), projects, month, history);
+      const config = await readPortfolio(tx, a.root);
+      const delivery: Map<string, Delivery> = new Map();
+      const details = visible.length ? await tx.getAll(...visible.map(v => a.root.collection("projects").doc(v.id))) : [];
+      const visibleIds = new Set(projects.map(project => project.id));
+      const byId = new Map(projects.map(project => [project.id, project]));
+      const hierarchy: NonNullable<ProjectReport["hierarchy"]> = Object.create(null);
+      for (const doc of details) {
+        const project = doc.data() as Project | undefined;
+        if (!project || project.id !== doc.id || project.tenantId !== tenant || project.schemaVersion !== 2) continue;
+        const publishedView = byId.get(doc.id)!;
+        if (project.milestones?.some(milestone => !milestone.date && milestone.visible)) {
+          const approved = approvedProjectContent(project);
+          publishedView.milestones = publicProject({ ...projectView(project, publishedView.lifetimeSeconds), ...approved }, publishedView.seconds).milestones;
+        }
+        if (!project.delivery) continue;
+        const settings = project.delivery;
+        delivery.set(doc.id, settings);
+        const summary = measureDelivery({ ...publishedView, milestones: project.milestones?.filter(m => m.visible), delivery: settings },
+          { monthly: publishedView.seconds, lifetime: publishedView.lifetimeSeconds }, deliveryDate());
+        hierarchy[doc.id] = {
+          ...(settings.parentId && visibleIds.has(settings.parentId) ? { parentId: settings.parentId } : {}),
+          ...(summary.completion !== undefined ? { completion: summary.completion } : {}),
+          ...(settings.publishSummary ? {
+            type: settings.type,
+            ...(settings.monthlyCap !== undefined ? { monthlyCap: settings.monthlyCap } : {}),
+            ...(settings.lifetimeCap !== undefined ? { lifetimeCap: settings.lifetimeCap } : {}),
+            ...(settings.start ? { start: settings.start } : {}),
+            ...(settings.deadline ? { deadline: settings.deadline } : {}),
+          } : {}),
+        };
+      }
+      const portfolio = publishedPortfolio(config, projects, month, history, delivery);
       const totalSeconds = projects.reduce((n, p) => n + p.seconds, 0);
       if (!Number.isSafeInteger(totalSeconds))
         throw Error("Invalid reporting summary");
@@ -362,7 +435,43 @@ export class ProjectStore {
         totalSeconds,
         projects,
         portfolio,
+        ...(Object.keys(hierarchy).length ? { hierarchy } : {}),
       };
+    });
+  }
+  async previewScopes(tenant: string, who: VerifiedIdentity) {
+    return this.db.runTransaction(async tx => {
+      const a = await this.access(tx, tenant, who);
+      if (!a.staff) throw Error("Forbidden");
+      const members = await tx.get(a.root.collection("memberships").limit(250));
+      return members.docs.filter(doc => {
+        const m = doc.data();
+        return m.schemaVersion === 2 && m.tenantId === tenant && m.role === "client" && m.approved && m.enabled &&
+          (assertProjectDatabase(this.db).mode !== "production" || typeof m.googleSubject === "string" && Boolean(m.googleSubject));
+      }).map((doc, i) => ({ id: doc.id, label: "Client access profile " + (i + 1) + " · " + (doc.data().projectIds?.length ?? 0) + " permitted projects" }));
+    });
+  }
+  async syncDirectory(tenant: string, who: VerifiedIdentity, profiles: () => Promise<WordPressProfile[]>, now: number) {
+    await this.db.runTransaction(async tx => {
+      if (!(await this.access(tx, tenant, who)).staff) throw Error("Forbidden");
+    });
+    let imported: WordPressProfile[];
+    try { imported = await profiles(); }
+    catch { throw Error("WordPress team is temporarily unavailable"); }
+    return this.db.runTransaction(async tx => {
+      const a = await this.access(tx, tenant, who);
+      if (!a.staff) throw Error("Forbidden");
+      const portfolio = await readPortfolio(tx, a.root);
+      const directory = mergeDirectory(portfolio.directory, imported);
+      if (directory.length > portfolioLimits.directory || Buffer.byteLength(JSON.stringify({ ...portfolio, directory })) > 750_000) throw Error("Invalid directory capacity");
+      if (isDeepStrictEqual(directory, portfolio.directory)) return { revision: a.meta.revision, profiles: imported.length, changed: false };
+      const revision = a.meta.revision + 1;
+      const id = randomUUID();
+      tx.set(portfolioRef(a.root), { portfolio: { ...portfolio, directory } });
+      tx.update(a.root, { revision });
+      tx.create(a.root.collection("audits").doc(id), { id, tenantId: tenant, actor: who.subject,
+        entityId: "wordpress-team", action: "wordpress-directory-synced", at: new Date(now).toISOString(), revision });
+      return { revision, profiles: imported.length, changed: true };
     });
   }
   async page(
@@ -504,6 +613,8 @@ export class ProjectStore {
               views[i].data()!.lifetimeSeconds,
             ),
             seconds: periodSeconds(periods[i], d.id, query.month),
+            ...(d.data().delivery ? { delivery: d.data().delivery as Delivery } : {}),
+            ...(d.data().milestones ? { deliveryMilestones: d.data().milestones as Project["milestones"] } : {}),
             ...(d.data().workOrderReference ? { workOrderReference: String(d.data().workOrderReference) } : {}),
           };
         });
@@ -536,6 +647,13 @@ export class ProjectStore {
               ),
             )
           : [];
+        const mappingRefs = docs.map(doc => {
+          const envelope = doc.data();
+          return envelope.source === "quickbooks-time" && envelope.sourceCompanyId && envelope.record?.sourceWorkOrderId
+            ? a.root.collection("timeMappings").doc(key(envelope.sourceCompanyId, envelope.record.sourceWorkOrderId)) : undefined;
+        });
+        const uniqueRefs = [...new Map(mappingRefs.flatMap(ref => ref ? [[ref.path, ref] as const] : [])).values()];
+        const mappings = new Map(uniqueRefs.length ? (await tx.getAll(...uniqueRefs)).map(doc => [doc.ref.path, doc.data()]) : []);
         out.sources = docs.map((d, i) => {
           const r = d.data().record,
             h = heads[i].data();
@@ -550,12 +668,17 @@ export class ProjectStore {
             throw Error("Invalid scoped source");
           const portions: Allocation[] = h?.portions ?? [],
             applied: Allocation[] = h?.appliedPortions ?? portions;
+          const mapRef = mappingRefs[i];
+          const workOrderName: unknown = mapRef ? mappings.get(mapRef.path)?.sourceJob?.name : scoped[i].data()!.workOrderReference;
           return {
             id: d.id,
             date: r.date,
             seconds: r.seconds,
             description: r.description,
             sourceWorkOrderId: r.sourceWorkOrderId,
+            ...(r.sourcePersonId ? { sourcePersonId: r.sourcePersonId } : {}),
+            ...(typeof workOrderName === "string" && workOrderName ? { workOrderName } : {}),
+            ...(h?.annotations ? { annotations: h.annotations } : {}),
             sourceRevision: r.revision,
             approval: ["pending", "submitted", "approved", "rejected"].includes(
               d.data().approval,
@@ -593,6 +716,8 @@ export class ProjectStore {
             at: r.at,
             actor: r.actor,
             portions: r.portions,
+            ...(r.annotations ? { annotations: r.annotations } : {}),
+            ...(r.sourceRevision ? { sourceRevision: r.sourceRevision } : {}),
           };
         });
       else
@@ -636,6 +761,7 @@ export class ProjectBackend {
     readonly store: ProjectStore,
     private verifier: IdentityVerifier,
     private policy: IdentityPolicy,
+    private directorySource: () => Promise<WordPressProfile[]> = wordpressProfiles,
   ) {}
   async identity(authorization: string) {
     if (!/^Bearer [^\s]{1,8192}$/.test(authorization))
@@ -657,8 +783,14 @@ export class ProjectBackend {
   async workspace(token: string, tenant: string) {
     return this.store.workspace(tenant, await this.identity(token));
   }
-  async report(token: string, tenant: string, month: string) {
-    return this.store.report(tenant, await this.identity(token), month);
+  async report(token: string, tenant: string, month: string, preview?: { mode: "published" | "draft"; scope?: string }) {
+    return this.store.report(tenant, await this.identity(token), month, preview);
+  }
+  async previewScopes(token: string, tenant: string) {
+    return this.store.previewScopes(tenant, await this.identity(token));
+  }
+  async syncDirectory(token: string, tenant: string) {
+    return this.store.syncDirectory(tenant, await this.identity(token), this.directorySource, this.policy.now());
   }
   async page(
     token: string,
@@ -696,6 +828,7 @@ export class ProjectBackend {
     sourceId: string,
     expectedRevision: number,
     portions: Allocation[],
+    review?: { expectedSourceRevision: string; annotations: AllocationAnnotations },
   ) {
     assertProjectDatabase(this.store.db);
     const who = await this.identity(token);
@@ -712,6 +845,7 @@ export class ProjectBackend {
       expectedRevision,
       portions,
       this.policy.now(),
+      review,
     );
   }
 }

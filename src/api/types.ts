@@ -32,6 +32,9 @@ export interface StaffSource {
   seconds: number;
   description: string;
   sourceWorkOrderId: string;
+  workOrderName?: string;
+  sourcePersonId?: string;
+  annotations?: AllocationAnnotations;
   sourceRevision: string;
   allocationRevision: number;
   portions: Allocation[];
@@ -43,6 +46,14 @@ export interface HistoryRow {
   at: string;
   actor?: string;
   portions: Allocation[];
+  annotations?: AllocationAnnotations;
+  sourceRevision?: string;
+}
+export interface AllocationAnnotations {
+  reportingDescription: string;
+  internalNote: string;
+  parentId?: string;
+  areaId?: string;
 }
 export interface StaffPage {
   audits?: { id: string; action: string; entityId: string; actor: string; at: string; revision: number }[];

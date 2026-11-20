@@ -134,7 +134,9 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
         case "notes":
           entry = { id: editing.id, month: editing.id, narrative: get("narrative"), action: get("action"), visible }; break;
       }
-      const value = await client.call<Snapshot>(tenant, "portfolio", { method: "PATCH", body: { expectedRevision: snapshot.revision, section, record: entry } });
+      const capInput = (key: string) => data.has(key) ? (get(key) === "" ? null : displayHours(key)) : undefined;
+      const caps = section === "areas" || section === "engagements" ? { monthlyCap: capInput("monthlyCap"), lifetimeCap: capInput("lifetimeCap") } : {};
+      const value = await client.call<Snapshot>(tenant, "portfolio", { method: "PATCH", body: { expectedRevision: snapshot.revision, section, record: { ...entry, ...caps } } });
       if (!alive.current) return;
       setSnapshot(value);
       setEditing(undefined);
@@ -199,6 +201,10 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
           <label>Display order<input name="order" type="number" min="0" max="1000" defaultValue={record.order} required /></label>
         </>}
         {"description" in record && <label className="exec-span">Description<textarea name="description" defaultValue={record.description} maxLength={500} /></label>}
+        {("areaPlans" in record || "description" in record) && <>
+          <label>Monthly hours cap<input name="monthlyCap" inputMode="decimal" defaultValue={record.monthlyCap === undefined ? "" : numeric(record.monthlyCap)} placeholder="No cap" /></label>
+          <label>Lifetime hours cap<input name="lifetimeCap" inputMode="decimal" defaultValue={record.lifetimeCap === undefined ? "" : numeric(record.lifetimeCap)} placeholder="No cap" /></label>
+        </>}
         {"areaPlans" in record && <>
           <label>Internal reference<input name="reference" defaultValue={record.reference} maxLength={120} /></label>
           <label>Monthly group capacity (hours)<input name="capacity" type="number" step="any" min="0" max="1000000" defaultValue={numeric(record.monthlySeconds)} /></label>
@@ -206,7 +212,7 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
           {[...config.areas].sort(byOrder).map(a => <label key={a.id}>{a.name} monthly capacity (hours)<input name={"plan:" + a.id} type="number" step="any" min="0" max="1000000" defaultValue={record.areaPlans.find(p => p.areaId === a.id)?.seconds !== undefined ? numeric(record.areaPlans.find(p => p.areaId === a.id)!.seconds) : ""} /></label>)}
         </>}
         {"internalContact" in record && <>
-          <label>Role or title<input name="role" defaultValue={record.role} maxLength={120} required /></label>
+          <label>Public role or title<input name="role" defaultValue={record.role} maxLength={120} /></label>
           {areaSelect(record.areaId)}
           <label>Morris-only contact<input name="internalContact" defaultValue={record.internalContact} maxLength={200} /></label>
           <label>Approved client contact<input name="publicContact" defaultValue={record.publicContact} maxLength={200} /></label>

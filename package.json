@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
-    "test": "node --import tsx --test src/domain/*.test.ts src/services/*.test.ts src/reporting/*.test.ts server/*.test.ts src/api/*.test.ts",
+    "test": "node --import tsx --test src/domain/*.test.ts src/services/*.test.ts src/reporting/*.test.ts server/*.test.ts src/api/*.test.ts src/projects/*.test.ts",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test:security": "node scripts/run-security-emulator.cjs",
@@ -24,6 +24,7 @@
     "framer-motion": "^12.16.0",
     "jose": "6.2.17",
     "lucide-react": "^0.511.0",
+    "parse5": "^7.3.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.2",

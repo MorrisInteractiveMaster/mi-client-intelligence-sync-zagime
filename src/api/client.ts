@@ -89,7 +89,8 @@ export class SecuredApiClient {
     if (!this.enabled) throw Error("Protected workspace is disabled");
     if (
       !/^[-a-zA-Z0-9_]{1,128}$/.test(tenant) ||
-      !/^(report|workspace|projects|sources|allocations|audits|time|portfolio)([/?].*)?$/.test(path)
+      (!/^(report|workspace|projects|sources|allocations|audits|time|portfolio)([/?].*)?$/.test(path) &&
+        !(this.workflow === "projects" && /^(client-preview(?:\/scopes|\?.*)?|directory\/wordpress-sync)$/.test(path)))
     )
       throw Error("Invalid reporting scope");
     const token = await this.token();
@@ -122,6 +123,8 @@ export class SecuredApiClient {
       throw new ApiError(
         code === "migration_required"
           ? "This workspace needs a reviewed project-data migration. Contact Morris Interactive."
+          : code === "wordpress_unavailable"
+          ? "Morris WordPress is temporarily unavailable. Stored profiles and assignments are still available."
           : r.status === 401
           ? "Please sign in again."
           : r.status === 403

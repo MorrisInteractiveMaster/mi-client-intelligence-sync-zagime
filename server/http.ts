@@ -300,7 +300,9 @@ export function apiServer(
       if (res.destroyed) return;
       const msg = e instanceof Error ? e.message : "";
       const [status, error] =
-        msg === "Time sync busy" || msg === "Time mapping conflict"
+        msg === "WordPress team is temporarily unavailable"
+          ? [503, "wordpress_unavailable"]
+          : msg === "Time sync busy" || msg === "Time mapping conflict"
           ? [409, "time_conflict"]
           : options.projects && msg === "Invalid reporting summary"
           ? [503, "temporarily_unavailable"]
