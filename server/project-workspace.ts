@@ -2,6 +2,7 @@ import { readSourcePage } from "./source-page";
 import { portfolioLimits, previousReportingMonth, type PortfolioSection, type PortfolioTotals, type WordPressProfile } from "../src/projects/portfolio";
 import { portfolioRef, publishedPortfolio, readPortfolio, savePortfolioRecord } from "./portfolio";
 import { mergeDirectory, wordpressProfiles } from "./wordpress-team";
+import { employeeMappingChange, employeeMappingsPage, saveEmployeeMapping } from "./employee-mapping";
 import { approvedContent, contentFingerprint, draftMetadata, draftRef, overlayProject, readProjectDraft, type ProjectDraftDocument } from "./project-drafts";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -36,12 +37,15 @@ import {
 } from "../src/projects/model";
 import type { AllocationAnnotations, PageQuery } from "../src/api/types";
 import type { Allocation } from "../src/reporting/model";
-import { checkHierarchy, deliveryDate, MAX_DELIVERY_PROJECTS, measureDelivery, type Delivery } from "../src/projects/delivery";
+import { portalSettings, type PlatformControl, type PortalSettings } from "../src/projects/control";
+import { capRollup, checkDeliveryStructure, deliveryDate, MAX_DELIVERY_PROJECTS, measureDelivery, type Delivery } from "../src/projects/delivery";
 
 /** Project operations require a verified named database and its tenant binding. */
 export class ProjectStore {
-  constructor(readonly db: Firestore) {
+  constructor(readonly db: Firestore, readonly platformAdminUid?: string) {
     assertProjectDatabase(db);
+    if (platformAdminUid !== undefined && !/^[-a-zA-Z0-9_]{1,128}$/.test(platformAdminUid))
+      throw Error("Invalid platform administrator configuration");
   }
   async access(tx: Transaction, tenant: string, who: VerifiedIdentity) {
     const target = assertProjectDatabase(this.db);
@@ -87,6 +91,7 @@ export class ProjectStore {
       root,
       meta,
       staff,
+      platformAdmin: staff && this.platformAdminUid === who.subject,
       projectIds: staff
         ? ([] as string[])
         : [...new Set<string>(m!.projectIds)].sort(),
@@ -99,9 +104,10 @@ export class ProjectStore {
     return this.db.runTransaction(async (tx) => {
       const a = await this.access(tx, tenant, who);
       return {
-        tenant: { id: tenant, name: a.meta.name },
+        tenant: { id: tenant, name: portalSettings(a.meta.portalSettings).clientLabel || a.meta.name },
         role: a.staff ? "staff" : "client",
         revision: a.staff ? a.meta.revision : 0,
+        ...(a.platformAdmin ? { platformAdmin: true as const } : {}),
         ...(a.staff
           ? {
               integrations: {
@@ -111,6 +117,25 @@ export class ProjectStore {
             }
           : {}),
       };
+    });
+  }
+  async control(tenant: string, who: VerifiedIdentity, update?: { expectedRevision: number; settings: PortalSettings }, now = Date.now()): Promise<PlatformControl> {
+    return this.db.runTransaction(async tx => {
+      const access = await this.access(tx, tenant, who);
+      if (!access.platformAdmin) throw Error("Forbidden");
+      const current = portalSettings(access.meta.portalSettings);
+      if (!update) return { settings: current, revision: access.meta.revision };
+      if (update.expectedRevision !== access.meta.revision) throw Error("Revision conflict");
+      const settings = portalSettings(update.settings);
+      if (isDeepStrictEqual(settings, current)) return { settings, revision: access.meta.revision };
+      const revision = access.meta.revision + 1, id = randomUUID();
+      if (!Number.isSafeInteger(revision)) throw Error("Invalid revision");
+      tx.update(access.root, { portalSettings: settings, revision });
+      tx.create(access.root.collection("audits").doc(id), {
+        id, tenantId: tenant, actor: who.subject, action: "portal-settings-changed", entityId: tenant,
+        at: new Date(now).toISOString(), revision,
+      });
+      return { settings, revision };
     });
   }
   async save(
@@ -135,6 +160,8 @@ export class ProjectStore {
       async (tx) => {
         const a = await this.access(tx, tenant, who);
         if (!a.staff) throw Error("Forbidden");
+        if ((options.published !== undefined || options.draftAction === "publish") &&
+          portalSettings(a.meta.portalSettings).ownerPublishes && !a.platformAdmin) throw Error("Platform publication approval required");
         const idemRef = idem
           ? a.root.collection("idempotency").doc(key("project-v2", idem.id))
           : undefined;
@@ -187,16 +214,20 @@ export class ProjectStore {
             ...(delivery?.training?.facilitatorIds ?? []), ...(managed.milestones ?? []).flatMap(m => m.ownerId ? [m.ownerId] : [])].some(person => !people.has(person)) ||
             (delivery?.areaId && !portfolio.areas.some(area => area.id === delivery.areaId)) ||
             (delivery?.groupId && !portfolio.engagements.some(group => group.id === delivery.groupId))) throw Error("Invalid delivery references");
-          if (delivery?.parentId !== old?.delivery?.parentId) {
+          if (old?.delivery?.structure === 2 && delivery?.structure !== 2) throw Error("Invalid project hierarchy");
+          if (!old || delivery?.kind !== old.delivery?.kind || delivery?.structure !== old.delivery?.structure ||
+            delivery?.parentId !== old.delivery?.parentId || delivery?.areaId !== old.delivery?.areaId) {
             const nodes = await tx.get(a.root.collection("projects").where("schemaVersion", "==", 2).limit(MAX_DELIVERY_PROJECTS + 1));
             if (nodes.size + (old ? 0 : 1) > MAX_DELIVERY_PROJECTS) throw Error("Invalid hierarchy capacity");
-            const parents = new Map(nodes.docs.map(node => {
+            const graph = new Map(nodes.docs.map(node => {
               const row = node.data() as Project;
               if (row.tenantId !== tenant || row.id !== node.id) throw Error("Forbidden");
-              return [node.id, row.delivery?.parentId] as const;
+              return [node.id, row.delivery] as const;
             }));
-            parents.set(id, delivery?.parentId);
-            checkHierarchy(parents);
+            if (delivery?.parentId !== old?.delivery?.parentId && delivery?.structure !== 2)
+              throw Error("Invalid project hierarchy");
+            graph.set(id, delivery);
+            checkDeliveryStructure(graph);
           }
           const jobs = delivery?.workOrderIds;
           if (jobs?.length && !isDeepStrictEqual(jobs, old?.delivery?.workOrderIds)) {
@@ -413,22 +444,27 @@ export class ProjectStore {
       const delivery: Map<string, Delivery> = new Map();
       const visibleIds = new Set(projects.map(project => project.id));
       const byId = new Map(projects.map(project => [project.id, project]));
+      for (const project of projectDetails) {
+        if (project?.delivery) delivery.set(project.id, project.delivery);
+      }
+      const caps = capRollup(projects.map(project => ({ ...project, delivery: delivery.get(project.id) })));
       const hierarchy: NonNullable<ProjectReport["hierarchy"]> = Object.create(null);
       for (const project of projectDetails) {
         if (!project) continue;
         const publishedView = byId.get(project.id)!;
         if (!project.delivery) continue;
         const settings = project.delivery;
-        delivery.set(project.id, settings);
+        const cap = caps.get(project.id)!;
         const summary = measureDelivery({ ...publishedView, milestones: project.milestones?.filter(m => m.visible), delivery: settings },
-          { monthly: publishedView.seconds, lifetime: publishedView.lifetimeSeconds }, deliveryDate());
+          cap, deliveryDate());
         hierarchy[project.id] = {
+          ...(settings.structure === 2 ? { kind: settings.kind } : {}),
           ...(settings.parentId && visibleIds.has(settings.parentId) ? { parentId: settings.parentId } : {}),
           ...(summary.completion !== undefined ? { completion: summary.completion } : {}),
           ...(settings.publishSummary ? {
             type: settings.type,
-            ...(settings.monthlyCap !== undefined ? { monthlyCap: settings.monthlyCap } : {}),
-            ...(settings.lifetimeCap !== undefined ? { lifetimeCap: settings.lifetimeCap } : {}),
+            ...(settings.monthlyCap !== undefined ? { monthlyCap: settings.monthlyCap, monthlyCapUsed: cap.monthly } : {}),
+            ...(settings.lifetimeCap !== undefined ? { lifetimeCap: settings.lifetimeCap, lifetimeCapUsed: cap.lifetime } : {}),
             ...(settings.start ? { start: settings.start } : {}),
             ...(settings.deadline ? { deadline: settings.deadline } : {}),
           } : {}),
@@ -436,12 +472,14 @@ export class ProjectStore {
       }
       const portfolio = publishedPortfolio(config, projects, month, history, delivery);
       const totalSeconds = projects.reduce((n, p) => n + p.seconds, 0);
+      const settings = portalSettings(a.meta.portalSettings);
       if (!Number.isSafeInteger(totalSeconds))
         throw Error("Invalid reporting summary");
       return {
-        tenant: { id: tenant, name: a.meta.name },
+        tenant: { id: tenant, name: settings.clientLabel || a.meta.name },
         month,
         totalSeconds,
+        ...(settings.presentationTitle ? { presentationTitle: settings.presentationTitle } : {}),
         projects,
         portfolio,
         ...(Object.keys(hierarchy).length ? { hierarchy } : {}),
@@ -697,6 +735,9 @@ export class ProjectBackend {
   async workspace(token: string, tenant: string) {
     return this.store.workspace(tenant, await this.identity(token));
   }
+  async control(token: string, tenant: string, update?: { expectedRevision: number; settings: PortalSettings }) {
+    return this.store.control(tenant, await this.identity(token), update, this.policy.now());
+  }
   async report(token: string, tenant: string, month: string, preview?: { mode: "published" | "draft"; scope?: string }) {
     return this.store.report(tenant, await this.identity(token), month, preview);
   }
@@ -705,6 +746,21 @@ export class ProjectBackend {
   }
   async syncDirectory(token: string, tenant: string) {
     return this.store.syncDirectory(tenant, await this.identity(token), this.directorySource, this.policy.now());
+  }
+  async employeeMappings(token: string, tenant: string, cursor?: string) {
+    const who = await this.identity(token);
+    return this.store.db.runTransaction(async tx => {
+      const access = await this.store.access(tx, tenant, who);
+      return employeeMappingsPage(tx, { ...access, meta: { revision: access.meta.revision } }, who.subject, cursor);
+    }, { readOnly: true });
+  }
+  async changeEmployeeMapping(token: string, tenant: string, raw: Record<string, unknown>) {
+    const who = await this.identity(token);
+    return this.store.db.runTransaction(async tx => {
+      const access = await this.store.access(tx, tenant, who);
+      if (!access.platformAdmin) throw Error("Forbidden");
+      return saveEmployeeMapping(tx, { ...access, meta: { revision: access.meta.revision } }, who.subject, employeeMappingChange(raw), this.policy.now());
+    });
   }
   async page(
     token: string,

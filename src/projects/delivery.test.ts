@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkHierarchy, deliveryDefaults, MAX_PROJECT_DEPTH, measureDelivery, parseDelivery, rollup } from "./delivery";
+import { canAllocateToDelivery, capRollup, checkDeliveryStructure, checkHierarchy, deliveryDefaults, MAX_PROJECT_DEPTH, measureDelivery, parseDelivery, rollup, type Delivery } from "./delivery";
 
 test("forty delivery projects roll up to their department and root exactly once", () => {
   const parent = (id: string, parentId?: string, seconds = 0) => ({ id, seconds, lifetimeSeconds: seconds * 3, delivery: { ...deliveryDefaults, parentId } });
@@ -41,4 +41,42 @@ test("training and project settings support independent links and multiple assig
     { monthlyCap: -1 }, { managerIds: ["one", "one"] }, { workOrderIds: ["bad"] },
     { training: { days: 1, dates: ["2026-12-35"], facilitatorIds: [] } }, { start: "2026-12-20", deadline: "2026-12-01" },
   ]) assert.throws(() => parseDelivery({ ...training, ...data }));
+});
+
+test("explicit delivery hierarchies bind service-area decisions and retain existing legacy shapes", () => {
+  const make = (kind: Delivery["kind"], parentId?: string, areaId?: string) =>
+    parseDelivery({ ...deliveryDefaults, structure: 2, kind, parentId, areaId });
+  const valid = new Map([
+    ["engagement", make("engagement")], ["direct", make("project", "engagement")],
+    ["area", make("service-area", "engagement", "health")], ["project", make("project", "area", "health")],
+    ["legacy", deliveryDefaults], ["legacy-child", { ...deliveryDefaults, parentId: "legacy" }],
+  ]);
+  checkDeliveryStructure(valid);
+  for (const next of [make("project"), make("project", "area", "hr"), make("project", "direct"),
+    make("service-area", "area", "health"), make("engagement", "project")])
+    assert.throws(() => checkDeliveryStructure(new Map([...valid, ["new", next]])), /hierarchy/);
+  assert.equal(canAllocateToDelivery(valid.get("area")), false);
+  assert.equal(canAllocateToDelivery(valid.get("direct")), true);
+  assert.equal(canAllocateToDelivery({ ...valid.get("engagement")!, allowDirectAllocation: false }), false);
+  assert.equal(canAllocateToDelivery(undefined), true);
+});
+
+test("excluding an allocation from an engagement cap preserves all effort and the department cap", () => {
+  const make = (id: string, seconds: number, delivery: Delivery) => ({ id, seconds, lifetimeSeconds: seconds * 3, delivery });
+  const rows = [
+    make("parent", 1800, { ...deliveryDefaults, structure: 2, kind: "engagement", monthlyCap: 36_000, lifetimeCap: 72_000 }),
+    make("department", 0, { ...deliveryDefaults, structure: 2, kind: "service-area", parentId: "parent", areaId: "hr", monthlyCap: 20_000 }),
+    make("first", 10_800, { ...deliveryDefaults, structure: 2, parentId: "department", areaId: "hr" }),
+    make("second", 7200, { ...deliveryDefaults, structure: 2, parentId: "department", areaId: "hr", countAgainstParentCap: false }),
+    make("direct", 900, { ...deliveryDefaults, structure: 2, parentId: "parent" }),
+  ];
+  const effort = rollup(rows);
+  const budgets = capRollup(rows);
+  assert.deepEqual(effort.get("parent"), { monthly: 20_700, lifetime: 62_100, descendants: 4 });
+  assert.deepEqual(budgets.get("parent"), { monthly: 13_500, lifetime: 40_500, descendants: 4 });
+  assert.deepEqual(budgets.get("department"), effort.get("department"));
+  const parent = measureDelivery({ ...rows[0], progress: 0, status: "active" }, budgets.get("parent")!, "2026-11-20");
+  assert.equal(parent.monthlyRemaining, 22_500);
+  assert.equal(parent.lifetimeRemaining, 31_500);
+  assert.equal(parent.completion, undefined);
 });

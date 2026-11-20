@@ -8,7 +8,9 @@ import { SecuredApiClient } from "./client";
 import { branding, brandAsset } from "../config/branding";
 import { ProjectClientReport } from "./ProjectClientReport";
 import { today } from "./dashboard-format";
-import { portalNavigate, useReportingMonth } from "./portal-location";
+import { portalNavigate, usePlatformRoute, useReportingMonth } from "./portal-location";
+import { PlatformApplication } from "./PlatformApplication";
+import "./platform.css";
 import "../reporting/nordic.css";
 const enabled = import.meta.env.VITE_ENABLE_SECURE_API === "true";
 const production = import.meta.env.VITE_DASHBOARD_DEPLOYMENT === "production";
@@ -24,6 +26,7 @@ export function SecureDashboard() {
   const [retry, setRetry] = useState(0);
   const [error, setError] = useState("");
   const [unsaved, setUnsaved] = useState(false);
+  const route = usePlatformRoute();
   const month = useReportingMonth(today().slice(0, 7));
   const setMonth = (value: string) => portalNavigate({ month: value });
   const [nativeMonthPicker] = useState(() => {
@@ -32,6 +35,21 @@ export function SecureDashboard() {
     return input.type === "month";
   });
   const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!unsaved || !route) return;
+    const previous = window.location.href;
+    const beforeUnload = (event: BeforeUnloadEvent) => event.preventDefault();
+    const pop = () => {
+      if (window.location.href !== previous && !window.confirm("Leave without saving your changes?"))
+        window.history.replaceState(window.history.state, "", previous);
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    window.addEventListener("popstate", pop, true);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener("popstate", pop, true);
+    };
+  }, [unsaved, route?.kind, location.pathname, location.search]);
   useEffect(() => {
     if (!enabled) return;
     let unsubscribe: (() => void) | undefined;
@@ -177,7 +195,7 @@ export function SecureDashboard() {
     }
   }
   return (
-    <section className="nordic secure-shell">
+    <section className={"nordic secure-shell" + (route ? " platform-shell" : "")}>
       <header className="secure-masthead">
         <div className="secure-brandmarks">
           {branding.clientLogo && (
@@ -195,7 +213,7 @@ export function SecureDashboard() {
         </div>
         <div className="secure-identity">
           <h1>
-            {workspace?.role === "client"
+            {route ? (route.kind === "client" ? "Zagimē Client Intelligence" : "Morris Interactive") : workspace?.role === "client"
               ? "Client intelligence dashboard"
               : "Morris protected workspace"}
           </h1>
@@ -205,6 +223,7 @@ export function SecureDashboard() {
           <button
             className="secure-secondary"
             onClick={async () => {
+              if (unsaved && !window.confirm("Sign out without saving your changes?")) return;
               if (auth) {
                 const sdk = await import("firebase/auth");
                 await sdk.signOut(auth);
@@ -219,7 +238,7 @@ export function SecureDashboard() {
         )}
       </header>
       {!signedIn ? (
-        <section className="secure-sign-in" aria-label="Sign in">
+        <section className={"secure-sign-in" + (route ? " platform-sign-in" : "")} aria-label="Sign in">
           <h2>Sign in to your workspace</h2>
           <p>Clients use the Google account approved for their organization. Morris staff use their work Microsoft account.</p>
           <div className="secure-actions"><button disabled={!auth} onClick={() => void signIn("google")}>
@@ -256,13 +275,13 @@ export function SecureDashboard() {
               <button disabled={!auth}>Sign in to local emulator</button>
             </form>
           )}
-          <p>
+          {!route && <p>
             Morris staff use their Microsoft work account. Client accounts have
             read-only access to approved publications.
-          </p>
+          </p>}
         </section>
       ) : (
-        <form className="secure-period" onSubmit={event => {
+        <form className="secure-period" hidden={route?.kind === "home"} onSubmit={event => {
           event.preventDefault();
           const value = String(new FormData(event.currentTarget).get("month") ?? "");
           if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value) &&
@@ -290,7 +309,9 @@ export function SecureDashboard() {
         </p>
       )}
       {error && <p role="alert">{error}</p>}
-      {workspace && workspace.role !== "client" && client && (
+      {route && workspace && client && <PlatformApplication client={client} workspace={workspace} month={month} unsaved={unsaved}
+        onUnsavedChange={setUnsaved} onDenied={onDenied} />}
+      {!route && workspace && workspace.role !== "client" && client && (
         <ProjectStaffWorkspace
           key={subject}
           client={client}
@@ -301,7 +322,7 @@ export function SecureDashboard() {
           onDenied={onDenied}
         />
       )}
-      {workspace?.role === "client" && client && (
+      {!route && workspace?.role === "client" && client && (
         <ProjectClientReport
           key={subject}
           client={client}

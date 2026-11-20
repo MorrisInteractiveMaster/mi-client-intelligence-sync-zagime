@@ -62,7 +62,7 @@ const backend = new ReportingBackend(
     now: Date.now,
   },
 );
-const projectStore = new ProjectStore(runtime.db);
+const projectStore = new ProjectStore(runtime.db, process.env.MORRIS_PLATFORM_ADMIN_UID);
 const serveFrontend = mode === "production" ||
   (mode === "staging" && process.env.SERVE_STAGING_FRONTEND === "true");
 const server = apiServer(backend, {

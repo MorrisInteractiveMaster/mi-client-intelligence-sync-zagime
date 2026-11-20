@@ -14,6 +14,7 @@ import {
   type ReportingScope,
 } from "../src/reporting/model";
 import type { BulkAllocationEntry } from "../src/projects/bulk-allocation";
+import { canAllocateToDelivery } from "../src/projects/delivery";
 import type { AllocationAnnotations } from "../src/api/types";
 import { approvedMember, canAccessProject } from "./authorization";
 import { readPortfolio } from "./portfolio";
@@ -509,6 +510,13 @@ export class FirestoreTenantStore implements TenantStore {
         if (ps.some((d) => !d.exists || !canAccessProject(m, d.data() as any)))
           throw Error("Forbidden");
         if (this.expectedSchemaVersion === 2 && ps.some(d => d.data()!.schemaVersion !== 2 || d.data()!.tenantId !== tenantId || d.data()!.id !== d.id)) throw Error("Forbidden");
+        for (const [position, project] of ps.entries()) {
+          if (canAllocateToDelivery(project.data()!.delivery)) continue;
+          const id = ids[position];
+          const intended = portions.find(part => part.projectId === id)?.seconds ?? 0;
+          const applied = previous.find((part: Allocation) => part.projectId === id)?.seconds ?? 0;
+          if (intended > applied) throw Error(bulk ? "Bulk entry not eligible" : "Invalid allocation target");
+        }
         if (
           JSON.stringify(head.portions) === JSON.stringify(portions) &&
           JSON.stringify(previous) === JSON.stringify(portions) &&

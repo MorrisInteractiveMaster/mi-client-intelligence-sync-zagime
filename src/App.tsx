@@ -1,4 +1,5 @@
 import { SecureDashboard } from "./api/SecureDashboard";
+import { usePlatformRoute } from "./api/portal-location";
 import { ReportingProvider } from "./reporting/ReportingContext";
 import { Reporting } from "./reporting/Reporting";
 import { useEffect, useState } from "react";
@@ -421,7 +422,10 @@ function Shell() {
   );
 }
 export default function App() {
-  if (import.meta.env.VITE_DASHBOARD_DEPLOYMENT === "production")
+  const portal = usePlatformRoute();
+  const protectedRoute = portal && import.meta.env.VITE_ENABLE_SECURE_API === "true" &&
+    (portal.kind !== "home" || Boolean(import.meta.env.VITE_FIREBASE_API_KEY));
+  if (import.meta.env.VITE_DASHBOARD_DEPLOYMENT === "production" || protectedRoute)
     return <HashRouter><SecureDashboard /></HashRouter>;
   return (
     <HashRouter>

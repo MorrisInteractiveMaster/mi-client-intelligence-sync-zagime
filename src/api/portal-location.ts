@@ -1,13 +1,16 @@
 import { useSyncExternalStore } from "react";
+import { parsePlatformPath, routeHref, routeParameters } from "./platform-routes";
 
 const changed = "mi-portal-location";
-const current = () => window.location.search;
+const current = () => window.location.pathname + window.location.search + window.location.hash;
 const subscribe = (listener: () => void) => {
   window.addEventListener(changed, listener);
   window.addEventListener("popstate", listener);
+  window.addEventListener("hashchange", listener);
   return () => {
     window.removeEventListener(changed, listener);
     window.removeEventListener("popstate", listener);
+    window.removeEventListener("hashchange", listener);
   };
 };
 
@@ -16,17 +19,16 @@ export const validMonth = (value: string | null): value is string =>
 
 type Fields = Record<string, string | null>;
 export function portalHref(fields: Fields) {
-  const url = new URL(window.location.href);
-  for (const [key, value] of Object.entries(fields)) {
-    if (value) url.searchParams.set(key, value);
-    else url.searchParams.delete(key);
-  }
-  return url.pathname + url.search + url.hash;
+  return routeHref(new URL(window.location.href), fields);
 }
 
 export function portalNavigate(fields: Fields, replace = false, overlay?: string) {
-  const href = portalHref(fields);
-  if (href === window.location.pathname + window.location.search + window.location.hash) return;
+  navigatePlatform(portalHref(fields), replace, overlay);
+}
+
+export function navigatePlatform(href: string, replace = false, overlay?: string) {
+  if (!href.startsWith("/") || href.startsWith("//") || href.includes("\\")) return;
+  if (href === current()) return;
   if (replace) window.history.replaceState(history.state, "", href);
   else window.history.pushState({ miPortalOverlay: overlay }, "", href);
   window.dispatchEvent(new Event(changed));
@@ -38,7 +40,16 @@ export function closePortalOverlay(key: string) {
 }
 
 export function usePortalLocation() {
-  return new URLSearchParams(useSyncExternalStore(subscribe, current, () => ""));
+  return routeParameters(new URL(useSyncExternalStore(subscribe, current, () => "/"), "https://platform.invalid"));
+}
+
+export function usePlatformRoute() {
+  const url = new URL(useSyncExternalStore(subscribe, current, () => "/"), "https://platform.invalid");
+  return url.hash.startsWith("#/") ? undefined : parsePlatformPath(url.pathname);
+}
+
+export function periodHref(path: string, month: string, fields?: Record<string, string>) {
+  return path + "?" + new URLSearchParams({ month, ...fields });
 }
 
 export function useReportingMonth(fallback: string) {

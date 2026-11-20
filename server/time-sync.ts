@@ -12,7 +12,7 @@ import {
 } from "./time-totals";
 import type { TimeProjectMetadata, TimeStatus } from "../src/projects/time";
 import { timeDetailsRef, type StoredTimeDetails } from "./time-details";
-import { enrichTimeDetails, timeSourceRevision } from "./time-enrichment";
+import { enrichTimeDetails, inventoryTimeDetails, timeSourceRevision } from "./time-enrichment";
 import {
   type TimeClient,
   type TimeJobcode,
@@ -539,6 +539,9 @@ export class TimeSync {
       workOrders: tree.jobs.length,
       verifiedProjects,
     };
+  }
+  async inventoryDetails(tenant: string, after?: string) {
+    return inventoryTimeDetails(this.customer(tenant), after);
   }
   async enrichDetails(tenant: string, options: { month: string; after?: string; apply?: boolean }) {
     const scope = this.customer(tenant);

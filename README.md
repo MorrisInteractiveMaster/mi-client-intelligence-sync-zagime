@@ -1,5 +1,7 @@
 # Morris Interactive Client Intelligence Platform
 
+Current product usage, data boundaries and the owner release checklist are in [Platform delivery](docs/platform-delivery.md).
+
 Current scope: [full owner contract](docs/master-implementation-contract.md). [Project-only secured workspace](docs/project-only-workspace.md) implements agreement-free editing/publication with local Auth/Firestore/browser tests; activation and remote persistence remain unverified. [Ordered operator runbook](docs/project-only-operator-runbook.md). PR A/#11 merged; no agent deployment. Historical M8/customer/hierarchy notes below do not authorize general Customer imports or substitute for native Zagimē Projects entitlement.
 
 M8: [controlled staging launch](docs/m8-launch.md) and [next read-only QuickBooks handoff](docs/m8-quickbooks-handoff.md). Verified Morris Microsoft work accounts receive application editing/publishing through server-verified corporate policy, without staff enrollment. Clients remain scoped read-only. Existing styling is retained without claiming design approval. No deployment or activation occurs on merge; the default demo stays synthetic and protected mode stays disabled outside an explicitly built staging image.

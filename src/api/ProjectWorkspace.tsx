@@ -23,10 +23,14 @@ import { DeliveryDirectory, DeliveryFields, DeliveryHealth, DeliveryMilestones, 
 import { TimeAllocation } from "./TimeAllocation";
 import type { Portfolio } from "../projects/portfolio";
 import type { TimeStatus } from "../projects/time";
-import { measureDelivery, rollup } from "../projects/delivery";
-import { closePortalOverlay, portalNavigate, usePortalLocation } from "./portal-location";
+import { capRollup, measureDelivery } from "../projects/delivery";
+import { closePortalOverlay, periodHref, portalNavigate, usePlatformRoute, usePortalLocation } from "./portal-location";
+import { clientBase, staffPath } from "./platform-routes";
+import { PlatformLink } from "./PlatformHome";
+import type { SourceSummary } from "./types";
 import { TimeConnectionPanel } from "./TimeConnectionPanel";
 import { ProjectTimelineFields } from "./ProjectTimelineFields";
+import { ProjectCreation } from "./ProjectCreation";
 import {
   projectStatus,
   reportDay,
@@ -71,7 +75,8 @@ export function ProjectStaffWorkspace({
   const [organizing, setOrganizing] = useState<StaffProjectSummary>();
   const [editorDirty, setEditorDirty] = useState(false);
   const [portfolioDirty, setPortfolioDirty] = useState(false);
-  useEffect(() => { onUnsavedChange?.(editorDirty || portfolioDirty); return () => onUnsavedChange?.(false); }, [editorDirty, portfolioDirty, onUnsavedChange]);
+  const [timeDirty, setTimeDirty] = useState(false);
+  useEffect(() => { onUnsavedChange?.(editorDirty || portfolioDirty || timeDirty); return () => onUnsavedChange?.(false); }, [editorDirty, portfolioDirty, timeDirty, onUnsavedChange]);
   const [page, setPage] = useState<ProjectPage>({
     revision: workspace.revision,
     projects: [],
@@ -79,6 +84,8 @@ export function ProjectStaffWorkspace({
   const [catalog, setCatalog] = useState<StaffProjectSummary[]>();
   const [portfolio, setPortfolio] = useState<Portfolio>();
   const [timeStatus, setTimeStatus] = useState<TimeStatus>();
+  const [overviewTime, setOverviewTime] = useState<SourceSummary>();
+  const [overviewTimeError, setOverviewTimeError] = useState(false);
   const [catalogError, setCatalogError] = useState("");
   const [audits, setAudits] = useState<ProjectPage["audits"]>();
   const [auditCursor, setAuditCursor] = useState<string>();
@@ -87,13 +94,16 @@ export function ProjectStaffWorkspace({
   const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
   const [milestones, setMilestones] = useState<ProjectMilestone[]>([]);
   const location = usePortalLocation();
+  const overviewPeriod = location.get("period") === "all" ? "all" : "month";
+  const platform = usePlatformRoute();
+  const nativeWorkspace = platform?.kind === "staff";
   const staffRoute = location.get("staff");
   const area: Area = staffRoute === "time" ? "integrations" : staffRoute && Object.hasOwn(sections, staffRoute) ? staffRoute as Area : "projects";
   const editorRoute = location.get("editor");
   const tableView = location.get("staff-layout") === "table";
   const treeView = location.get("staff-layout") === "tree";
   const allProjects = catalog ?? page.projects ?? [];
-  const overviewTotals = area === "overview" && catalog ? rollup(catalog) : undefined;
+  const overviewTotals = area === "overview" && catalog ? capRollup(catalog) : undefined;
   const deliveryOverview = overviewTotals && catalog ? catalog.map(p => ({
     project: p, health: measureDelivery({ ...p, milestones: p.deliveryMilestones }, overviewTotals.get(p.id)!, today()),
   })) : [];
@@ -104,7 +114,7 @@ export function ProjectStaffWorkspace({
   const preview = allProjects.find(p => p.id === location.get("staff-preview"));
   const previewButton = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (!editorDirty && !portfolioDirty) return;
+    if (nativeWorkspace || (!editorDirty && !portfolioDirty)) return;
     const previous = window.location.href;
     const guard = () => {
       if (window.location.href !== previous && !window.confirm("Discard the unsaved changes?"))
@@ -112,7 +122,7 @@ export function ProjectStaffWorkspace({
     };
     window.addEventListener("popstate", guard, true);
     return () => window.removeEventListener("popstate", guard, true);
-  }, [editorDirty, portfolioDirty, location.toString()]);
+  }, [editorDirty, portfolioDirty, location.toString(), nativeWorkspace]);
   const areaHeading = useRef<HTMLHeadingElement>(null);
   const editorHeading = useRef<HTMLHeadingElement>(null);
   const [error, setError] = useState("");
@@ -130,7 +140,7 @@ export function ProjectStaffWorkspace({
   const creation = useRef<string | undefined>(undefined);
   const changeArea = (next: Area) => {
     if (area === next) return;
-    if ((editorDirty || portfolioDirty) && !window.confirm("Discard the unsaved changes?")) return;
+    if ((editorDirty || portfolioDirty || timeDirty) && !window.confirm("Discard the unsaved changes?")) return;
     if (editorDirty) { setEditing(undefined); setEditorDirty(false); }
     setNotice("");
     if (next !== "projects" && next !== "hours") {
@@ -140,6 +150,16 @@ export function ProjectStaffWorkspace({
     portalNavigate({ staff: next, editor: null, subsection: next === "portfolio" && organizing ? "placements" : null,
       view: null, chart: null, present: null, q: null, status: null, previewMode: null, previewProject: null });
   };
+  useEffect(() => {
+    if (area !== "overview") return;
+    const abort = new AbortController();
+    setOverviewTime(undefined);
+    setOverviewTimeError(false);
+    client.call<ProjectPage>(tenant, "sources?" + new URLSearchParams({ month, limit: "1", period: overviewPeriod }), { signal: abort.signal })
+      .then(result => { if (!abort.signal.aborted) setOverviewTime(result.sourceSummary); })
+      .catch(() => { if (!abort.signal.aborted) setOverviewTimeError(true); });
+    return () => abort.abort();
+  }, [area, client, tenant, month, overviewPeriod, epoch]);
   useEffect(() => {
     const original = document.title;
     document.title = (editorRoute && area === "projects" ? "Project editor" : staffRoute === "time" ? "QuickBooks Time status" : sections[area]) + " · Morris Interactive";
@@ -166,7 +186,7 @@ export function ProjectStaffWorkspace({
   const projectQuery = (cursor?: string) =>
     query(cursor) + (search ? "&search=" + encodeURIComponent(search) : "");
   const failed = (e: unknown) => {
-    if (e instanceof ApiError && [401, 403].includes(e.status)) onDenied();
+    if (e instanceof ApiError && [401, 403].includes(e.status) && e.code !== "publication_approval_required") onDenied();
     setError(
       e instanceof ApiError && e.status === 413
         ? "The project is too large to save. Shorten the description, notes, or updates."
@@ -306,7 +326,7 @@ export function ProjectStaffWorkspace({
       <div className="exec-frame exec-staff-frame">
       <aside className="exec-sidebar">
       <nav aria-label="Morris workspace sections">
-        {Object.entries(sections).map(([key, label]) => (
+        {Object.entries(sections).filter(([key]) => !nativeWorkspace || key !== "integrations").map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -334,6 +354,10 @@ export function ProjectStaffWorkspace({
         <span aria-current="page">{sections[area]}</span>
       </nav>}
       {area === "overview" && <section aria-label="Morris operating overview">
+        <div className="delivery-section-heading"><h3>Delivery performance</h3>
+          <label>Time period<select value={overviewPeriod} onChange={event => portalNavigate({ period: event.target.value === "all" ? "all" : null })}>
+            <option value="month">{reportMonth(month)}</option><option value="all">All History</option>
+          </select></label></div>
         <div className="intel-pulse" aria-label="Project status">
           {(["active", "planned", "completed"] as const).map(status => <button className="intel-pulse-item" key={status}
             type="button" onClick={() => changeArea("projects")}><span>{projectStatus[status]}</span><b>{catalog?.filter(p => p.status === status).length ?? "—"}</b></button>)}
@@ -341,22 +365,40 @@ export function ProjectStaffWorkspace({
         <dl className="secure-metrics">
           <div><dt>Client workspace</dt><dd>{workspace.tenant.name}</dd></div>
           <div><dt>Registered work orders</dt><dd>{timeStatus?.mappings.length ?? "Unavailable"}</dd></div>
-          <div><dt>Hours awaiting allocation</dt><dd>{timeStatus?.unallocatedSeconds !== undefined ? reportHours(timeStatus.unallocatedSeconds) + " h" : "Unavailable"}</dd></div>
-          <div><dt>Hours allocated</dt><dd>{catalog ? reportHours(catalog.reduce((sum, p) => sum + p.seconds, 0)) + " h" : "Loading"}</dd></div>
+          <div><dt>Hours recorded</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.recordedSeconds) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
+          <div><dt>Hours awaiting allocation</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.unallocatedSeconds) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
+          <div><dt>Hours allocated</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.allocatedSeconds) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
+          <div><dt>Allocations awaiting review</dt><dd>{overviewTime?.counts.review ?? "—"}</dd></div>
+          <div><dt>Last successful Time sync</dt><dd>{timeStatus?.lastDailySuccess ? reportTimestamp(timeStatus.lastDailySuccess) : "Unavailable"}</dd></div>
           <div><dt>Blocked milestones</dt><dd>{catalog?.flatMap(p => p.deliveryMilestones ?? []).filter(m => m.status === "blocked").length ?? "—"}</dd></div>
           <div><dt>Over cap</dt><dd>{overviewTotals ? deliveryOverview.filter(row => (row.health.monthlyRemaining ?? 0) < 0 || (row.health.lifetimeRemaining ?? 0) < 0).length : "—"}</dd></div>
         </dl>
         <div className="secure-actions">
           <button type="button" onClick={() => openDeliveryProject("new")}>Create Project</button>
           <button type="button" className="secure-secondary" onClick={() => changeArea("hours")}>Allocate Hours</button>
-          <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button>
+          <button type="button" className="secure-secondary" onClick={() => changeArea("directory")}>Assign Team</button>
+          {nativeWorkspace ? <>
+            <PlatformLink href={periodHref(clientBase, month)}>View Client Dashboard</PlatformLink>
+            <PlatformLink href={periodHref(clientBase, month, { previewMode: "draft" })}>Preview Draft Changes</PlatformLink>
+            <PlatformLink href={periodHref(staffPath("hours"), month, { period: "all" })}>Browse All History</PlatformLink>
+          </> : <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button>}
         </div>
+        {overviewTime?.hours && <div className="intel-editorial platform-overview-figures">
+          <section><h3>Recorded hours by consultant</h3><ul>{overviewTime.hours.byConsultant.slice(0, 7).map(item => <li key={item.id ?? "unknown"}>
+            {item.id && nativeWorkspace ? <PlatformLink href={periodHref(staffPath("hours"), month, { period: overviewPeriod, consultant: item.id })}>{item.label}</PlatformLink> : item.label}
+            <span>{reportHours(item.recordedSeconds)} h</span>
+          </li>)}</ul>{!overviewTime.hours.byConsultant.length && <p>No consultant hours in this period.</p>}</section>
+          <section><h3>Hours by work order</h3><ul>{overviewTime.hours.byWorkOrder.slice(0, 7).map(item => <li key={item.id ?? "unknown"}>
+            {item.id && nativeWorkspace ? <PlatformLink href={periodHref(staffPath("hours"), month, { period: overviewPeriod, workOrder: item.id })}>{item.label}</PlatformLink> : item.label}
+            <span>{reportHours(item.recordedSeconds)} h recorded · {reportHours(item.allocatedSeconds)} h allocated</span>
+          </li>)}</ul>{!overviewTime.hours.byWorkOrder.length && <p>No work-order hours in this period.</p>}</section>
+        </div>}
         <div className="intel-editorial">
           <section><h3>Upcoming deadlines</h3>{upcoming.length ? <ul>{upcoming.map(({ project, health }) => <li key={project.id}><button type="button" className="exec-text-button" onClick={() => openDeliveryProject(project.id)}>{project.name}</button> · {reportDay(health.upcoming!)}</li>)}</ul> : <p className="secure-muted">No deadlines are recorded for upcoming work.</p>}</section>
           <section><h3>Upcoming training</h3>{trainings.length ? <ul>{trainings.map(({ p, date }) => <li key={p.id + date}><button type="button" className="exec-text-button" onClick={() => openDeliveryProject(p.id)}>{p.name}</button> · {reportDay(date)}</li>)}</ul> : <p className="secure-muted">No upcoming sessions are recorded.</p>}</section>
         </div>
         <h3>Workspace</h3>
-        <div className="intel-staff-overview">{Object.entries(sections).filter(([key]) => key !== "overview").map(([key,label]) =>
+        <div className="intel-staff-overview">{Object.entries(sections).filter(([key]) => key !== "overview" && (!nativeWorkspace || key !== "integrations")).map(([key,label]) =>
           <button type="button" key={key} onClick={() => changeArea(key as Area)}>{label}</button>)}</div>
       </section>}
       {catalogError && <p role="alert" className="secure-message secure-error">{catalogError} <button type="button" className="secure-secondary" onClick={() => setEpoch(value => value + 1)}>Reload workspace lists</button></p>}
@@ -469,16 +511,29 @@ export function ProjectStaffWorkspace({
               : "No projects yet. Create one without a work order."}
           </p>
         )}
-        {editing && (
+        {editing === "new" && <ProjectCreation projects={allProjects} portfolio={portfolio} busy={busy || !page.revision}
+          onDirty={() => setEditorDirty(true)} onCancel={() => {
+            if (editorDirty && !window.confirm("Discard the unsaved project changes?")) return;
+            creation.current = undefined;
+            portalNavigate({ editor: null });
+          }} onSave={(project, openDetails) => void perform(async () => {
+            const result = await client.call<{ id: string }>(tenant, "projects", { method: "POST", key: creation.current, body: project });
+            creation.current = undefined;
+            setEditorDirty(false);
+            portalNavigate({ editor: openDetails ? result.id : null }, true);
+            setEpoch(value => value + 1);
+            setNotice("Project saved as a private draft.");
+          })} />}
+        {editing && editing !== "new" && (
           <form
             className="secure-form secure-project-editor"
-            key={editing === "new" ? "new" : editing.id}
+            key={editing.id}
             onChange={() => setEditorDirty(true)}
             onSubmit={(e) => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
               void perform(async () => {
-                const original = editing === "new" ? undefined : editing;
+                const original = editing;
                 const planHours = String(f.get("hours"));
                 const patch = {
                   name: String(f.get("name")),
@@ -493,7 +548,6 @@ export function ProjectStaffWorkspace({
                   plan: {
                     basis: String(f.get("basis")),
                     targetSeconds:
-                      original &&
                       planHours === String(original.plan.targetSeconds / 3600)
                         ? original.plan.targetSeconds
                         : hoursToSeconds(planHours),
@@ -501,18 +555,14 @@ export function ProjectStaffWorkspace({
                 };
                 const result = await client.call<{ draft?: ProjectDraftMetadata; changed: boolean }>(
                   tenant,
-                  original ? `projects/${original.id}` : "projects",
+                  `projects/${original.id}`,
                   {
-                    method: original ? "PATCH" : "POST",
-                    ...(original ? {} : { key: creation.current }),
-                    body: original
-                      ? { expectedRevision: page.revision, patch }
-                      : patch,
+                    method: "PATCH",
+                    body: { expectedRevision: page.revision, patch },
                   },
                 );
-                creation.current = undefined;
                 setEditorDirty(false);
-                if (original?.published) {
+                if (original.published) {
                   setEpoch(value => value + 1);
                   setNotice(result.draft ? "Draft saved. Clients still see the last approved version." : "No project changes to save.");
                 } else {
@@ -523,7 +573,7 @@ export function ProjectStaffWorkspace({
             }}
           >
             <h3 ref={editorHeading} tabIndex={-1}>
-              {editing === "new" ? "New project" : "Edit project"}
+              Edit project
             </h3>
             <fieldset className="secure-editor-grid" disabled={busy}>
               <label>
@@ -532,14 +582,14 @@ export function ProjectStaffWorkspace({
                   name="name"
                   required
                   maxLength={200}
-                  defaultValue={editing === "new" ? "" : editing.name}
+                  defaultValue={editing.name}
                 />
               </label>
               <label>
                 Status
                 <select
                   name="status"
-                  defaultValue={editing === "new" ? "planned" : editing.status}
+                  defaultValue={editing.status}
                 >
                   {Object.entries(projectStatus).map(([value, label]) => (
                     <option key={value} value={value}>
@@ -556,7 +606,7 @@ export function ProjectStaffWorkspace({
                   min={0}
                   max={100}
                   placeholder="Not configured"
-                  defaultValue={editing === "new" ? "" : (editing.delivery?.manualCompletion ?? (editing.progress || ""))}
+                  defaultValue={editing.delivery?.manualCompletion ?? (editing.progress || "")}
                 />
               </label>
               <label>
@@ -564,7 +614,7 @@ export function ProjectStaffWorkspace({
                 <select
                   name="basis"
                   defaultValue={
-                    editing === "new" ? "fixed" : editing.plan.basis
+                    editing.plan.basis
                   }
                 >
                   <option value="fixed">Lifetime target</option>
@@ -578,9 +628,7 @@ export function ProjectStaffWorkspace({
                   inputMode="decimal"
                   required
                   defaultValue={
-                    editing === "new"
-                      ? "0"
-                      : String(editing.plan.targetSeconds / 3600)
+                    String(editing.plan.targetSeconds / 3600)
                   }
                 />
               </label>
@@ -589,7 +637,7 @@ export function ProjectStaffWorkspace({
                 <textarea
                   name="description"
                   maxLength={4000}
-                  defaultValue={editing === "new" ? "" : editing.description}
+                  defaultValue={editing.description}
                 />
               </label>
               <label className="secure-field-wide">
@@ -597,7 +645,7 @@ export function ProjectStaffWorkspace({
                 <textarea
                   name="notes"
                   maxLength={4000}
-                  defaultValue={editing === "new" ? "" : editing.internalNotes}
+                  defaultValue={editing.internalNotes}
                 />
               </label>
               <label>
@@ -606,27 +654,27 @@ export function ProjectStaffWorkspace({
                   name="workOrder"
                   maxLength={120}
                   defaultValue={
-                    editing === "new" ? "" : (editing.workOrderReference ?? "")
+                    editing.workOrderReference ?? ""
                   }
                 />
               </label>
             </fieldset>
-            <DeliveryFields project={editing === "new" ? undefined : editing} projects={allProjects} portfolio={portfolio} mappings={timeStatus?.mappings} />
+            <DeliveryFields project={editing} projects={allProjects} portfolio={portfolio} mappings={timeStatus?.mappings} />
             <ProjectTimelineFields
               {...{ updates, milestones, setUpdates, setMilestones }}
               disabled={busy}
               people={portfolio?.directory}
             />
             <p>
-              {editing !== "new" && editing.published
+              {editing.published
                 ? "Save a draft and preview it before publishing. Clients see the last approved version until you publish changes."
                 : "This project stays private until you publish it."}
             </p>
             <div className="secure-actions">
               <button type="submit" disabled={busy || page.revision === 0}>
-                {editing !== "new" && editing.published ? "Save Draft" : "Save project"}
+                {editing.published ? "Save Draft" : "Save project"}
               </button>
-              {editing !== "new" && editing.published && editingDraft && <>
+              {editing.published && editingDraft && <>
                 <button className="secure-secondary" type="button" disabled={busy || editorDirty || !page.revision}
                   onClick={() => previewChanges(editing.id)}>Preview Changes</button>
                 <button type="button" disabled={busy || editorDirty || !page.revision}
@@ -759,7 +807,7 @@ export function ProjectStaffWorkspace({
       </section>
       {area === "portfolio" && <PortfolioAdmin key={organizing?.id ?? "portfolio"} client={client} tenant={tenant} month={month}
         initialProject={organizing} onDenied={onDenied} onSaved={() => setEpoch(x => x + 1)} onDirty={setPortfolioDirty} />}
-      <section hidden={area !== "hours"} aria-labelledby="project-time-hours">
+      <section hidden={area !== "hours"} className="time-allocation-panel" aria-labelledby="project-time-hours">
         <h2
           id="project-time-hours"
           ref={area === "hours" ? areaHeading : undefined}
@@ -813,7 +861,11 @@ export function ProjectStaffWorkspace({
           />
         )}
         {area === "hours" && <TimeAllocation client={client} tenant={tenant} month={month} projects={allProjects}
-          portfolio={portfolio} onDenied={onDenied} onSaved={() => setEpoch(value => value + 1)} />}
+          portfolio={portfolio} onDenied={onDenied} onSaved={() => setEpoch(value => value + 1)}
+          initialConsultant={location.get("consultant") ?? undefined} initialHistory={location.get("period") === "all"}
+          initialWorkOrder={location.get("workOrder") ?? undefined} onUnsavedChange={setTimeDirty}
+          sourceLink={nativeWorkspace ? { id: location.get("source") ?? undefined,
+            href: id => periodHref(staffPath("hours", id), month), backHref: periodHref(staffPath("hours"), month) } : undefined} />}
       </section>
       <section hidden={area !== "activity"} aria-labelledby="staff-audits">
         <h2

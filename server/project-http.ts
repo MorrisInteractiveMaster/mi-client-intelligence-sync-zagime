@@ -13,6 +13,20 @@ export async function projectRequest(
   disconnected?: AbortSignal,
 ) {
   const url = new URL(req.url!, "http://local");
+  const control = /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/control$/.exec(url.pathname);
+  if (control) {
+    if (url.search) throw Error("Invalid query");
+    const token = req.headers.authorization ?? "";
+    if (req.method === "GET") return { status: 200, body: await backend.control(token, control[1]) };
+    if (req.method === "PATCH") {
+      const update = await readBody();
+      if (Object.keys(update).some(key => key !== "settings" && key !== "expectedRevision") ||
+         !Number.isSafeInteger(update.expectedRevision) || update.expectedRevision < 1 || !update.settings)
+        throw Error("Invalid portal settings");
+      return { status: 200, body: await backend.control(token, control[1], { expectedRevision: update.expectedRevision, settings: update.settings }) };
+    }
+    return { status: 405, body: { error: "method_not_allowed" } };
+  }
   const bulkAllocation = /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/allocations\/bulk$/.exec(url.pathname);
   if (bulkAllocation && req.method === "POST") {
     if (url.search) throw Error("Invalid bulk allocation query");
@@ -24,6 +38,19 @@ export async function projectRequest(
       typeof idempotency === "string" ? idempotency : "",
       disconnected,
     ) };
+  }
+  const employeeMappings = /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/directory\/employee-mappings$/.exec(url.pathname);
+  if (employeeMappings) {
+    const tenant = employeeMappings[1], token = req.headers.authorization ?? "";
+    if (req.method === "GET") {
+      const cursor = url.searchParams.get("cursor");
+      if ([...url.searchParams.keys()].some(k => k !== "cursor") || url.searchParams.getAll("cursor").length > 1 ||
+          (cursor !== null && !/^[A-Za-z0-9_-]{1,256}$/.test(cursor))) throw Error("Invalid employee mapping page");
+      return { status: 200, body: await backend.employeeMappings(token, tenant, cursor ?? undefined) };
+    }
+    if (req.method === "PATCH" && !url.search)
+      return { status: 200, body: await backend.changeEmployeeMapping(token, tenant, await readBody()) };
+    return { status: 405, body: { error: "method_not_allowed" } };
   }
   const directorySync = /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/directory\/wordpress-sync$/.exec(url.pathname);
   if (directorySync) {

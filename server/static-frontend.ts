@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve, sep, extname } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { parsePlatformPath } from "../src/api/platform-routes";
 /** Same-origin static frontend; never proxies Firebase/Graph or serves repository files. */
 export async function serveFrontend(
   req: IncomingMessage,
@@ -15,14 +16,13 @@ export async function serveFrontend(
   let path: string;
   try {
     path =
-      raw === "/"
+      parsePlatformPath(raw)
         ? resolve(root, "index.html")
         : resolve(root, "." + decodeURIComponent(raw));
   } catch {
     return false;
   }
   if (!path.startsWith(root + sep) || raw.includes("..")) return false;
-  if (raw === "/") path = resolve(root, "index.html");
   const types: Record<string, string> = {
     ".html": "text/html",
     ".js": "text/javascript",

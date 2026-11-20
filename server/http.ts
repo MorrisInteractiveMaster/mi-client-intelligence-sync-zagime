@@ -302,16 +302,22 @@ export function apiServer(
       const [status, error] =
         msg === "Source month too large"
           ? [503, "source_month_too_large"]
+          : msg === "Source period too large"
+          ? [503, "source_period_too_large"]
           : msg === "WordPress team is temporarily unavailable"
           ? [503, "wordpress_unavailable"]
           : msg === "Project draft pending"
           ? [409, "project_draft_pending"]
+          : msg === "Employee profile already linked"
+          ? [409, "employee_profile_already_linked"]
           : msg === "Time sync busy" || msg === "Time mapping conflict"
           ? [409, "time_conflict"]
           : options.projects && msg === "Invalid reporting summary"
           ? [503, "temporarily_unavailable"]
           : msg === "Unauthenticated"
           ? [401, "unauthenticated"]
+          : msg === "Platform publication approval required"
+          ? [403, "publication_approval_required"]
           : msg === "Forbidden" || msg === "Forbidden fields"
             ? [403, "forbidden"]
             : msg === "Migration required" || msg === "Revision conflict" ||
