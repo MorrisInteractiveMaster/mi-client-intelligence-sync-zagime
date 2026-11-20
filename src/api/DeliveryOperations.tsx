@@ -6,7 +6,7 @@ import type { DirectoryEntry, Portfolio, ProjectPlacement } from "../projects/po
 import type { TimeMapping } from "../projects/time";
 import { ApiError, type SecuredApiClient } from "./client";
 import { projectStatus, reportDay, reportHours, today } from "./dashboard-format";
-import { portalNavigate } from "./portal-location";
+import { portalNavigate, usePortalLocation } from "./portal-location";
 import { ProjectClientReport } from "./ProjectClientReport";
 import { PersonPhoto } from "./PersonPhoto";
 
@@ -177,7 +177,9 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
 export function DeliveryPreview({ client, tenant, month }: { client: SecuredApiClient; tenant: string; month: string }) {
   const [profiles, setProfiles] = useState<{id: string; label: string}[]>();
   const [scope, setScope] = useState("");
-  const [mode, setMode] = useState<"published" | "draft">("published");
+  const location = usePortalLocation();
+  const mode = location.get("previewMode") === "draft" ? "draft" : "published";
+  const previewProject = location.get("previewProject");
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
@@ -188,10 +190,16 @@ export function DeliveryPreview({ client, tenant, month }: { client: SecuredApiC
   }, [client, tenant]);
   const entitled = mode === "draft" || Boolean(scope);
   return <section aria-label="Preview as client">
-    <div className="delivery-section-heading"><div><h3>Preview as client</h3><p>Published preview follows the selected client access profile. Draft preview includes pending projects.</p></div>
-      <button type="button" className="secure-secondary" onClick={() => portalNavigate({ staff: "overview", view: null, q: null, status: null, present: null, chart: null })}>Back to overview</button></div>
+    <div className="delivery-section-heading"><div><h3>Preview as client</h3><p>Published preview follows the selected client access profile. Draft preview includes saved changes and private projects.</p></div>
+      <button type="button" className="secure-secondary" onClick={() => portalNavigate({
+        staff: previewProject ? "projects" : "overview", editor: previewProject, previewProject: null, previewMode: null,
+        view: null, q: null, status: null, present: null, chart: null,
+      })}>{previewProject ? "Back to project" : "Back to overview"}</button></div>
     <div className="delivery-filters">
-      <label>Preview mode<select value={mode} onChange={e => { setMode(e.target.value as typeof mode); setError(""); portalNavigate({ view: null, q: null, present: null, chart: null }, true); }}><option value="published">Live published view</option><option value="draft">Staff-only draft preview</option></select></label>
+      <label>Preview mode<select value={mode} onChange={e => { setError(""); portalNavigate({
+        previewMode: e.target.value === "draft" ? "draft" : null,
+        view: previewProject ? "project:" + previewProject : null, q: null, present: null, chart: null,
+      }, true); }}><option value="published">Live published view</option><option value="draft">Staff-only draft preview</option></select></label>
       {mode === "published" && <label>Client access profile<select value={scope} onChange={e => { setScope(e.target.value); setError(""); }}><option value="">Select an approved profile</option>{profiles?.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>}
     </div>
     {error && <p role="alert">{error}</p>}
@@ -310,7 +318,9 @@ export function DeliveryMilestones({ client, tenant, projects, onSaved, onOpen }
           milestones: project.milestones.map(m => m.id === milestoneId ? { ...m, completed: true, status: "completed", completedAt: today() } : m) },
       } });
       setCompleted(previous => new Set([...previous, key]));
-      setMessage("Milestone completed. Delivery progress has been recalculated.");
+      setMessage(project.published
+        ? "Milestone completion saved to the draft. Publish changes from the project editor to update the client report."
+        : "Milestone completed. Delivery progress has been recalculated.");
       onSaved();
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save this milestone."); }
     finally { setSaving(undefined); }

@@ -1,5 +1,6 @@
 import type { TimeProjectMetadata } from "../src/projects/time";
 import { setTimeout as sleep } from "node:timers/promises";
+import { timeName, timeNotes, timePersonId, type TimeEntryDetails } from "./time-details";
 
 const base = "https://rest.tsheets.com/api/v1/";
 export function timeId(value: unknown): string {
@@ -21,6 +22,7 @@ export function workDate(value: unknown): string {
 }
 export type TimeToken = (signal?: AbortSignal) => Promise<string>;
 export const timeCatalogLimit = 100;
+export const timeDetailsBatch = 20;
 
 export interface TimeJobcode {
   id: string;
@@ -58,6 +60,12 @@ export class TimePageCapacityError extends Error {
   }
 }
 
+class TimeResponseSizeError extends Error {
+  constructor() {
+    super("Time response too large");
+  }
+}
+
 export interface TimeRow {
   id: string;
   jobcodeId: string;
@@ -65,6 +73,7 @@ export interface TimeRow {
   seconds: number;
   modifiedAt: string;
   deleted: boolean;
+  details?: TimeEntryDetails;
 }
 type JsonObject = Record<string, unknown>;
 function object(value: unknown): JsonObject {
@@ -90,7 +99,7 @@ export async function readTimeJson(
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > maxBytes) throw Error("Time response too large");
+      if (size > maxBytes) throw new TimeResponseSizeError();
       parts.push(Buffer.from(value));
     }
     return object(JSON.parse(Buffer.concat(parts).toString("utf8")));
@@ -112,6 +121,38 @@ function timestamp(value: unknown) {
 }
 const vendorTimestamp = (value: string) =>
   timestamp(value).replace(/\.000Z$/, "+00:00");
+
+function entryDetails(row: JsonObject, reply?: JsonObject, account?: string): TimeEntryDetails | undefined {
+  const personId = timePersonId(row.user_id);
+  const notes = timeNotes(row.notes);
+  let consultantName: string | undefined;
+  if (personId && account) {
+    const supplemental = optionalObject(reply?.supplemental_data);
+    const users = optionalObject(supplemental?.users);
+    const user = users && Object.hasOwn(users, personId) ? optionalObject(users[personId]) : undefined;
+    if (user && timePersonId(user.id) === personId &&
+        (user.company_id === undefined || timePersonId(user.company_id) === account))
+      consultantName = timeName(user.display_name) ??
+        timeName([timeName(user.first_name), timeName(user.last_name)].filter(Boolean).join(" "));
+  }
+  return personId || notes ? {
+    ...(personId && { personId }),
+    ...(consultantName && { consultantName }),
+    ...(notes && { notes }),
+  } : undefined;
+}
+
+const optionalObject = (value: unknown) =>
+  value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : undefined;
+
+function recordedSeconds(row: JsonObject, deleted: boolean) {
+  if (!Number.isSafeInteger(row.duration) || Number(row.duration) < 0 ||
+    (!deleted && row.type !== "manual" && !(row.type === "regular" &&
+      typeof row.end === "string" && row.end && Number.isFinite(Date.parse(row.end)))))
+    throw Error("Invalid Time duration or entry");
+  return Number(row.duration);
+}
+
 export class TimeClient {
   constructor(
     private token: TimeToken,
@@ -182,7 +223,8 @@ export class TimeClient {
           const reply = await readTimeJson(response);
           this.signal?.throwIfAborted();
           return reply;
-        } catch {
+        } catch (error) {
+          if (error instanceof TimeResponseSizeError) throw error;
           throw Error("Invalid Time response");
         }
       }
@@ -193,6 +235,7 @@ export class TimeClient {
         return null;
       if (status === 401 || status === 403)
         throw Error("Time authorization unavailable");
+      if (status === 413) throw new TimeResponseSizeError();
       if (status && status !== 429 && status < 500)
         throw Error("Time request rejected");
       const delay = retry
@@ -392,25 +435,74 @@ export class TimeClient {
       active: project.active,
     };
   }
+  /** Fetch only the requested existing source IDs under their verified jobcode. */
+  async detailsById(jobcodeId: string, ids: string[], account: string, descendants: ReadonlySet<string> = new Set()): Promise<TimeRow[]> {
+    const requested = new Set(ids.map(timeId));
+    if (!requested.size || requested.size !== ids.length || requested.size > timeDetailsBatch)
+      throw Error("Invalid Time detail batch");
+    const job = timeId(jobcodeId);
+    const company = timeId(account);
+    const reply = (await this.get("timesheets", {
+      ids: [...requested].join(","),
+      jobcode_ids: job,
+      jobcode_type: "regular",
+      on_the_clock: "no",
+      supplemental_data: "yes",
+      limit: String(requested.size),
+    }))!;
+    if (reply.more !== false || (reply.company_id !== undefined && timeId(reply.company_id) !== company))
+      throw Error("Time detail scope mismatch");
+    return rows(reply, "timesheets").map(([key, value]) => {
+      const row = object(value);
+      const id = timeId(row.id);
+      const rowJob = timeId(row.jobcode_id);
+      if (id !== key || !requested.has(id) || (rowJob !== job && !descendants.has(rowJob)) || row.on_the_clock === true ||
+        (row.company_id !== undefined && timeId(row.company_id) !== company))
+        throw Error("Time detail scope mismatch");
+      // The provider also returns child jobcodes when filtering by parent. Keep the
+      // material facts so the caller can detect a move, without keeping its details.
+      const details = rowJob === job ? entryDetails(row, reply, company) : undefined;
+      return {
+        id,
+        jobcodeId: rowJob,
+        date: workDate(row.date),
+        seconds: recordedSeconds(row, false),
+        modifiedAt: timestamp(row.last_modified),
+        deleted: false,
+        ...(details && { details }),
+      };
+    });
+  }
+
   async read(
     jobcodeId: string,
     since: string,
     before: string,
     deleted: boolean,
     descendants: ReadonlySet<string> = new Set(),
+    detailsAccount?: string,
   ): Promise<TimeRow[]> {
     const path = deleted ? "timesheets_deleted" : "timesheets";
     const result: TimeRow[] = [];
+    let supplemental = detailsAccount;
     for (let page = 1; page <= 5; page++) {
-      const reply = (await this.get(path, {
+      const query = {
         jobcode_ids: timeId(jobcodeId),
         jobcode_type: "regular",
         modified_since: vendorTimestamp(since),
         modified_before: vendorTimestamp(before),
         limit: "50",
         page: String(page),
-        ...(deleted ? {} : { on_the_clock: "no", supplemental_data: "no" }),
-      }))!;
+        ...(deleted ? {} : { on_the_clock: "no", supplemental_data: supplemental ? "yes" : "no" }),
+      };
+      let reply: JsonObject;
+      try {
+        reply = (await this.get(path, query))!;
+      } catch (error) {
+        if (deleted || !supplemental || !(error instanceof TimeResponseSizeError)) throw error;
+        supplemental = undefined;
+        reply = (await this.get(path, { ...query, supplemental_data: "no" }))!;
+      }
       if (typeof reply.more !== "boolean")
         throw Error("Invalid Time pagination");
       const batch = rows(reply, path);
@@ -423,29 +515,22 @@ export class TimeClient {
         if (id !== key || (job !== jobcodeId && !descendants.has(job)))
           throw Error("Time scope mismatch");
         if (job !== jobcodeId) continue;
-        if (
-          !Number.isSafeInteger(row.duration) ||
-          Number(row.duration) < 0 ||
-          (!deleted &&
-            row.type !== "manual" &&
-            !(
-              row.type === "regular" &&
-              typeof row.end === "string" &&
-              row.end &&
-              Number.isFinite(Date.parse(row.end))
-            ))
-        )
-          throw Error("Invalid Time duration or entry");
+        const seconds = recordedSeconds(row, deleted);
         const modifiedAt = timestamp(row.last_modified);
         if (modifiedAt < since || modifiedAt > before)
           throw Error("Time window mismatch");
+        const verifiedAccount = detailsAccount === undefined ||
+          ((row.company_id === undefined || timePersonId(row.company_id) === detailsAccount) &&
+           (reply.company_id === undefined || timePersonId(reply.company_id) === detailsAccount));
+        const details = deleted || !verifiedAccount ? undefined : entryDetails(row, reply, supplemental);
         result.push({
           id,
           jobcodeId,
           date: workDate(row.date),
-          seconds: Number(row.duration),
+          seconds,
           modifiedAt,
           deleted,
+          ...(details && { details }),
         });
       }
       if (!reply.more) return result;

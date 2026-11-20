@@ -2,6 +2,8 @@ import { portfolioLimits, type PortfolioSection } from "../src/projects/portfoli
 import type { IncomingMessage } from "node:http";
 import type { ProjectBackend } from "./project-workspace";
 import type { TimeSync } from "./time-sync";
+import { sourceFilterKeys } from "./source-page";
+import type { SourceFilters } from "../src/api/types";
 /** Called only after common origin, rate, identity-header and preview gates. */
 export async function projectRequest(
   backend: ProjectBackend,
@@ -11,6 +13,18 @@ export async function projectRequest(
   disconnected?: AbortSignal,
 ) {
   const url = new URL(req.url!, "http://local");
+  const bulkAllocation = /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/allocations\/bulk$/.exec(url.pathname);
+  if (bulkAllocation && req.method === "POST") {
+    if (url.search) throw Error("Invalid bulk allocation query");
+    const idempotency = req.headers["idempotency-key"];
+    return { status: 200, body: await backend.allocateBulk(
+      req.headers.authorization ?? "",
+      bulkAllocation[1],
+      await readBody(),
+      typeof idempotency === "string" ? idempotency : "",
+      disconnected,
+    ) };
+  }
   const directorySync = /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/directory\/wordpress-sync$/.exec(url.pathname);
   if (directorySync) {
     if (url.search || req.method !== "POST") return { status: 405, body: { error: "method_not_allowed" } };
@@ -110,7 +124,7 @@ export async function projectRequest(
     return { status: 405, body: { error: "method_not_allowed" } };
   }
   const m =
-    /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|report|projects|sources|allocations|audits)(?:\/([-a-zA-Z0-9_]{1,128}))?(?:\/(publication|history))?$/.exec(
+    /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|report|projects|sources|allocations|audits)(?:\/([-a-zA-Z0-9_]{1,128}))?(?:\/(publication|history|draft))?$/.exec(
       url.pathname,
     );
   if (!m) return { status: 404, body: { error: "not_found" } };
@@ -121,6 +135,7 @@ export async function projectRequest(
       throw Error("Invalid fields");
   };
   const queryKeys = [...url.searchParams.keys()];
+  const sourceList = req.method === "GET" && resource === "sources" && !id && !action;
   if (
     queryKeys.some(
       (k) =>
@@ -129,6 +144,7 @@ export async function projectRequest(
             req.method === "GET" &&
             resource === "projects" &&
             !id) ||
+          (sourceList && sourceFilterKeys.some(field => field === k)) ||
           ["month", "limit", "cursor"].includes(k)
         ) || url.searchParams.getAll(k).length !== 1,
     )
@@ -143,6 +159,8 @@ export async function projectRequest(
     ...(url.searchParams.has("cursor")
       ? { cursor: url.searchParams.get("cursor")! }
       : {}),
+    ...(sourceList ? { sourceFilters: Object.fromEntries(sourceFilterKeys.filter(field => field !== "search" && url.searchParams.has(field))
+      .map(field => [field, url.searchParams.get(field)!])) as SourceFilters } : {}),
   };
   const ok = (body: unknown, status = 200) => ({ status, body });
   if (req.method === "GET") {
@@ -187,6 +205,11 @@ export async function projectRequest(
     if (!Number.isSafeInteger(b.expectedRevision) || b.expectedRevision < 1)
       throw Error("Invalid revision");
     if (resource === "projects") {
+      if (action === "draft") {
+        only(b, ["expectedRevision", "action"]);
+        if (b.action !== "publish" && b.action !== "discard") throw Error("Invalid draft action");
+        return ok(await backend.save(token, tenant, undefined, { id, expectedRevision: b.expectedRevision, draftAction: b.action }));
+      }
       only(
         b,
         action === "publication"

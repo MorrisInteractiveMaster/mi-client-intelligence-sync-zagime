@@ -300,8 +300,12 @@ export function apiServer(
       if (res.destroyed) return;
       const msg = e instanceof Error ? e.message : "";
       const [status, error] =
-        msg === "WordPress team is temporarily unavailable"
+        msg === "Source month too large"
+          ? [503, "source_month_too_large"]
+          : msg === "WordPress team is temporarily unavailable"
           ? [503, "wordpress_unavailable"]
+          : msg === "Project draft pending"
+          ? [409, "project_draft_pending"]
           : msg === "Time sync busy" || msg === "Time mapping conflict"
           ? [409, "time_conflict"]
           : options.projects && msg === "Invalid reporting summary"

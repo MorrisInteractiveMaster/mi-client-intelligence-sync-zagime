@@ -86,6 +86,7 @@ export type ProjectView = Pick<
 
 export type StaffProjectSummary = ProjectView & {
   seconds: number;
+  draft?: ProjectDraftMetadata;
   delivery?: Delivery;
   deliveryMilestones?: ProjectMilestone[];
   workOrderReference?: string;
@@ -94,6 +95,15 @@ export type StaffProjectSummary = ProjectView & {
     team: PublishedPortfolio["directory"];
   };
 };
+export interface ProjectDraftMetadata {
+  revision: number;
+  updatedAt: string;
+}
+export interface StaffProjectDetail {
+  revision: number;
+  project: Project;
+  draft?: ProjectDraftMetadata;
+}
 export interface ProjectWorkspace {
   role: "staff" | "client";
   revision: number;
@@ -120,6 +130,7 @@ export interface ProjectPage {
   revision: number;
   projects?: StaffProjectSummary[];
   sources?: import("../api/types").StaffSource[];
+  sourceSummary?: import("../api/types").SourceSummary;
   history?: import("../api/types").HistoryRow[];
   audits?: {
     id: string;

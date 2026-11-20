@@ -31,6 +31,9 @@
 .delivery-details { border:1px solid #c3d1dc; background:#fbfaf6; border-radius:10px; padding:8px 14px; }
 .delivery-details summary { font-weight:680; padding:6px 0; min-height:36px; cursor:pointer; }
 .delivery-details > div, .delivery-details > fieldset { margin:7px 0; }
+.delivery-bulk-results { margin-block:12px; overflow-wrap:anywhere; }
+.delivery-bulk-results ul { padding-inline-start:20px; }
+.delivery-bulk-results li + li { margin-block-start:8px; }
 .delivery-template-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); gap:5px; }
 .delivery-directory { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr)); gap:10px; margin:12px 0; }
 .nordic.secure-shell .delivery-person, .delivery-people-list label { display:flex; align-items:center; gap:9px; text-align:start; overflow-wrap:anywhere; }

@@ -858,6 +858,15 @@ function ClientFixture() {
         .click();
       await first.page.getByText("Allocation saved.", { exact: true }).waitFor();
       await first.page.getByText("Reviewed delivery preparation", { exact: true }).waitFor();
+      const monthSearch = first.page.getByRole("searchbox", { name: "Search month", exact: true });
+      await monthSearch.fill("Reviewed delivery");
+      await first.page.getByRole("button", { name: "Apply filters", exact: true }).click();
+      await first.page.getByRole("status").filter({ hasText: /Search: Reviewed delivery.*1 match out of/ }).waitFor();
+      await monthSearch.fill("No matching reporting text");
+      await first.page.getByRole("button", { name: "Apply filters", exact: true }).click();
+      await first.page.getByRole("status").filter({ hasText: /0 matches out of/ }).waitFor();
+      await first.page.getByRole("button", { name: "Clear filters", exact: true }).click();
+      await first.page.getByText("Reviewed delivery preparation", { exact: true }).waitFor();
       await first.page.screenshot({ path: join(evidence, "time-allocation.png"), fullPage: true, animations: "disabled" });
       await first.page.getByRole("navigation").getByRole("button", { name: "Projects", exact: true }).click();
       await card.locator("dd").first().filter({ hasText: /^0\.5 h$/ }).waitFor();
@@ -1016,6 +1025,21 @@ function ClientFixture() {
       await previewPage.getByText("DRAFT PREVIEW · MORRIS STAFF ONLY", { exact: true }).waitFor();
       await previewPage.getByRole("heading", { name: "Leadership summary", exact: true }).waitFor();
       await previewPage.screenshot({ path: join(evidence, "staff-draft-preview.png"), fullPage: true, animations: "disabled" });
+      await previewPage.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Projects", exact: true }).click();
+      await previewPage.getByRole("button", { name: "Edit Browser saved project", exact: true }).click();
+      await previewPage.getByLabel("Client description").fill("Editorial revision in progress");
+      await previewPage.getByRole("button", { name: "Save Draft", exact: true }).click();
+      await previewPage.getByText("Draft saved. Clients still see the last approved version.", { exact: true }).waitFor();
+      await previewPage.getByRole("button", { name: "Preview Changes", exact: true }).click();
+      await previewPage.getByText("DRAFT PREVIEW · MORRIS STAFF ONLY", { exact: true }).waitFor();
+      await previewPage.getByText("Editorial revision in progress", { exact: true }).first().waitFor();
+      await previewPage.screenshot({ path: join(evidence, "staff-project-revision-preview.png"), animations: "disabled" });
+      const duringDraft = await json(await request("report?month=2026-11", "GET", undefined, client.idToken));
+      assert.doesNotMatch(JSON.stringify(duringDraft), /Editorial revision in progress/);
+      await previewPage.getByRole("button", { name: "Back to project" }).click();
+      previewPage.once("dialog", dialog => void dialog.accept());
+      await previewPage.getByRole("button", { name: "Discard Draft", exact: true }).click();
+      await previewPage.getByText("Draft discarded. The approved version is unchanged.", { exact: true }).waitFor();
       await previewBrowser.context.close();
 
       for (const width of [1440, 390]) {
@@ -1252,17 +1276,59 @@ function ClientFixture() {
       assert.equal(approvedCard.milestones.length, 1);
       assert.ok(!JSON.stringify(approvedCard).includes("PRIVATE-UPDATE"));
       assert.ok(!JSON.stringify(approvedCard).includes("internalNotes"));
-      await json(await request(`projects/${persisted.id}`, "PATCH", {
-        expectedRevision: await revision(),
-        patch: {
-          name: persisted.name,
-          description: persisted.description,
-          internalNotes: persisted.internalNotes,
-          plan: persisted.plan,
-          progress: 50,
-          status: persisted.status,
-        },
-      }));
+      const projectPath = `projects/${persisted.id}`;
+      const approvedProjectRef = root.collection("projects").doc(persisted.id);
+      const approvedViewRef = root.collection("projectViews").doc(persisted.id);
+      const draftRef = root.collection("projectDrafts").doc(persisted.id);
+      const approvedView = (await approvedViewRef.get()).data();
+      const changes = { name: persisted.name, description: "Candidate description", internalNotes: "PRIVATE-DRAFT-ONLY",
+        plan: persisted.plan, progress: 50, status: persisted.status };
+      const raceRevision = await revision();
+      const competing = await Promise.all([
+        request(projectPath, "PATCH", { expectedRevision: raceRevision, patch: changes }),
+        request(projectPath, "PATCH", { expectedRevision: raceRevision, patch: { ...changes, description: "Competing description" } }),
+      ]);
+      assert.deepEqual(competing.map(response => response.status).sort(), [200, 409]);
+      const firstDraft = await json(await request(projectPath));
+      assert.equal(firstDraft.draft.revision, raceRevision + 1);
+      assert.equal(firstDraft.project.progress, 50);
+      assert.match(firstDraft.project.description, /^(Candidate|Competing) description$/);
+      assert.deepEqual((await approvedViewRef.get()).data(), approvedView);
+      assert.deepEqual((await approvedProjectRef.get()).data(), persisted);
+      assert.deepEqual(await json(await request("report?month=2026-11", "GET", undefined, client.idToken)), approvedReport);
+      const previewWithDraft = await json(await request("client-preview?month=2026-11&mode=draft"));
+      assert.equal(previewWithDraft.projects.find((p: { id: string }) => p.id === persisted.id).description, firstDraft.project.description);
+      assert.doesNotMatch(JSON.stringify(previewWithDraft), /PRIVATE-DRAFT-ONLY|PRIVATE-UPDATE/);
+      for (const action of ["publish", "discard"]) {
+        assert.equal((await request(projectPath + "/draft", "PATCH", { expectedRevision: await revision(), action }, client.idToken)).status, 403);
+      }
+      assert.equal((await request(projectPath + "/draft", "PATCH", { expectedRevision: raceRevision, action: "publish" })).status, 409);
+      assert.equal((await request(projectPath + "/publication", "PATCH", { expectedRevision: await revision(), published: false })).status, 409);
+      await approvedProjectRef.update({ description: "Approval changed independently" });
+      assert.equal((await request(projectPath + "/draft", "PATCH", { expectedRevision: await revision(), action: "publish" })).status, 409);
+      await approvedProjectRef.update({ description: persisted.description });
+      const beforePublish = await revision();
+      const promoted = await Promise.all([
+        request(projectPath + "/draft", "PATCH", { expectedRevision: beforePublish, action: "publish" }),
+        request(projectPath + "/draft", "PATCH", { expectedRevision: beforePublish, action: "discard" }),
+      ]);
+      assert.deepEqual(promoted.map(response => response.status).sort(), [200, 409]);
+      if (promoted[0].status !== 200) {
+        await json(await request(projectPath, "PATCH", { expectedRevision: await revision(), patch: changes }));
+        await json(await request(projectPath + "/draft", "PATCH", { expectedRevision: await revision(), action: "publish" }));
+      }
+      const publishedDraft = await json(await request("report?month=2026-11", "GET", undefined, client.idToken));
+      assert.match(publishedDraft.projects.find((p: { id: string }) => p.id === persisted.id).description, /^(Candidate|Competing) description$/);
+      assert.doesNotMatch(JSON.stringify(publishedDraft), /PRIVATE-DRAFT-ONLY/);
+      assert.equal(publishedDraft.totalSeconds, approvedReport.totalSeconds);
+      assert.equal((await draftRef.get()).data()!.state, "published");
+      assert.ok(!("content" in (await draftRef.get()).data()!));
+      const revisionAudits = (await root.collection("audits").where("entityId", "==", persisted.id).get()).docs
+        .map(doc => doc.data()).filter(entry => entry.action.startsWith("project-draft-"));
+      assert.ok(revisionAudits.some(entry => entry.action === "project-draft-saved"));
+      assert.ok(revisionAudits.some(entry => entry.action === "project-draft-discarded"));
+      assert.ok(revisionAudits.some(entry => entry.action === "project-draft-published"));
+      assert.ok(revisionAudits.every(entry => entry.actor === staff.localId && !("content" in entry)));
       const legacyEdit = (await root.collection("projects").doc(persisted.id).get()).data()!;
       assert.deepEqual(legacyEdit.updates, persisted.updates);
       assert.deepEqual(legacyEdit.milestones, persisted.milestones);
@@ -1325,6 +1391,43 @@ function ClientFixture() {
       await hierarchyBrowser.page.getByRole("button", { name: "Policy assessment fixture", exact: true }).waitFor();
       await hierarchyBrowser.page.getByText("1 department · 2 active · 0 completed", { exact: true }).waitFor();
       await hierarchyBrowser.page.screenshot({ path: join(evidence, "delivery-hierarchy.png"), animations: "disabled" });
+
+      const bulkReady = root.collection("rawTime").doc("browser-bulk-ready");
+      const bulkConflict = root.collection("rawTime").doc("browser-bulk-changed");
+      const bulkFixture = (id: string, day: string, description: string) => ({
+        schemaVersion: 2, source: "synthetic", scopeProjectId: "synthetic-delivery", deleted: false,
+        record: { id, tenantId: tenant, sourcePersonId: "synthetic-person", sourceWorkOrderId: "synthetic-job",
+          date: "2026-11-" + day, seconds: 1733, description, revision: "browser-bulk-1" },
+      });
+      const readyEntry = bulkFixture(bulkReady.id, "21", "Browser bulk ready entry");
+      await Promise.all([
+        bulkReady.set(readyEntry),
+        bulkConflict.set(bulkFixture(bulkConflict.id, "22", "Browser bulk changed entry")),
+      ]);
+      const bulkPage = hierarchyBrowser.page;
+      await bulkPage.getByRole("button", { name: "Time Allocation", exact: true }).click();
+      await bulkPage.getByRole("row").filter({ hasText: "Browser bulk ready entry" }).getByRole("checkbox").check();
+      await bulkPage.getByRole("row").filter({ hasText: "Browser bulk changed entry" }).getByRole("checkbox").check();
+      await bulkPage.getByLabel("Assign 2 unallocated entries").selectOption(nested.id);
+      // The browser has already loaded its revisions. Simulate a source correction in the emulator only.
+      await bulkConflict.update({ "record.revision": "browser-bulk-2" });
+      const confirmBulk = bulkPage.waitForEvent("dialog").then(async dialog => {
+        const message = dialog.message();
+        await dialog.accept();
+        assert.match(message, /Assign all recorded time on 2 selected entries to Policy assessment fixture/);
+      });
+      await Promise.all([bulkPage.getByRole("button", { name: "Assign selected time" }).click(), confirmBulk]);
+      const bulkResults = bulkPage.getByRole("region", { name: "Bulk allocation results" });
+      await bulkResults.getByText("1 of 2 entries saved.", { exact: true }).waitFor();
+      await bulkResults.getByText(/Nov 21.*Saved\./).waitFor();
+      await bulkResults.getByText(/Nov 22.*Source changed/).waitFor();
+      assert.equal(await bulkResults.getByRole("button", { name: "Retry unsaved entries" }).count(), 0);
+      assert.deepEqual((await root.collection("allocationHeads").doc(bulkReady.id).get()).data()?.portions,
+        [{ projectId: nested.id, description: "", seconds: 1733 }]);
+      assert.equal((await root.collection("allocationHeads").doc(bulkConflict.id).get()).exists, false);
+      assert.deepEqual((await bulkReady.get()).data(), readyEntry);
+      await bulkResults.scrollIntoViewIfNeeded();
+      await bulkPage.screenshot({ path: join(evidence, "bulk-allocation-results.png"), animations: "disabled" });
       await hierarchyBrowser.context.close();
       assert.deepEqual(errors, []);
       await writeFile(
@@ -1346,6 +1449,7 @@ function ClientFixture() {
             publishedTimeline: true,
             rapidMonthSwitch: true,
             allocation: true,
+            bulkAllocationPartialConflict: true,
             history: true,
             audits: true,
             errors,

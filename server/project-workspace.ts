@@ -1,6 +1,8 @@
+import { readSourcePage } from "./source-page";
 import { portfolioLimits, previousReportingMonth, type PortfolioSection, type PortfolioTotals, type WordPressProfile } from "../src/projects/portfolio";
 import { portfolioRef, publishedPortfolio, readPortfolio, savePortfolioRecord } from "./portfolio";
 import { mergeDirectory, wordpressProfiles } from "./wordpress-team";
+import { approvedContent, contentFingerprint, draftMetadata, draftRef, overlayProject, readProjectDraft, type ProjectDraftDocument } from "./project-drafts";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -19,6 +21,7 @@ import {
 import { requestIdentity, rememberIdentity } from "./request-identity";
 import { creationKey } from "./idempotency";
 import { FirestoreTenantStore, key } from "./firestore-store";
+import { allocateTimeBatch } from "./bulk-allocation";
 import {
   approvedProjectContent,
   managedProject,
@@ -28,6 +31,8 @@ import {
   type ProjectWorkspace,
   type ProjectReport,
   type ProjectPage,
+  type ProjectView,
+  type StaffProjectDetail,
 } from "../src/projects/model";
 import type { AllocationAnnotations, PageQuery } from "../src/api/types";
 import type { Allocation } from "../src/reporting/model";
@@ -117,13 +122,14 @@ export class ProjectStore {
       expectedRevision?: number;
       idempotency?: string;
       published?: boolean;
+      draftAction?: "publish" | "discard";
     },
     now: number,
   ) {
-    const managed =
-      options.published === undefined ? managedProject(input) : undefined;
+    if (options.published !== undefined && typeof options.published !== "boolean") throw Error("Invalid publication");
+    const requested = options.published === undefined && !options.draftAction ? managedProject(input) : undefined;
     const idem = !options.id
-      ? creationKey(options.idempotency ?? "", who.subject, now, managed)
+      ? creationKey(options.idempotency ?? "", who.subject, now, requested)
       : undefined;
     return this.db.runTransaction(
       async (tx) => {
@@ -158,35 +164,21 @@ export class ProjectStore {
         if (options.id && options.expectedRevision !== a.meta.revision)
           throw Error("Revision conflict");
         const old = prior?.data() as Project | undefined;
-        if (
-          old &&
-          options.published !== undefined &&
-          typeof options.published !== "boolean"
-        )
-          throw Error("Invalid publication");
-        if (
-          old &&
-          (managed
-            ? isDeepStrictEqual(
-                managedProject({
-                  name: old.name,
-                  status: old.status,
-                  progress: old.progress,
-                  description: old.description,
-                  internalNotes: old.internalNotes,
-                  ...(old.workOrderReference === undefined
-                    ? {}
-                    : { workOrderReference: old.workOrderReference }),
-                  plan: old.plan,
-                  ...(managed.updates === undefined ? {} : { updates: old.updates ?? [] }),
-                  ...(managed.milestones === undefined ? {} : { milestones: old.milestones ?? [] }),
-                  ...(managed.delivery === undefined ? {} : { delivery: old.delivery }),
-                }),
-                managed,
-              )
-            : old.published === options.published)
-        )
-          return { id, revision: a.meta.revision, changed: false };
+        const pendingRef = draftRef(a.root, id);
+        const pending = old?.published ? readProjectDraft(await tx.get(pendingRef), tenant) : undefined;
+        if (options.draftAction && (!old?.published || !pending)) throw Error("Revision conflict");
+        if (options.published === false && pending) throw Error("Project draft pending");
+        const base = old?.published && (requested || options.draftAction === "publish") ? contentFingerprint(old) : undefined;
+        if (base && pending && pending.base !== base) throw Error("Revision conflict");
+        const editBase = old && pending ? overlayProject(old, pending.content) : old;
+        const managed = old && requested
+          ? approvedContent(overlayProject(editBase!, requested))
+          : (options.draftAction === "publish" ? pending!.content : requested);
+        if (old && !options.draftAction && (managed
+          ? isDeepStrictEqual(approvedContent(editBase!), managed)
+          : old.published === options.published))
+          return { id, revision: a.meta.revision, changed: false,
+            ...(pending && { draft: draftMetadata(pending) }) };
         if (managed?.delivery || managed?.milestones?.some(m => m.ownerId)) {
           const portfolio = await readPortfolio(tx, a.root);
           const delivery = managed.delivery;
@@ -214,10 +206,30 @@ export class ProjectStore {
           }
         }
         const at = new Date(now).toISOString();
+        const revision = a.meta.revision + 1;
+        if (!Number.isSafeInteger(revision)) throw Error("Invalid revision");
+        const audit = (action: string) => {
+          const auditId = randomUUID();
+          tx.create(a.root.collection("audits").doc(auditId), {
+            id: auditId, tenantId: tenant, actor: who.subject, action, entityId: id, at, revision,
+          });
+          tx.update(a.root, { revision });
+        };
+        const draftRecord: Omit<ProjectDraftDocument, "state"> =
+          { tenantId: tenant, projectId: id, revision, actor: who.subject, updatedAt: at };
+        if (old?.published && requested) {
+          tx.set(pendingRef, { ...draftRecord, state: "draft", base: base!, content: managed! });
+          audit("project-draft-saved");
+          return { id, revision, changed: true, draft: { revision, updatedAt: at } };
+        }
+        if (options.draftAction === "discard") {
+          tx.set(pendingRef, { ...draftRecord, state: "discarded" });
+          audit("project-draft-discarded");
+          return { id, revision, changed: true };
+        }
         const p: Project = old
           ? {
-              ...old,
-              ...(managed ?? { published: options.published! }),
+              ...(managed ? overlayProject(old, managed) : { ...old, published: options.published! }),
               updatedAt: at,
               updatedBy: who.subject,
             }
@@ -234,8 +246,6 @@ export class ProjectStore {
               updatedBy: who.subject,
             };
         const viewRef = a.root.collection("projectViews").doc(id);
-        if (managed && managed.workOrderReference === undefined)
-          delete p.workOrderReference;
         const view = old ? await tx.get(viewRef) : undefined;
         if (
           old &&
@@ -245,28 +255,14 @@ export class ProjectStore {
             view.data()!.schemaVersion !== 2)
         )
           throw Error("Invalid reporting summary");
-        const revision = a.meta.revision + 1;
-        if (!Number.isSafeInteger(revision)) throw Error("Invalid revision");
         tx.set(ref, p);
         tx.set(viewRef, {
           ...projectView(p, view?.data()?.lifetimeSeconds ?? 0),
           ...approvedProjectContent(p, false),
         });
-        const auditId = randomUUID();
-        tx.create(a.root.collection("audits").doc(auditId), {
-          id: auditId,
-          tenantId: tenant,
-          actor: who.subject,
-          action: old
-            ? managed
-              ? "project-edited"
-              : "publication-changed"
-            : "project-created",
-          entityId: id,
-          at,
-          revision,
-        });
-        tx.update(a.root, { revision });
+        if (options.draftAction === "publish") tx.set(pendingRef, { ...draftRecord, state: "published" });
+        audit(options.draftAction === "publish" ? "project-draft-published"
+          : old ? managed ? "project-edited" : "publication-changed" : "project-created");
         const result = { id, revision, changed: true };
         if (idemRef)
           tx.create(idemRef, {
@@ -318,7 +314,7 @@ export class ProjectStore {
       return { revision: a.meta.revision, portfolio, totals: [...totals.values()] };
     });
   }
-  async detail(tenant: string, who: VerifiedIdentity, id: string) {
+  async detail(tenant: string, who: VerifiedIdentity, id: string): Promise<StaffProjectDetail> {
     return this.db.runTransaction(async (tx) => {
       const a = await this.access(tx, tenant, who);
       if (!a.staff) throw Error("Forbidden");
@@ -330,7 +326,10 @@ export class ProjectStore {
         p.data()!.id !== id
       )
         throw Error("Forbidden");
-      return { revision: a.meta.revision, project: p.data() as Project };
+      const project = p.data() as Project;
+      const draft = project.published ? readProjectDraft(await tx.get(draftRef(a.root, p.id)), tenant) : undefined;
+      return { revision: a.meta.revision, project: draft ? overlayProject(project, draft.content) : project,
+        ...(draft && { draft: draftMetadata(draft) }) };
     });
   }
   async report(
@@ -381,9 +380,25 @@ export class ProjectStore {
             ),
           )
         : [];
-      const projects = visible.map((v, i) =>
-        publicProject(v.data() as any, periodSeconds(periods[i], v.id, month)),
-      );
+      const details = visible.length ? await tx.getAll(...visible.map(v => a.root.collection("projects").doc(v.id))) : [];
+      const pending = preview?.mode === "draft" && visible.length
+        ? await tx.getAll(...visible.map(v => draftRef(a.root, v.id))) : [];
+      const projectDetails = details.map((doc, i) => {
+        const project = doc.data() as Project | undefined;
+        if (!project || project.id !== doc.id || project.tenantId !== tenant || project.schemaVersion !== 2) return;
+        const draft = readProjectDraft(pending[i], tenant);
+        return draft ? overlayProject(project, draft.content) : project;
+      });
+      const projects = visible.map((v, i) => {
+        const view = v.data() as ProjectView;
+        const project = projectDetails[i];
+        const projected = !project ? view : preview?.mode === "draft"
+          ? { ...projectView(project, view.lifetimeSeconds), ...approvedProjectContent(project) }
+          : project.milestones?.some(m => !m.date && m.visible)
+            ? { ...view, milestones: approvedProjectContent(project).milestones }
+            : view;
+        return publicProject(projected, periodSeconds(periods[i], v.id, month));
+      });
       const historicalMonths = [];
       for (let prior = previousReportingMonth(month); prior && historicalMonths.length < 5; prior = previousReportingMonth(prior))
         historicalMonths.unshift(prior);
@@ -396,24 +411,18 @@ export class ProjectStore {
       }));
       const config = await readPortfolio(tx, a.root);
       const delivery: Map<string, Delivery> = new Map();
-      const details = visible.length ? await tx.getAll(...visible.map(v => a.root.collection("projects").doc(v.id))) : [];
       const visibleIds = new Set(projects.map(project => project.id));
       const byId = new Map(projects.map(project => [project.id, project]));
       const hierarchy: NonNullable<ProjectReport["hierarchy"]> = Object.create(null);
-      for (const doc of details) {
-        const project = doc.data() as Project | undefined;
-        if (!project || project.id !== doc.id || project.tenantId !== tenant || project.schemaVersion !== 2) continue;
-        const publishedView = byId.get(doc.id)!;
-        if (project.milestones?.some(milestone => !milestone.date && milestone.visible)) {
-          const approved = approvedProjectContent(project);
-          publishedView.milestones = publicProject({ ...projectView(project, publishedView.lifetimeSeconds), ...approved }, publishedView.seconds).milestones;
-        }
+      for (const project of projectDetails) {
+        if (!project) continue;
+        const publishedView = byId.get(project.id)!;
         if (!project.delivery) continue;
         const settings = project.delivery;
-        delivery.set(doc.id, settings);
+        delivery.set(project.id, settings);
         const summary = measureDelivery({ ...publishedView, milestones: project.milestones?.filter(m => m.visible), delivery: settings },
           { monthly: publishedView.seconds, lifetime: publishedView.lifetimeSeconds }, deliveryDate());
-        hierarchy[doc.id] = {
+        hierarchy[project.id] = {
           ...(settings.parentId && visibleIds.has(settings.parentId) ? { parentId: settings.parentId } : {}),
           ...(summary.completion !== undefined ? { completion: summary.completion } : {}),
           ...(settings.publishSummary ? {
@@ -483,7 +492,7 @@ export class ProjectStore {
     checkMonth(query.month);
     if (
       query.search !== undefined &&
-      (resource !== "projects" || query.search.length > 120)
+      ((resource !== "projects" && resource !== "sources") || query.search.length > 120)
     )
       throw Error("Invalid project search");
     const search = query.search?.trim().normalize("NFKC").toLowerCase() ?? "";
@@ -492,6 +501,7 @@ export class ProjectStore {
     return this.db.runTransaction(async (tx) => {
       const a = await this.access(tx, tenant, who);
       if (!a.staff) throw Error("Forbidden");
+      if (resource === "sources") return readSourcePage(tx, a.root, who.subject, a.meta.revision, query);
       const context = key(
         tenant,
         who.subject,
@@ -515,32 +525,13 @@ export class ProjectStore {
               throw Error();
             position = c.position;
           }
-          if (resource === "sources") {
-            if (
-              typeof c.position !== "string" ||
-              !c.position.startsWith(query.month + "-")
-            )
-              throw Error();
-            position = c.position;
-          }
         } catch {
           throw Error("Revision conflict");
         }
       }
-      const collection =
-        resource === "sources"
-          ? "rawTime"
-          : resource === "history"
-            ? "allocationRevisions"
-            : resource;
+      const collection = resource === "history" ? "allocationRevisions" : resource;
       let q: FirebaseFirestore.Query = a.root.collection(collection);
-      if (resource === "projects" || resource === "sources")
-        q = q.where("schemaVersion", "==", 2);
-      if (resource === "sources")
-        q = q
-          .where("record.date", ">=", query.month + "-01")
-          .where("record.date", "<=", query.month + "-31")
-          .orderBy("record.date");
+      if (resource === "projects") q = q.where("schemaVersion", "==", 2);
       if (resource === "history")
         q = q.where("sourceId", "==", safeId(query.sourceId!));
       if (resource === "history" || resource === "audits")
@@ -576,9 +567,7 @@ export class ProjectStore {
                   after: scanned.at(-1)!.id,
                   ...(["history", "audits"].includes(resource)
                     ? { position: docs.at(-1)!.data().revision }
-                    : resource === "sources"
-                      ? { position: docs.at(-1)!.data().record.date }
-                      : {}),
+                    : {}),
                 }),
               ).toString("base64url"),
             }
@@ -597,6 +586,8 @@ export class ProjectStore {
               ),
             )
           : [];
+        const draftDocs = docs.filter(d => d.data().published === true).map(d => draftRef(a.root, d.id));
+        const drafts = new Map((draftDocs.length ? await tx.getAll(...draftDocs) : []).map(d => [d.id, readProjectDraft(d, tenant)]));
         const summaries = docs.map((d, i) => {
           if (d.data().tenantId !== tenant || d.data().id !== d.id)
             throw Error("Forbidden");
@@ -607,14 +598,15 @@ export class ProjectStore {
             views[i].data()!.schemaVersion !== 2
           )
             throw Error("Invalid reporting summary");
+          const project = d.data() as Project;
+          const draft = drafts.get(d.id);
+          const milestones = draft?.content.milestones ?? project.milestones;
           return {
-            ...projectView(
-              d.data() as Project,
-              views[i].data()!.lifetimeSeconds,
-            ),
+            ...projectView(project, views[i].data()!.lifetimeSeconds),
             seconds: periodSeconds(periods[i], d.id, query.month),
+            ...(draft && { draft: draftMetadata(draft) }),
             ...(d.data().delivery ? { delivery: d.data().delivery as Delivery } : {}),
-            ...(d.data().milestones ? { deliveryMilestones: d.data().milestones as Project["milestones"] } : {}),
+            ...(milestones && { deliveryMilestones: milestones }),
             ...(d.data().workOrderReference ? { workOrderReference: String(d.data().workOrderReference) } : {}),
           };
         });
@@ -630,84 +622,6 @@ export class ProjectStore {
             },
           }));
         } else out.projects = [];
-      } else if (resource === "sources") {
-        const heads = docs.length
-          ? await tx.getAll(
-              ...docs.map((d) =>
-                a.root.collection("allocationHeads").doc(d.id),
-              ),
-            )
-          : [];
-        const scoped = docs.length
-          ? await tx.getAll(
-              ...docs.map((d) =>
-                a.root
-                  .collection("projects")
-                  .doc(safeId(d.data().scopeProjectId)),
-              ),
-            )
-          : [];
-        const mappingRefs = docs.map(doc => {
-          const envelope = doc.data();
-          return envelope.source === "quickbooks-time" && envelope.sourceCompanyId && envelope.record?.sourceWorkOrderId
-            ? a.root.collection("timeMappings").doc(key(envelope.sourceCompanyId, envelope.record.sourceWorkOrderId)) : undefined;
-        });
-        const uniqueRefs = [...new Map(mappingRefs.flatMap(ref => ref ? [[ref.path, ref] as const] : [])).values()];
-        const mappings = new Map(uniqueRefs.length ? (await tx.getAll(...uniqueRefs)).map(doc => [doc.ref.path, doc.data()]) : []);
-        out.sources = docs.map((d, i) => {
-          const r = d.data().record,
-            h = heads[i].data();
-          if (
-            r.tenantId !== tenant ||
-            !scoped[i].exists ||
-            scoped[i].data()!.tenantId !== tenant ||
-            scoped[i].data()!.schemaVersion !== 2 ||
-            !Number.isSafeInteger(r.seconds) ||
-            r.seconds < 0
-          )
-            throw Error("Invalid scoped source");
-          const portions: Allocation[] = h?.portions ?? [],
-            applied: Allocation[] = h?.appliedPortions ?? portions;
-          const mapRef = mappingRefs[i];
-          const workOrderName: unknown = mapRef ? mappings.get(mapRef.path)?.sourceJob?.name : scoped[i].data()!.workOrderReference;
-          return {
-            id: d.id,
-            date: r.date,
-            seconds: r.seconds,
-            description: r.description,
-            sourceWorkOrderId: r.sourceWorkOrderId,
-            ...(r.sourcePersonId ? { sourcePersonId: r.sourcePersonId } : {}),
-            ...(typeof workOrderName === "string" && workOrderName ? { workOrderName } : {}),
-            ...(h?.annotations ? { annotations: h.annotations } : {}),
-            sourceRevision: r.revision,
-            approval: ["pending", "submitted", "approved", "rejected"].includes(
-              d.data().approval,
-            )
-              ? d.data().approval
-              : "unknown",
-            allocationRevision: h?.revision ?? 0,
-            ...(d.data().source === "quickbooks-time"
-              ? {
-                  provider: "quickbooks-time" as const,
-                  modifiedAt: d.data().modifiedAt as string,
-                  deleted: d.data().deleted === true,
-                  needsReview: h?.needsReview === true,
-                }
-              : {}),
-            portions,
-            unallocatedSeconds:
-              d.data().deleted === true
-                ? 0
-                : Math.max(
-                    0,
-                    r.seconds - applied.reduce((n, p) => n + p.seconds, 0),
-                  ),
-            conflict:
-              d.data().deleted === true ||
-              (h?.sourceRevision !== undefined &&
-                h.sourceRevision !== r.revision),
-          };
-        });
       } else if (resource === "history")
         out.history = docs.map((d) => {
           const r = d.data();
@@ -733,7 +647,7 @@ export class ProjectStore {
           };
         });
       return out;
-    });
+    }, resource === "sources" ? { readOnly: true } : undefined);
   }
 }
 export function checkMonth(month: string) {
@@ -847,5 +761,12 @@ export class ProjectBackend {
       this.policy.now(),
       review,
     );
+  }
+  async allocateBulk(token: string, tenant: string, input: unknown, idempotencyKey: string, signal?: AbortSignal) {
+    const target = assertProjectDatabase(this.store.db);
+    const who = await this.identity(token);
+    if (!who.corporatePolicy || who.staffTenantId !== tenant || requestIdentity.getStore()?.identity !== who) throw Error("Forbidden");
+    assertProductionTenant(target, tenant);
+    return allocateTimeBatch(new FirestoreTenantStore(this.store.db, 2), tenant, who.subject, input, idempotencyKey, this.policy.now(), signal);
   }
 }

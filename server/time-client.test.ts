@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { TimeClient } from "./time-client";
+import { readTimeDetails } from "./time-details";
 import {
   beginTimeState,
   exchangeTimeCode,
@@ -67,6 +68,7 @@ test("Time client pages scoped GETs, retries 429, and projects only normalized f
     seconds: 137,
     modifiedAt: "2026-11-01T05:00:00.000Z",
     deleted: false,
+    details: { notes: "private" },
   });
 });
 test("scope failures, invalid durations and long Retry-After stop without widening reads", async () => {
@@ -102,6 +104,75 @@ test("scope failures, invalid durations and long Retry-After stop without wideni
     c.read("42", since, before, false),
     /temporarily unavailable/,
   );
+});
+
+test("exact Time lookups associate notes and the assigned consultant without retaining personnel metadata", async () => {
+  let calls = 0;
+  const timesheet = { ...row, user_id: 71, created_by_user_id: 77, notes: "Planning\nConsultation" };
+  const users = {
+    71: { id: 71, company_id: 99, first_name: "Avery", last_name: "Example", email: "private@example.test", pay_rate: 5 },
+    77: { id: 77, first_name: "Creator", last_name: "Example" },
+  };
+  const replies = [
+    { results: { timesheets: { 8: timesheet } }, supplemental_data: { users }, more: false },
+    { results: { timesheets: { 8: timesheet } }, supplemental_data: { users: { 71: { ...users[71], display_name: "A. Example" } } }, more: false },
+    { results: { timesheets: { 8: timesheet } }, supplemental_data: { users: { 71: { ...users[71], company_id: 101 } } }, more: false },
+    { results: { timesheets: { 8: { ...timesheet, user_id: 0, notes: " " } } }, supplemental_data: { users }, more: false },
+    { results: { timesheets: { 8: { ...timesheet, jobcode_id: 43 } } }, supplemental_data: { users }, more: false },
+    { results: { timesheets: { 8: { ...timesheet, jobcode_id: 44 } } }, more: false },
+    { results: { timesheets: { 9: { ...timesheet, id: 9 } } }, more: false },
+    { results: { timesheets: {} }, more: true },
+  ];
+  const client = new TimeClient(async () => "fixture", async (input, request) => {
+    assert.equal(new URL(String(input)).pathname, "/api/v1/timesheets");
+    assert.equal(request?.method, "GET");
+    assert.deepEqual(Object.fromEntries(new URL(String(input)).searchParams), {
+      ids: "8", jobcode_ids: "42", jobcode_type: "regular", on_the_clock: "no", supplemental_data: "yes", limit: "1",
+    });
+    return Response.json(replies[calls++]);
+  }, async () => {});
+  const lookup = () => client.detailsById("42", ["8"], "99", new Set(["43"]));
+  assert.deepEqual((await lookup())[0].details, { personId: "71", consultantName: "Avery Example", notes: "Planning\nConsultation" });
+  assert.deepEqual((await lookup())[0].details, { personId: "71", consultantName: "A. Example", notes: "Planning\nConsultation" });
+  assert.deepEqual((await lookup())[0].details, { personId: "71", notes: "Planning\nConsultation" });
+  assert.equal((await lookup())[0].details, undefined);
+  const moved = (await lookup())[0];
+  assert.equal(moved.jobcodeId, "43");
+  assert.equal(moved.details, undefined);
+  for (let index = 0; index < 3; index++) await assert.rejects(lookup(), /scope mismatch/);
+  await assert.rejects(client.detailsById("42", ["8", "8"], "99"), /batch/);
+  await assert.rejects(client.detailsById("42", Array.from({ length: 21 }, (_, index) => String(index + 1)), "99"), /batch/);
+  assert.equal(calls, replies.length);
+});
+
+test("oversized supplemental responses leave normal scoped Time import available", async () => {
+  const calls: URLSearchParams[] = [];
+  const client = new TimeClient(async () => "fixture", async input => {
+    const params = new URL(String(input)).searchParams;
+    calls.push(params);
+    if (params.get("supplemental_data") === "yes") return new Response(null, { status: 413 });
+    const page = Number(params.get("page"));
+    const id = page === 1 ? 8 : 9;
+    return Response.json({ results: { timesheets: { [id]: { ...row, id, user_id: 71 } } }, more: page === 1 });
+  }, async () => {});
+  const records = await client.read("42", since, before, false, new Set(), "99");
+  assert.deepEqual(records.map(record => [record.id, record.seconds, record.details?.personId]), [["8", 137, "71"], ["9", 137, "71"]]);
+  assert.deepEqual(calls.map(params => [params.get("page"), params.get("supplemental_data")]), [["1", "yes"], ["1", "no"], ["2", "no"]]);
+  assert.equal(calls.every(params => params.get("jobcode_ids") === "42" && params.get("modified_since") === "2026-11-01T00:00:00+00:00"), true);
+});
+
+test("private Time details are projected only for the exact revision and valid provenance", () => {
+  const sourceModifiedAt = "2026-11-20T10:00:00.000Z";
+  const stored = {
+    provider: "quickbooks-time", sourceRevision: "rev", sourceModifiedAt,
+    observedAt: sourceModifiedAt, retrievedVia: "exact-id-lookup",
+    personId: "71", consultantName: "Avery Example", notes: "Planning", email: "private@example.test",
+  };
+  assert.deepEqual(readTimeDetails(stored, "rev", sourceModifiedAt), { personId: "71", consultantName: "Avery Example", notes: "Planning" });
+  assert.equal(readTimeDetails(stored, "corrected", sourceModifiedAt), undefined);
+  assert.equal(readTimeDetails(stored, "rev", "different"), undefined);
+  assert.equal(readTimeDetails({ ...stored, retrievedVia: "unknown" }, "rev", sourceModifiedAt), undefined);
+  assert.deepEqual(readTimeDetails({ ...stored, personId: 0, notes: "" }, "rev", sourceModifiedAt), {});
 });
 test("OAuth grant requires exact HTTPS callback, one-use actor-bound state and correct company", async () => {
   const attempt = {
