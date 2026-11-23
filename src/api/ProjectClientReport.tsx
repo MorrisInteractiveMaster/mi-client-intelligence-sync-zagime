@@ -101,8 +101,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
       status: projectFilter ? destination.slice(9) : filter && filter !== "all" ? filter : null, "project-sort": null, chart: null, present: null,
       ...(selectedMonth && { month: selectedMonth }) }, Boolean(chart || presenting));
   };
-  const openOverlay = (key: "chart" | "present", value: string) => {
-    overlayTrigger.current = document.activeElement as HTMLElement | null;
+  const openOverlay = (key: "chart" | "present", value: string, trigger: HTMLElement) => {
+    overlayTrigger.current = trigger;
     portalNavigate({ [key]: value }, false, key);
   };
   const scopedResult = result?.client === client ? result : undefined;
@@ -268,7 +268,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
     { label: "Board", members: directory.filter(member => isBoardRole(member.role)) },
     { label: "Morris Interactive team", members: directory.filter(member => !isBoardRole(member.role)) },
   ];
-  const presentationButton = !unavailable && <button type="button" className="mi-present-button" onClick={() => openOverlay("present", "1")}>
+  const presentationButton = !unavailable && <button type="button" className="mi-present-button" onClick={event => openOverlay("present", "1", event.currentTarget)}>
     <PresentationIcon size={17} aria-hidden="true" />{view === "overview" ? "Presentation" : "Present this view"}</button>;
   return (
     <div className="exec-frame intel-workspace" data-platform={nativeClient} data-collapsed={collapsed}>
@@ -295,8 +295,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
         {(nativeClient || view !== "overview") && <div className="mi-report-top">
           {nativeClient ? periodToolbar(presentationButton) : presentationButton}
         </div>}
-        {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose} onChart={type => openOverlay("chart", type)}
-          onPresentation={() => openOverlay("present", "1")} />}
+        {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose}
+          onChart={(type, trigger) => openOverlay("chart", type, trigger)} onPresentation={trigger => openOverlay("present", "1", trigger)} />}
         {view !== "overview" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
           <button type="button" className="exec-text-button" onClick={() => choose("overview")}><ChevronLeft size={16} /> Leadership summary</button>
           {(project || engagement) && <><ChevronRight size={14} aria-hidden="true" /><button type="button" className="exec-text-button"
@@ -392,8 +392,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
           </div>
         </article>)}</div></section>) : <p className="secure-empty">{search && view === "directory" ? "No approved contacts match." : "No approved contacts are available for these projects."}</p>}
       </section>}
-      {view === "history" && <DotChart report={report} kind="trend" expanded monthRange={monthRange} draft={preview?.mode === "draft"} onLink={choose} onOpen={() => openOverlay("chart", "trend")} />}
-      {(selectedArea || engagement) && <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"} onLink={choose} onOpen={() => openOverlay("chart", "plan")} />}
+      {view === "history" && <DotChart report={report} kind="trend" expanded monthRange={monthRange} draft={preview?.mode === "draft"} onLink={choose} onOpen={trigger => openOverlay("chart", "trend", trigger)} />}
+      {(selectedArea || engagement) && <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"} onLink={choose} onOpen={trigger => openOverlay("chart", "plan", trigger)} />}
       {view === "notes" && <article className="intel-detail"><h3>Delivery narrative</h3>
         <p>{portfolio?.narrative || "No executive narrative has been published for this period."}</p>
         {portfolio?.action && <><h3>Next decision</h3><p>{portfolio.action}</p></>}</article>}
@@ -410,7 +410,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
           parent={activeProject.parent && { ...activeProject.parent, budget: hierarchy[activeProject.parent.id] }}
           history={report.historyByProject?.[project.id]} descendantTotals={delegatedTotals.get(project.id)} detail />
         {!!children.length && <section aria-label="Child projects"><h3>Child projects</h3><ul className="delivery-client-tree">{children.map(child => <li key={child.id}><button type="button" className="exec-text-button" onClick={() => choose("project:" + child.id)}>{child.name}</button></li>)}</ul></section>}
-        <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"} onLink={choose} onOpen={() => openOverlay("chart", "plan")} />
+        <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"} onLink={choose} onOpen={trigger => openOverlay("chart", "plan", trigger)} />
       </article>}
       {(view === "milestones" || (project && kind === "timeline")) && <article className="intel-detail">
         <div className="secure-section-heading">

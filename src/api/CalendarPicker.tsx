@@ -104,19 +104,23 @@ function DateChooser({ label, values, choose, disabled, min, max, required, limi
 
   return <div className="mi-calendar-field">
     <label id={id + "-label"}>{label}{required && " *"}</label>
-    <button type="button" ref={opener} className="mi-calendar-toggle" disabled={disabled} aria-haspopup="dialog"
+    <button type="button" ref={opener} className="mi-calendar-toggle secure-secondary" disabled={disabled} aria-haspopup="dialog"
       aria-labelledby={id + "-label " + id + "-value"} onClick={openCalendar}>
       <CalendarDays size={17} aria-hidden="true" /><span id={id + "-value"}>{description}</span>
     </button>
     {limit !== undefined && !!values.length && <ul className="mi-calendar-selected">{values.map(value => <li key={value}>{reportDay(value)}</li>)}</ul>}
-    <dialog ref={dialog} className="mi-picker-dialog" aria-labelledby={id + "-heading"} onCancel={event => { event.preventDefault(); dismiss(); }}>
+    <dialog ref={dialog} className="mi-picker-dialog" aria-labelledby={id + "-heading"} onCancel={event => {
+      event.preventDefault();
+      event.stopPropagation();
+      dismiss();
+    }}>
       {open && <>
-        <header><h3 id={id + "-heading"}>{label}</h3><button type="button" onClick={dismiss} aria-label="Close calendar"><X size={18} /></button></header>
+        <header><h3 id={id + "-heading"}>{label}</h3><button type="button" className="secure-secondary" onClick={dismiss} aria-label="Close calendar"><X size={18} /></button></header>
         <div className="mi-calendar-navigation">
-          <button type="button" aria-label="Previous month" disabled={!!min && dateKey(previous) < min}
+          <button type="button" className="secure-secondary" aria-label="Previous month" disabled={!!min && dateKey(previous) < min}
             onClick={() => setCursor(dateKey(moveMonth(month, -1)) < (min ?? "") ? min! : dateKey(moveMonth(month, -1)))}><ChevronLeft size={18} /></button>
           <strong aria-live="polite" id={id + "-month"}>{monthLabel.format(month)}</strong>
-          <button type="button" aria-label="Next month" disabled={!!max && dateKey(next) > max}
+          <button type="button" className="secure-secondary" aria-label="Next month" disabled={!!max && dateKey(next) > max}
             onClick={() => setCursor(max && dateKey(moveMonth(month, 1)) > max ? max : dateKey(moveMonth(month, 1)))}><ChevronRight size={18} /></button>
         </div>
         <div className="mi-calendar-grid" role="grid" aria-labelledby={id + "-month"} aria-multiselectable={limit !== undefined || undefined}>
@@ -125,7 +129,7 @@ function DateChooser({ label, values, choose, disabled, min, max, required, limi
             {cells.slice(row * 7, row * 7 + 7).map(date => {
               const key = dateKey(date);
               return <div role="gridcell" key={key} aria-selected={working.includes(key)}>
-                <button type="button" id={id + key} disabled={!permissible(key)} tabIndex={key === cursor ? 0 : -1}
+                <button type="button" className="secure-secondary" id={id + key} disabled={!permissible(key)} tabIndex={key === cursor ? 0 : -1}
                   data-other-month={date.getMonth() !== month.getMonth()} aria-current={key === today() ? "date" : undefined}
                   aria-label={reportDay(key)} onKeyDown={event => gridKey(event, date)} onClick={() => pick(key)}>{date.getDate()}</button>
               </div>;
@@ -134,12 +138,12 @@ function DateChooser({ label, values, choose, disabled, min, max, required, limi
         </div>
         {limit !== undefined && <p role="status">{working.length} of {limit} dates selected</p>}
         <footer>
-          {!required && <button type="button" onClick={() => {
+          {!required && <button type="button" className="secure-secondary" onClick={() => {
             if (limit !== undefined) setWorking([]);
             else { choose([]); dismiss(); }
           }}>Clear</button>}
-          <button type="button" onClick={dismiss}>Cancel</button>
-          {limit !== undefined && <button type="button" className="mi-picker-primary" onClick={() => { choose(working); dismiss(); }}>Apply dates</button>}
+          <button type="button" className="secure-secondary" onClick={dismiss}>Cancel</button>
+          {limit !== undefined && <button type="button" className="secure-secondary mi-picker-primary" onClick={() => { choose(working); dismiss(); }}>Apply dates</button>}
         </footer>
       </>}
     </dialog>

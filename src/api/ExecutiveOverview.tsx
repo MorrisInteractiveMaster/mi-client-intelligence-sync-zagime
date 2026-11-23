@@ -10,9 +10,9 @@ import { reportDay, reportHours, reportMonth, reportTimestamp, today } from "./d
 export function ExecutiveOverview({ report, delivery, onPresentation, onLink, onChart, platform, draft }: {
   report: ProjectReport;
   delivery: ReturnType<typeof clientDelivery>;
-  onPresentation: () => void;
+  onPresentation: (trigger: HTMLButtonElement) => void;
   onLink: (view: string, month?: string, filter?: ProjectFilter) => void;
-  onChart: (kind: ChartKind) => void;
+  onChart: (kind: ChartKind, trigger: HTMLButtonElement) => void;
   platform?: boolean;
   draft?: boolean;
 }) {
@@ -41,7 +41,7 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
         <p className="mi-leadership-client">{report.tenant.name}</p>
         <div className="mi-leadership-actions">
           <button className="mi-hero-primary" type="button" onClick={() => onLink("projects")}>Explore projects <ArrowUpRight size={17} aria-hidden="true" /></button>
-          {!platform && <button className="mi-hero-secondary" type="button" onClick={onPresentation}><Presentation size={18} aria-hidden="true" />At a Glance</button>}
+          {!platform && <button className="mi-hero-secondary" type="button" onClick={event => onPresentation(event.currentTarget)}><Presentation size={18} aria-hidden="true" />At a Glance</button>}
         </div>
       </div>
       <div className="mi-leadership-metric" aria-label="All-time delivery projects">
@@ -90,7 +90,7 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
         <span>Reported effort · {period} <ContextHelp label="How are reported hours calculated?">Reported effort includes classifications and any remaining time recorded against published work orders you can see. Department hours include approved project classifications only.</ContextHelp></span>
         <strong>{reportHours(report.totalSeconds)} h</strong>
         {report.sourceUpdatedAt && <span>Source updated <time dateTime={report.sourceUpdatedAt}>{reportTimestamp(report.sourceUpdatedAt)}</time></span>}
-        {projects.length > 0 && <button type="button" className="exec-text-button" onClick={() => onChart("distribution")}>Explore reported hours<span className="exec-sr-only"> by department</span></button>}
+        {projects.length > 0 && <button type="button" className="exec-text-button" onClick={event => onChart("distribution", event.currentTarget)}>Explore reported hours<span className="exec-sr-only"> by department</span></button>}
       </div>
     </section>
 
@@ -130,7 +130,7 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
         </button>
       </li>)}</ol> : <p className="intel-empty">No approved work-completion assessments have been recorded.</p>}
     </section>
-    <DotChart report={report} kind="trend" draft={draft} onLink={onLink} onOpen={() => onChart("trend")} />
+    <DotChart report={report} kind="trend" draft={draft} onLink={onLink} onOpen={trigger => onChart("trend", trigger)} />
     {(milestones.length > 0 || narrative) && <section className="mi-leadership-brief" aria-label="Delivery stories">
       {milestones.length > 0 && <div><h3>Upcoming milestones</h3>
         <ul className="exec-activity">{milestones.slice(0, 4).map(m => <li key={m.projectId + ":" + m.id}>

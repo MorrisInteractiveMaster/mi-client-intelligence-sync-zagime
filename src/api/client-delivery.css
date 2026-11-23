@@ -137,6 +137,18 @@
 .mi-directory-group .intel-contact h4 { margin: 0; overflow-wrap: anywhere; }
 .mi-directory-group > p { margin-block: 3px 8px; color: var(--mi-client-muted); }
 
+section.nordic.secure-shell[data-theme=dark] .intel-workspace {
+  --mi-client-risk: #ffbab6;
+  --mi-client-near: #9bdfc1;
+  --mi-client-complete: #83d6b4;
+  --mi-client-warning: #ffda97;
+}
+.nordic.secure-shell.platform-shell[data-theme=dark] .mi-engagement-card[data-attention=true] { border-inline-start-color: var(--mi-client-risk); }
+.nordic.secure-shell.platform-shell[data-theme=dark] .mi-budget-cap[data-cap=near] { color: var(--mi-client-warning); }
+.nordic.secure-shell.platform-shell[data-theme=dark] .mi-budget-cap[data-cap=over],
+.nordic.secure-shell.platform-shell[data-theme=dark] .mi-metric-strip button[data-attention=true] { color: var(--mi-client-risk); }
+.nordic.secure-shell.platform-shell[data-theme=dark] .mi-delivery-signal > svg { color: #a9d1fc; }
+
 @media (max-width: 580px) {
   .mi-project-first .mi-leadership-metric { justify-self: stretch; }
   .mi-project-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }

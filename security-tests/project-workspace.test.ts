@@ -789,7 +789,7 @@ function ClientFixture() {
       await creationForm.getByRole("button", { name: "Continue", exact: true }).click();
       await creationForm.getByLabel("Client-facing description").fill("Published synthetic project description");
       await creationForm.getByRole("button", { name: "Continue", exact: true }).click();
-      const arrangement = creationForm.getByLabel("Arrangement", { exact: true });
+      const arrangement = creationForm.getByRole("combobox", { name: "Arrangement", exact: true });
       await arrangement.selectOption("fixed-fee");
       await creationForm.getByLabel("Hour cap", { exact: true }).waitFor();
       assert.equal(await creationForm.getByLabel("Monthly budgeted hours").count(), 0);
@@ -1088,6 +1088,7 @@ function ClientFixture() {
       const draftPreview = previewPage.locator("article.secure-card:not(.secure-published-project)").filter({ has: previewPage.getByRole("heading", { name: "Browser saved project", exact: true }) });
       await draftPreview.getByText("Preview approved content", { exact: true }).click();
       const previewCard = draftPreview.locator(".secure-published-project");
+      await previewCard.getByText("Project details", { exact: true }).click();
       await previewCard.getByText(/Approved synthetic contact.*Project manager/).waitFor();
       assert.doesNotMatch(await previewCard.innerText(), /PRIVATE|INTERNAL/);
       await previewPage.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Client Preview", exact: true }).click();
@@ -1613,6 +1614,10 @@ function ClientFixture() {
         await management.getByRole("button", { name: "100%", exact: true }).click();
         await confirmCompletion.getByRole("button", { name: /Completion date/ }).click();
         const calendar = page.getByRole("dialog", { name: "Completion date" });
+        await calendar.getByRole("grid").waitFor();
+        await page.keyboard.press("Escape");
+        await calendar.waitFor({ state: "hidden" });
+        await confirmCompletion.getByRole("button", { name: /Completion date/ }).click();
         await calendar.getByRole("grid").waitFor();
         await page.keyboard.press("ArrowLeft");
         await page.keyboard.press("Enter");

@@ -40,7 +40,7 @@ function YearComparison({ month, rows, onLink }: { month: string; rows: Row[]; o
 
 type Props = {
   report: ProjectReport; kind: ChartKind;
-  onOpen?: () => void;
+  onOpen?: (trigger: HTMLButtonElement) => void;
   onLink: (destination: string, month?: string) => void;
   expanded?: boolean;
   draft?: boolean;
@@ -60,7 +60,7 @@ export function DotChart({ report, kind, onLink, onOpen, expanded, monthRange, d
   return <section className="intel-chart mi-report-chart" data-kind={kind} aria-label={chartTitles[kind]}>
     <header className="intel-chart-head">
       <div><h3>{chartTitles[kind]}</h3><p>{descriptions[kind]}</p></div>
-      {onOpen && <button className="intel-icon" type="button" aria-label={"Expand " + chartTitles[kind].toLowerCase()} onClick={onOpen}><Maximize2 size={17} aria-hidden="true" /></button>}
+      {onOpen && <button className="intel-icon" type="button" aria-label={"Expand " + chartTitles[kind].toLowerCase()} onClick={event => onOpen(event.currentTarget)}><Maximize2 size={17} aria-hidden="true" /></button>}
     </header>
     {selected && inspected ? <>
       <Plot label={chartTitles[kind]} unit="hours" rows={rows.map(row => ({ ...row, value: row.seconds }))}

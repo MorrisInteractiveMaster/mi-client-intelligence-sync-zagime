@@ -220,7 +220,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
           <input value={reference} maxLength={120} onChange={event => change(setReference, event.target.value)} /></label>
       </>}
       {step === "arrangement" && <>
-        {!miscellaneous && <label>Arrangement<select value={type} onChange={event => change(setType, event.target.value as Delivery["type"])}>
+        {!miscellaneous && <label>Arrangement<select aria-label="Arrangement" value={type} onChange={event => change(setType, event.target.value as Delivery["type"])}>
           {arrangements.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
         </select></label>}
         <div className="creation-columns">

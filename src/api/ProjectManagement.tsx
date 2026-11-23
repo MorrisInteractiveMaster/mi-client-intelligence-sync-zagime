@@ -192,7 +192,7 @@ function ProgressEditor({ id, path, client, tenant, areas, legacyArea, canPublis
 
   if (!project) return <p role={error ? "alert" : "status"}>{error || "Opening project progress…"}</p>;
   const misc = isMiscellaneous(currentDelivery?.areaId ?? legacyArea, areas);
-  const progress = rangePreview ?? manual;
+  const progress = rangePreview ?? manual ?? (!currentDelivery && project.progress > 0 ? Math.round(project.progress) : undefined);
   const measure = measureDelivery({ progress: project.progress, status, milestones, delivery }, { monthly: 0, lifetime: 0 }, today());
   return <form className="mi-management-editor secure-form" aria-label="Delivery progress"
     onSubmit={event => { event.preventDefault(); void save(false); }}>
@@ -389,8 +389,8 @@ function ManagementAction({ action, close, defaultDate, onComplete, onBlock, onP
         <label>Private blocker details (optional)<textarea rows={3} maxLength={2000} value={internal}
           onChange={event => setInternal(event.target.value)} /></label></>}
     <footer>
-      <button type="button" onClick={close}>Cancel</button>
-      <button type="button" className="mi-picker-primary" disabled={completion ? !date : !publish && !message.trim()}
+      <button type="button" className="secure-secondary" onClick={close}>Cancel</button>
+      <button type="button" className="secure-secondary mi-picker-primary" disabled={completion ? !date : !publish && !message.trim()}
         onClick={() => {
           if (completion) onComplete(date);
           else if (publish) onPublish();
@@ -419,8 +419,12 @@ function ManagementDialog({ title, close, children }: { title: string; close: ()
     close();
   }
   return <dialog ref={dialog} className="mi-picker-dialog mi-management-dialog" aria-labelledby={id}
-    onCancel={event => { event.preventDefault(); dismiss(); }}>
-    <header><h3 id={id}>{title}</h3><button type="button" onClick={dismiss} aria-label="Close dialog"><X size={19} /></button></header>
+    onCancel={event => {
+      if (event.target !== event.currentTarget) return;
+      event.preventDefault();
+      dismiss();
+    }}>
+    <header><h3 id={id}>{title}</h3><button type="button" className="secure-secondary" onClick={dismiss} aria-label="Close dialog"><X size={19} /></button></header>
     {children}
   </dialog>;
 }

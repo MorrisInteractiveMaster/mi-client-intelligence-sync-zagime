@@ -9,7 +9,7 @@
   position: relative;
 }
 .mi-combobox > label, .mi-calendar-field > label { color: var(--mi-picker-text); font-weight: 650; }
-.mi-combobox-input, .secure-form button.mi-calendar-toggle, button.mi-calendar-toggle {
+.mi-combobox-input, .secure-shell .mi-calendar-field button.mi-calendar-toggle {
   display: flex;
   align-items: center;
   gap: .625rem;
@@ -21,9 +21,17 @@
   border-radius: 8px;
   width: 100%;
   text-align: start;
+  box-sizing: border-box;
 }
+.mi-combobox-input { display: grid; grid-template-columns: 17px minmax(0, 1fr) 40px; padding-inline-end: 0; }
 .mi-combobox-input:focus-within { outline: 2px solid var(--mi-picker-action); outline-offset: 2px; }
-.mi-combobox-input > svg, .mi-calendar-toggle > svg { flex: 0 0 auto; color: var(--mi-picker-action); }
+.secure-shell :is(.mi-combobox-input, .mi-calendar-toggle, .mi-picker-dialog) svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  color: inherit;
+}
+.mi-combobox-input > svg, .mi-calendar-toggle > svg { color: var(--mi-picker-action); }
 .mi-combobox .mi-combobox-input input[type], .mi-combobox .mi-combobox-input input {
   box-shadow: none;
   appearance: none;
@@ -38,13 +46,15 @@
   outline: none;
 }
 .mi-combobox-input input::placeholder { color: light-dark(#536779, #bacbdb); }
-.mi-combobox button.mi-combobox-toggle, .secure-form .mi-combobox button.mi-combobox-toggle {
+.secure-shell .mi-combobox .mi-combobox-input button.mi-combobox-toggle {
   border: none;
   color: var(--mi-picker-action);
   background: transparent;
   display: grid;
   padding: 0;
-  min-width: 32px;
+  margin: 0;
+  min-width: 0;
+  width: 40px;
   min-height: 42px;
   place-items: center;
 }
@@ -76,10 +86,11 @@
   background: light-dark(#e6eff8, #274865);
 }
 .mi-combobox-popover li span { font-size: .8rem; }
+.secure-shell .mi-combobox-popover li strong { font-size: .9375rem; line-height: 1.35; font-weight: 700; }
 .mi-combobox-popover p { padding: .625rem .75rem; margin: 0; }
 .mi-calendar-selected { display: flex; flex-wrap: wrap; gap: .375rem; padding: 0; margin: .2rem 0; list-style: none; }
 .mi-calendar-selected li { border: 1px solid var(--mi-picker-line); border-radius: 6px; padding: .25rem .5rem; }
-.mi-picker-dialog {
+.secure-shell dialog.mi-picker-dialog {
   background: light-dark(#fff, #15283c);
   color: light-dark(#182d42, #e7effb);
   border: 1px solid light-dark(#bbc9d6, #52677c);
@@ -103,13 +114,14 @@
 .mi-picker-dialog header { margin-bottom: .5rem; }
 .mi-picker-dialog header h3 { margin: 0; font-size: 1.125rem; }
 .mi-picker-dialog footer { justify-content: flex-end; margin-top: 1rem; }
-.mi-picker-dialog button, .secure-form .mi-picker-dialog button {
+.secure-shell .mi-picker-dialog button.secure-secondary {
   display: inline-flex;
   justify-content: center;
   align-items: center;
   min-width: 44px;
   min-height: 44px;
   padding: .375rem .625rem;
+  margin: 0;
   border: 1px solid transparent;
   border-radius: 7px;
   color: inherit;
@@ -120,17 +132,32 @@
   outline: 2px solid light-dark(#24578c, #90c4f5);
   outline-offset: 1px;
 }
-.mi-picker-dialog button:not(:disabled):hover { background: light-dark(#e6eff8, #284661); }
-.mi-picker-dialog button.mi-picker-primary, .mi-picker-dialog [aria-selected="true"] button {
+.secure-shell .mi-picker-dialog button.secure-secondary:not(:disabled):hover { background: light-dark(#e6eff8, #284661); }
+.secure-shell .mi-picker-dialog button.mi-picker-primary,
+.secure-shell .mi-picker-dialog .mi-calendar-grid [role="gridcell"][aria-selected="true"] button {
   color: light-dark(#fff, #0d2340);
   background: light-dark(#244e78, #accef4);
 }
-.mi-picker-dialog button.mi-picker-primary:not(:disabled):hover, .mi-picker-dialog [aria-selected="true"] button:hover {
+.secure-shell .mi-picker-dialog button.mi-picker-primary:not(:disabled):hover,
+.secure-shell .mi-picker-dialog .mi-calendar-grid [role="gridcell"][aria-selected="true"] button:hover {
   color: light-dark(#fff, #0d2340);
   background: light-dark(#163c61, #c0dcf7);
 }
 .mi-calendar-grid [role="row"] { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
 .mi-calendar-grid [role="columnheader"] { font-weight: 700; font-size: .75rem; padding: .45rem 0; }
-.mi-calendar-grid [role="gridcell"] button { width: 100%; min-width: 0; padding-inline: 0; }
-.mi-calendar-grid button[aria-current="date"] { border-color: currentColor; font-weight: 750; }
+.secure-shell .mi-picker-dialog .mi-calendar-grid [role="gridcell"] button {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 0;
+  background: transparent;
+  border-color: transparent;
+}
+.secure-shell .mi-picker-dialog .mi-calendar-grid [role="gridcell"] button:not(:disabled):hover {
+  background: light-dark(#e6eff8, #284661);
+}
+.secure-shell .mi-picker-dialog .mi-calendar-grid [role="gridcell"][aria-selected="true"] button:hover {
+  background: light-dark(#163c61, #c0dcf7);
+}
+.secure-shell .mi-calendar-navigation strong { font-size: 1rem; font-weight: 700; }
+.secure-shell .mi-picker-dialog .mi-calendar-grid [role="gridcell"] button[aria-current="date"] { border-color: currentColor; font-weight: 750; }
 .mi-calendar-grid button[data-other-month="true"] { opacity: .65; }

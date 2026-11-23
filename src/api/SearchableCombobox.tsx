@@ -81,7 +81,7 @@ export function SearchableCombobox({ label, value, options, onChange, required, 
         placeholder={placeholder} value={open ? query : selected?.label ?? ""}
         onClick={show} onFocus={show} onKeyDown={onKeyDown}
         onChange={event => { setOpen(true); setQuery(event.target.value); setActive(0); }} />
-      <button type="button" tabIndex={-1} className="mi-combobox-toggle" aria-label={open ? "Close options" : "Open options"}
+      <button type="button" tabIndex={-1} className="mi-combobox-toggle secure-secondary" aria-label={open ? "Close options" : "Open options"}
         disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => {
           if (open) hide();
           else { input.current?.focus(); show(); }

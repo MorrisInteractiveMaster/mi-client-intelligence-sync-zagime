@@ -9,6 +9,8 @@ section.nordic.secure-shell[data-theme="light"] { color-scheme: light; }
   min-width: 0;
 }
 
+.mi-theme-selector span { white-space: nowrap; overflow-wrap: normal; }
+
 .secure-shell .mi-theme-selector select {
   width: auto;
   min-height: 44px;
@@ -157,3 +159,5 @@ section.nordic.secure-shell[data-theme="dark"] .intel-dot-series button:is(:hove
 }
 .nordic.secure-shell.platform-shell .platform-control .platform-hero-compact p { margin-block: 6px 0; }
 body:has(section.nordic.secure-shell[data-theme="dark"]) { background: #0b1826; }
+
+.nordic.secure-shell.platform-shell .mi-home-primary { white-space: nowrap; }

@@ -46,7 +46,7 @@ export function usePlatformTheme() {
 
 export function ThemeSelector({ theme, onChange }: { theme: Theme; onChange: (value: Theme) => void }) {
   return <label className="mi-theme-selector">
-    Appearance
+    <span>Appearance</span>
     <select value={theme} onChange={event => {
       const next = themes.find(value => value === event.target.value);
       if (next) onChange(next);

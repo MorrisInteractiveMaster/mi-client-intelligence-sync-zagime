@@ -385,6 +385,22 @@ test("verified customer discovery, registration, linking, daily reconciliation a
       244,
     );
     assert.equal((await root.collection("projects").get()).size, 7);
+    const deliveryId = "synthetic-delivery";
+    const deliveryProject = root.collection("projects").doc(deliveryId);
+    await deliveryProject.update({ delivery: {
+      kind: "project", structure: 3, type: "hourly", parentId: existingProject, areaId: "hr", managerIds: [], teamIds: [],
+    } });
+    const pending = (await sync.status(tenant, who, "2026-11")).mappings.find(entry => entry.jobcodeId === "104")!;
+    const deliveryReview = {
+      targetKind: "project" as const, previousProjectId: pending.projectId,
+      recordedSeconds: pending.lifetimeRecordedSeconds!, allocatedSeconds: pending.lifetimeAllocatedSeconds!,
+      parentId: existingProject, areaId: "hr",
+    };
+    await assert.rejects(sync.confirmMapping(tenant, who, "104", deliveryId, { ...deliveryReview, areaId: "training" }), /Time mapping conflict/);
+    assert.equal((await sync.confirmMapping(tenant, who, "104", deliveryId, deliveryReview)).changed, true);
+    await assert.rejects(sync.confirmMapping(tenant, who, "104", existingProject, { ...deliveryReview, targetKind: "engagement" }), /Time mapping conflict/);
+    assert.equal((await map("104").get()).get("scopeProjectId"), pending.projectId);
+    assert.equal((await sync.status(tenant, who, "2026-11")).recordedSeconds, 244);
     const audits = await root.collection("audits").get();
     assert.equal(
       audits.docs.filter(

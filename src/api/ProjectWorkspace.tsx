@@ -389,7 +389,12 @@ export function ProjectStaffWorkspace({
     id, label, icon, external: true, select: () => { if (permit()) navigatePlatform(href); },
   });
   const groups: WorkspaceGroup[] = [
-    { label: "Workspace", destinations: (["overview", "clients", "projects", "management", "directory"] as const).map(nativeArea) },
+    { label: "Workspace", destinations: [
+      nativeArea("overview"), nativeArea("clients"),
+      { id: "create-project", label: "Create Project", icon: FolderKanban, active: editorRoute === "new",
+        select: () => { if (editorRoute !== "new" && permit()) openDeliveryProject("new"); } },
+      nativeArea("management"), nativeArea("directory"),
+    ] },
     { label: "Time & Reporting", destinations: (["hours", "mapping"] as const).map(nativeArea) },
     { label: "Delivery", destinations: (["milestones", "health", "portfolio", "activity"] as const).map(nativeArea) },
     { label: "Client experience", destinations: [
@@ -403,7 +408,7 @@ export function ProjectStaffWorkspace({
       crossLink("time-health", "Integration Health", Plug, periodHref("/control/time", month)),
     ] }] : []),
   ];
-  const pageTitle = staffRoute === "time" ? "QuickBooks Time status" : area === "projects" && editing ? "Project setup" : sections[area];
+  const pageTitle = staffRoute === "time" ? "QuickBooks Time status" : area === "projects" && editorRoute === "new" ? "Create Project" : area === "projects" && editing ? "Project setup" : sections[area];
   const content = <>
     {nativeWorkspace && <header className="mi-page-heading"><p className="mi-kicker">{workspace.tenant.name} · {reportMonth(month)}</p>
       <h2>{pageTitle}</h2></header>}
@@ -493,6 +498,9 @@ export function ProjectStaffWorkspace({
         <div className="secure-actions"><button type="button" onClick={() => changeArea("projects")}>Open client projects</button>
           <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button></div>
       </section>}
+      {area === "management" && nativeWorkspace && <p>
+        <PlatformLink href={periodHref(staffPath("projects"), month)} beforeNavigate={permit}>Browse all projects</PlatformLink>
+      </p>}
       {area === "management" && <ProjectManagement client={client} tenant={tenant} selected={managed}
         projects={allProjects} areas={portfolio?.areas} canPublish={workspace.canPublish === true} onDirty={setManagementDirty} onDenied={onDenied}
         onSelect={id => { if (permit()) portalNavigate({ staff: "management", managed: id ?? null }); }}

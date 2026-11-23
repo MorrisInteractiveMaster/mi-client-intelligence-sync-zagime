@@ -175,7 +175,8 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await admin.page.getByRole("link", { name: /View .* Dashboard/, exact: false }).first().waitFor();
     await admin.page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
     await admin.page.getByText("20.75 h", { exact: true }).first().waitFor();
-    const createProject = admin.page.getByRole("button", { name: "Create Project", exact: true });
+    const createProject = admin.page.getByRole("region", { name: "Morris operating overview" })
+      .getByRole("button", { name: "Create Project", exact: true });
     await createProject.waitFor();
     assert.match(await createProject.evaluate(button => getComputedStyle(button).backgroundImage), /linear-gradient/);
     assert.ok((await createProject.boundingBox())!.height >= 44);
@@ -208,6 +209,8 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await progress.getByRole("combobox", { name: "Delivery status" }).selectOption("paused");
     await progress.getByRole("button", { name: "Save Draft" }).click();
     await progress.getByText("Draft saved.", { exact: true }).waitFor();
+    assert.ok(await admin.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Project Management fits mobile");
+    assert.ok((await projectPicker.boundingBox())!.width >= 180, "the mobile project field stays readable");
     await admin.page.screenshot({ path: join(evidence, "project-management-mobile.png"), fullPage: true, animations: "disabled" });
     await admin.page.reload();
     await progress.getByRole("combobox", { name: "Delivery status" }).waitFor();
@@ -220,10 +223,10 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await search.getByRole("button", { name: /Regular Consulting fixture/ }).waitFor();
     await admin.page.keyboard.press("Escape");
     await admin.page.screenshot({ path: join(evidence, "project-management.png"), fullPage: true, animations: "disabled" });
-    await admin.page.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Projects", exact: true }).click();
+    await admin.page.getByRole("link", { name: "Browse all projects", exact: true }).click();
     await admin.page.getByRole("button", { name: "By Parent Project" }).click();
     await admin.page.getByRole("button", { name: "Open Regular Consulting fixture" }).click();
-    const engagement = admin.page.getByRole("region", { name: "Engagement overview" });
+    const engagement = admin.page.getByRole("region", { name: "Parent Project overview" });
     await engagement.getByText("20.75 h", { exact: true }).first().waitFor();
     await engagement.screenshot({ path: join(evidence, "parent-recorded-effort.png"), animations: "disabled" });
     await admin.context.close();
@@ -247,6 +250,10 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     assert.deepEqual(octoberReport.portfolio.history.filter((row: { month: string }) => row.month === "2026-11"),
       [{ month: "2026-11", seconds: 81900 }]);
     assert.equal(octoberReport.portfolio.history.some((row: { month: string }) => row.month === "2025-05"), false);
+    assert.deepEqual(octoberReport.historyByProject[projectId].find((row: { month: string }) => row.month === "2026-10"),
+      { month: "2026-10", seconds: 3600 });
+    assert.ok(Object.keys(octoberReport.historyByProject).every(id => octoberReport.projects.some((project: { id: string }) => project.id === id)));
+    assert.equal(Object.hasOwn(octoberReport.historyByProject, "private-history-fixture"), false);
     await client.page.goto(origin + reportRoute + "?month=2026-10");
     const monthControl = client.page.getByRole("combobox", { name: "Reporting month" });
     await monthControl.waitFor();
@@ -292,15 +299,18 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.waitForURL(route("/clients/zagime"));
     await client.page.getByRole("navigation", { name: "Client workspace" }).waitFor();
     await client.page.getByRole("heading", { name: /Leadership\s*summary/i }).waitFor();
-    const metricBorder = await client.page.locator(".mi-leadership-metric").evaluate(el => getComputedStyle(el).borderTopWidth);
-    assert.equal(metricBorder, "0px");
+    await client.page.getByLabel("All-time delivery projects", { exact: true }).getByText("All-time approved portfolio").waitFor();
     await client.page.screenshot({ path: join(evidence, "client-dashboard-native-overview.png"), fullPage: true, animations: "disabled" });
     await client.page.setViewportSize({ width: 768, height: 1024 });
     assert.ok(await client.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await client.page.screenshot({ path: join(evidence, "client-dashboard-tablet.png"), fullPage: true, animations: "disabled" });
+    await client.page.getByRole("navigation", { name: "Client workspace" }).getByRole("button", { name: "Projects", exact: true }).click();
+    await client.page.getByRole("heading", { name: "Published projects", exact: true }).waitFor();
+    await client.page.locator(".secure-published-project .secure-project-hours > div").first().waitFor();
     const narrowestTile = await client.page.locator(".secure-published-project .secure-project-hours > div")
       .evaluateAll(tiles => Math.min(...tiles.map(tile => tile.getBoundingClientRect().width)));
     assert.ok(Number.isFinite(narrowestTile) && narrowestTile >= 96, "tablet project metrics have readable columns");
-    await client.page.screenshot({ path: join(evidence, "client-dashboard-tablet.png"), fullPage: true, animations: "disabled" });
+    await client.page.screenshot({ path: join(evidence, "client-projects-tablet.png"), fullPage: true, animations: "disabled" });
     await client.page.setViewportSize({ width: 1440, height: 1000 });
     assert.equal(await client.page.getByRole("link", { name: /Morris Workspace|Control Panel/ }).count(), 0);
     for (const path of ["/workspace", "/control", "/clients/another-client", "/clients/another-client/present"]) {
