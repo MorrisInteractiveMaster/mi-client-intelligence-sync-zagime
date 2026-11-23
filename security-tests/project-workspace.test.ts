@@ -1628,7 +1628,7 @@ function ClientFixture() {
         await management.getByLabel("Custom milestone title").fill("Confirm community delivery");
         await management.getByLabel("Optional milestone note").fill("Review the approved delivery checklist.");
         await management.getByRole("button", { name: "Add selected milestones (1)", exact: true }).click();
-        const addedMilestone = management.getByRole("listitem").filter({ has: management.getByRole("checkbox", { name: "Confirm community delivery" }) });
+        const addedMilestone = management.getByRole("listitem").filter({ has: page.getByRole("checkbox", { name: "Confirm community delivery", exact: true }) });
         await addedMilestone.getByRole("button", { name: "Block", exact: true }).click();
         const blockerDialog = page.getByRole("dialog", { name: "Report blocker" });
         await blockerDialog.getByLabel("Client-facing explanation").fill("Waiting for scope confirmation.");
