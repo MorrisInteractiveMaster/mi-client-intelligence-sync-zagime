@@ -1169,8 +1169,8 @@ function ClientFixture() {
         await visibleCard.getByText("100% work completion", { exact: true }).waitFor();
         await visibleCard.locator("dd").first().filter({ hasText: /^0\.5 h$/ }).waitFor();
         await visibleCard.getByText("Project details", { exact: true }).click();
-        await visibleCard.getByText("Approved delivery update").waitFor();
-        await visibleCard.getByText("Approved milestone").waitFor();
+        await visibleCard.getByText("Approved delivery update", { exact: true }).waitFor();
+        await visibleCard.getByRole("button", { name: "Approved milestone", exact: true }).waitFor();
         assert.ok(!(await page.locator("body").innerText()).match(/PRIVATE-UPDATE|Browser synthetic private note|QuickBooks Time|Allocate recorded hours/));
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         await page.evaluate(() => window.scrollTo(0, 0));
