@@ -1,0 +1,117 @@
+.nordic.secure-shell.platform-shell > main:is(.platform-workspace,.platform-client-report,.platform-client-preview) {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.nordic.secure-shell.platform-shell .secure-masthead {
+  min-height: 64px;
+  border-bottom: 1px solid var(--mi-line);
+  padding-block: 6px;
+}
+.platform-shell .secure-identity { min-width: 0; }
+.nordic.secure-shell .mi-skip-link { position: fixed; inset: 8px auto auto 8px; z-index: 10; padding: 12px; color: #112537; background: #fff; border-radius: 8px; }
+.mi-skip-link:not(:focus) { clip-path: inset(50%); }
+.platform-shell .mi-page-heading { margin-block-end: 8px; }
+.platform-shell .mi-page-heading h2 { margin: 0; }
+.platform-shell .mi-page-heading .mi-kicker { margin-block-end: 5px; }
+.platform-shell .mi-workspace-frame { gap: clamp(12px,1.5vw,24px); margin-block-start: 10px; }
+.platform-shell .mi-workspace-frame[data-collapsed="false"] { grid-template-columns: clamp(228px,17vw,248px) minmax(0,1fr); }
+.platform-shell .mi-workspace-tools { margin-block-end: 0; }
+.platform-shell .mi-workspace-body { position: relative; }
+.platform-shell .mi-workspace-body > .exec-content { min-width: 0; }
+.platform-shell .mi-workspace-tools button { padding: 6px 10px; }
+#mi-workspace-commands:empty { display: none; }
+#mi-workspace-commands .mi-workspace-tools { flex-wrap: nowrap; }
+.mi-nav-branch > div:first-child { display: grid; grid-template-columns: minmax(0,1fr) 44px; }
+.mi-nav-subtree { margin: 2px 0 6px 13px; padding-inline-start: 7px; border-inline-start: 1px solid #7c9db474; }
+.nordic.secure-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog) .mi-nav-subtree button { line-height: 1.22; }
+.nordic.secure-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog) button.mi-nav-expand { justify-content: center; padding: 0; }
+.mi-nav-expand svg { transition: transform 180ms ease-out; }
+.mi-nav-expand[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.nordic.secure-shell.platform-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog) nav button {
+  border: 1px solid transparent;
+  color: #eef5fa;
+  background: transparent;
+  box-shadow: none;
+  white-space: normal;
+}
+.nordic.secure-shell.platform-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog) nav button:hover { background: #284961; }
+.nordic.secure-shell.platform-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog) nav button[aria-current="page"] {
+  background: #ecce63; color: #172533;
+}
+.mi-preview-controls { margin: 8px 0 0; align-items: center; padding: 5px 8px; }
+.mi-preview-controls label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.platform-client-preview .mi-preview-controls { position: sticky; inset-block-start: 0; z-index: 6; background: var(--mi-background); }
+.platform-client-preview .mi-workspace-sidebar { inset-block-start: 64px; max-height: calc(100dvh - 76px); }
+.nordic.secure-shell .mi-preview-controls .delivery-watermark {
+  position: static; width: fit-content; margin: 0; box-shadow: none; pointer-events: auto;
+}
+.nordic.secure-shell .mi-preview-controls .delivery-watermark[data-draft="false"] {
+  color: var(--mi-ink,#112537); border-color: var(--mi-line,#dce4e9); background: var(--mi-surface,#fff);
+}
+.mi-section-lead :is(h3,p) { margin: 0; }
+.mi-section-lead p { color: var(--mi-muted,#4c5f71); font-size: .875rem; margin-block-start: 4px; }
+.mi-other-contacts { margin-block: 24px; }
+.mi-public-contacts,.mi-department-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,235px),1fr));
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.mi-public-contacts a,.nordic.secure-shell.platform-shell button.mi-department-card {
+  display: flex; gap: 12px; align-items: center; min-width: 0; width: 100%; height: 100%;
+  padding: 13px; border: 1px solid var(--mi-line,#dce4e9); border-radius: 12px;
+  color: var(--mi-ink,#112537); background: var(--mi-surface,#fff); text-align: start;
+  box-shadow: var(--mi-shadow,0 10px 24px #142b4510); text-decoration: none;
+}
+.mi-public-contacts a:hover,.nordic.secure-shell.platform-shell button.mi-department-card:hover { border-color: #6485a4; }
+.mi-public-contacts a > svg,.mi-department-card > svg:last-child { margin-inline-start: auto; flex-shrink: 0; }
+.nordic.secure-shell :is(.mi-public-contacts,.mi-department-card) svg { width: 18px; height: 18px; flex: 0 0 18px; }
+.mi-public-contacts a div,.mi-department-card div { min-width: 0; }
+.mi-public-contacts strong,.mi-department-card strong { display: block; font-size: 1.02rem; }
+.mi-public-contacts div span,.mi-department-card div span { display: block; color: var(--mi-muted,#4c5f71); font-size: .82rem; line-height: 1.4; }
+.mi-staff-departments { margin-block: 16px; }
+.mi-department-project { min-width: 0; padding: 12px; background: var(--mi-surface,#fff); border: 1px solid var(--mi-line,#dce4e9); border-radius: 12px; }
+.nordic.secure-shell.platform-shell .mi-department-project button.mi-department-card { height: auto; padding: 4px; min-height: 44px; border: 0; box-shadow: none; }
+.mi-department-snapshot { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,290px),1fr)); gap: 12px; }
+.mi-related-settings { margin-block: 12px; }
+.mi-overview-actions { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.nordic.secure-shell .mi-overview-actions :is(.mi-create-project,.mi-client-launch,.mi-overview-more summary) {
+  min-height: 44px; padding: 6px 11px; display: inline-flex; align-items: center;
+  border-radius: 9px; white-space: nowrap; font-size: .86rem; font-weight: 750;
+}
+.mi-client-launch,.mi-overview-more summary {
+  color: var(--mi-ink,var(--secure-ink)); background: var(--mi-surface,#fff);
+  border: 1px solid var(--mi-line,#dce4e9); text-decoration: none;
+}
+.mi-overview-more summary { width: 44px; justify-content: center; cursor: pointer; }
+.mi-overview-more summary::-webkit-details-marker { display: none; }
+.mi-overview-menu {
+  position: absolute; inset: calc(100% + 4px) 0 auto auto; z-index: 3;
+  background: var(--mi-surface,#fff); border: 1px solid var(--mi-line,#dce4e9); border-radius: 12px;
+  box-shadow: var(--mi-shadow,0 10px 24px #142b4510); padding: 8px; display: grid; gap: 4px;
+}
+.mi-overview-more:not([open]) .mi-overview-menu { display: none; }
+.mi-overview-menu a { display: flex; align-items: center; min-height: 44px; padding-inline: 8px; }
+@media (max-width: 860px) {
+  .platform-shell .mi-workspace-tools { margin-block-end: 8px; }
+  #mi-workspace-commands .mi-workspace-tools { margin: 0; }
+  #mi-workspace-commands button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  #mi-workspace-commands .mi-workspace-tools button { justify-content: center; min-width: 44px; }
+  .platform-shell .secure-masthead img { max-width: 100%; object-fit: contain; }
+  .mi-preview-controls { row-gap: 6px; }
+}
+@media (max-width: 480px) {
+  .nordic.secure-shell.platform-shell .secure-masthead { grid-template-columns: auto minmax(0,1fr); gap: 4px 10px; }
+  .nordic.secure-shell.platform-shell .secure-masthead .secure-brandmarks { flex-direction: row; }
+  .platform-shell .secure-masthead .mi-masthead-actions { grid-column: 1 / -1; width: 100%; flex-wrap: nowrap; gap: 6px; }
+  .platform-shell .mi-masthead-actions .mi-theme-selector { margin-inline-start: auto; gap: 4px; }
+  .platform-shell .mi-masthead-actions .mi-theme-selector span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .platform-shell .mi-account { margin-inline-start: 0; }
+  .platform-shell .mi-account summary { padding-inline: 6px; }
+  .platform-shell .mi-workspace-tools button[aria-label="Search workspace"] span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+@media (prefers-reduced-motion: reduce) { .mi-nav-expand svg { transition: none; } }

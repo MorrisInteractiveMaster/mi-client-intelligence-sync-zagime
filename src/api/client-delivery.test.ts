@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { deliveryDate } from "../projects/delivery";
-import { workOrderEffort } from "../projects/effort";
 import type { ProjectReport } from "../projects/model";
-import { clientDelivery, forProjectFilter, projectMeasures } from "./client-delivery";
+import { clientDelivery, forProjectFilter, projectCompletionHistory, projectMeasures } from "./client-delivery";
 
 type Project = ProjectReport["projects"][number];
 type Placement = NonNullable<ProjectReport["portfolio"]>["placements"][number];
@@ -28,25 +27,28 @@ function report(projects: Project[], hierarchy: ProjectReport["hierarchy"], plac
 }
 
 test("engagement and department totals count authorized delivery projects and avoid duplicating automatic attribution", () => {
-  const source = { recorded: 74_700, allocated: 14_400 };
-  const fixture = report([{
-    ...project("engagement", 60_300),
-    workOrderEffort: workOrderEffort(source, source, 0),
-  }, project("previous-area"), project("Recruitment", 14_400), project("Other work", 3_600)],
+  const fixture = report([
+    project("engagement", 3_600), project("previous-area"), project("Recruitment", 14_400),
+    project("Other work", 3_600), project("Independent project", 900, "paused"),
+  ],
   { engagement: { kind: "engagement" }, "previous-area": { kind: "service-area", parentId: "engagement" },
     Recruitment: { kind: "project", parentId: "previous-area" },
     "Other work": { kind: "project", parentId: "unpublished" } },
-  [placement("engagement"), placement("Recruitment"), placement("Other work", "finance")]);
+  [placement("Recruitment"), placement("Other work", "finance")]);
   const view = clientDelivery(fixture, "2026-11-23");
-  assert.equal(view.counts.all, 2);
+  assert.equal(view.counts.all, 3);
   assert.equal(view.parentRows.length, 1);
   assert.equal(view.parentRows[0].counts.all, 1);
-  assert.equal(view.parentRows[0].seconds, 74_700);
+  assert.equal(view.parentRows[0].seconds, 18_000);
   assert.deepEqual(view.departmentRows.map(row => [row.name, row.seconds, row.counts.all]), [
     ["HR", 14_400, 1], ["Finance", 3_600, 1],
   ]);
   assert.equal(view.projects.find(item => item.project.id === "Other work")!.parent, undefined);
-  assert.equal(fixture.totalSeconds, 78_300);
+  assert.deepEqual(view.unaffiliated.map(item => item.project.id), ["Other work", "Independent project"]);
+  assert.equal(view.ungroupedSeconds, 4_500);
+  assert.equal(fixture.totalSeconds, 22_500);
+  assert.equal(view.departmentRows.reduce((sum, row) => sum + row.seconds, 0) + view.ungroupedSeconds, fixture.totalSeconds);
+  assert.equal(view.projects.filter(item => forProjectFilter(item, "other", item.project.seconds)).length, 1);
   assert.equal(clientDelivery({ ...fixture, month: "2026-09" }, "2026-11-23").counts.all, view.counts.all);
 });
 
@@ -107,4 +109,35 @@ test("near-completion bounds and risk rankings use only approved progress, block
   assert.match(view.risks[1].risk!, /Expected completion was/);
   assert.equal(view.projects.find(item => item.project.id === "Soon")?.dueSoon, true);
   assert.equal(view.progress.some(item => item.project.id === "Unconfigured"), false);
+});
+
+test("approved legacy branch effort stays in the department total with no phantom delivery project", () => {
+  const fixture = report([project("parent", 1_200), project("department", 1_800)], {
+    parent: { kind: "engagement" }, department: { kind: "service-area", parentId: "parent" },
+  }, [placement("department")]);
+  const view = clientDelivery(fixture, "2026-11-23");
+  assert.equal(view.counts.all, 0);
+  assert.equal(view.parentRows[0].seconds, 3_000);
+  assert.equal(view.ungroupedSeconds, 1_200);
+  assert.deepEqual(view.departmentRows.map(row => [row.name, row.seconds, row.counts.all]), [
+    ["HR", 1_800, 0], ["Finance", 0, 0],
+  ]);
+});
+
+test("completion trends use published dated completions and never infer an active history", () => {
+  const fixture = report([
+    project("October completion", 0, "completed"), project("Legacy closeout", 0, "closed"),
+    project("Date private", 0, "completed"), project("Still active", 0, "active"),
+    project("Future date", 0, "completed"), project("Unusable date", 0, "completed"),
+  ], {
+    "October completion": { completedOn: "2026-10-31" },
+    "Legacy closeout": { completedOn: "2026-09-01" },
+    "Still active": { completedOn: "2026-11-05" },
+    "Future date": { completedOn: "2027-01-06" },
+    "Unusable date": { completedOn: "2026-02-31" },
+  });
+  const { projects } = clientDelivery(fixture, "2026-11-23");
+  assert.deepEqual(projectCompletionHistory(projects, "2026-11-23").map(bucket => [bucket.month, bucket.projects.map(entry => entry.id)]), [
+    ["2026-09", ["Legacy closeout"]], ["2026-10", ["October completion"]],
+  ]);
 });

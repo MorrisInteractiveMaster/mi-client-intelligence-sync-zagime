@@ -20,6 +20,7 @@ import { key } from "../server/firestore-store";
 import { apiServer, RequestLimit } from "../server/http";
 import type { ReportingBackend } from "../server/backend";
 import { staffTestFixture } from "../server/testing/morris-staff-fixture";
+import { otherContacts } from "../src/projects/other-contacts";
 
 test(
   "project-only secured Auth/Firestore workflow and real browser persistence without agreement records",
@@ -692,6 +693,7 @@ function ClientFixture() {
       const evidence = resolve("test-results/project-only-browser");
       await mkdir(evidence, { recursive: true });
       const errors: string[] = [];
+      const publicPhotos = new Set(otherContacts.map(contact => contact.photo));
       const session = async (width: number, role: "staff" | "client" = "staff", engine: Browser = browser!) => {
         const fresh = role === "staff" ? await signStaff() : await authenticate("signInWithPassword", { email: "project-client@example.com", password, returnSecureToken: true });
         const context = await engine.newContext({
@@ -710,11 +712,13 @@ function ClientFixture() {
             } : undefined,
           },
         );
-        await context.route("**/*", (route) =>
-          new URL(route.request().url()).origin === origin
-            ? route.continue()
-            : route.abort(),
-        );
+        await context.route("**/*", route => {
+          const url = new URL(route.request().url());
+          if (url.origin === origin) return route.continue();
+          // Exercise the initials fallback while this authenticated test stays offline.
+          if (publicPhotos.has(url.href)) return route.fulfill({ status: 204 });
+          return route.abort();
+        });
         const page = await context.newPage();
         page.on("pageerror", (e) => errors.push(e.message));
         page.on("console", (m) => {
@@ -781,6 +785,30 @@ function ClientFixture() {
       await creationForm.getByRole("radio", { name: "Delivery Project", exact: true }).check();
       await creationForm.getByLabel("Project name", { exact: true }).fill("Browser saved project");
       await creationForm.screenshot({ path: join(evidence, "project-creation-wizard.png"), animations: "disabled" });
+      const originalWizardViewport = first.page.viewportSize()!;
+      async function verifyWizardLayout(width: number, height: number, stacked: boolean, zoom = 1) {
+        await first.page.setViewportSize({ width, height });
+        await first.page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
+        const cardRects = await creationForm.locator(".creation-kinds label").evaluateAll(cards =>
+          cards.map(card => {
+            const bounds = card.getBoundingClientRect();
+            const text = card.querySelector(".creation-kind-copy") as HTMLElement;
+            return { x: bounds.x, y: bounds.y, width: bounds.width, right: bounds.right, bottom: bounds.bottom,
+              clipped: text.scrollWidth > text.clientWidth + 1 };
+          }));
+        assert.equal(cardRects.length, 2);
+        assert.ok(cardRects.every(card => !card.clipped && card.x >= 0 && card.right <= width + 1));
+        assert.ok(Math.abs(cardRects[0].width - cardRects[1].width) < 1);
+        assert.equal(cardRects[0].y < cardRects[1].y, stacked);
+        if (width === 1440 && zoom === 1) assert.ok(cardRects.every(card => card.bottom <= height));
+        await creationForm.screenshot({ path: join(evidence, `project-wizard-${width}x${height}${zoom > 1 ? "-zoom" : ""}.png`), animations: "disabled" });
+      }
+      await verifyWizardLayout(1440, 900, false);
+      await verifyWizardLayout(390, 844, true);
+      await verifyWizardLayout(320, 568, true);
+      await verifyWizardLayout(1440, 900, true, 2);
+      await first.page.evaluate(() => { document.documentElement.style.zoom = ""; });
+      await first.page.setViewportSize(originalWizardViewport);
       await creationForm.getByRole("button", { name: "Continue", exact: true }).click();
       await creationForm.getByRole("combobox", { name: "Parent Project", exact: true }).fill("Browser parent");
       await creationForm.getByRole("option", { name: "Browser parent project", exact: true }).click();
@@ -911,7 +939,7 @@ function ClientFixture() {
       await first.page.getByLabel("Period", { exact: true }).selectOption("all");
       await first.page.getByRole("button", { name: "Apply period", exact: true }).click();
       await first.page.getByRole("heading", { name: "Recorded time · All history", exact: true }).waitFor();
-      await first.page.locator("summary").filter({ hasText: /^Hours by consultant$/ }).click();
+      await first.page.getByRole("button", { name: "Consultants", exact: true }).click();
       await first.page.getByRole("button", { name: "Avery Morgan", exact: true }).click();
       await first.page.getByRole("status").filter({ hasText: /Consultant: Avery Morgan.*1 match out of/ }).waitFor();
       const historicRow = first.page.getByRole("row").filter({ hasText: "Review department rollout requirements" });
@@ -924,6 +952,7 @@ function ClientFixture() {
       await first.page.getByText("Notes saved.", { exact: true }).waitFor();
       await historicRow.getByText("Historical review", { exact: true }).waitFor();
       assert.equal((await historic.get()).data()?.record.seconds, 18000);
+      await first.page.locator("summary").filter({ hasText: /^Reporting options$/ }).click();
       await first.page.getByRole("button", { name: "Save reporting scope", exact: true }).click();
       await first.page.getByText("Reporting scope saved on this device.", { exact: true }).waitFor();
       await first.page.getByLabel("Period", { exact: true }).selectOption("specific");
@@ -940,7 +969,16 @@ function ClientFixture() {
           document: document.documentElement.scrollWidth, viewport: innerWidth, ledger: table.scrollWidth, tableWidth: table.clientWidth,
         }));
       assert.ok(mobileTimeWidths.document <= mobileTimeWidths.viewport, JSON.stringify(mobileTimeWidths));
-      assert.ok(mobileTimeWidths.ledger > mobileTimeWidths.tableWidth, "The ledger should scroll within the mobile Time section.");
+      assert.ok(mobileTimeWidths.ledger <= mobileTimeWidths.tableWidth, "The ledger cards should fit the mobile Time section.");
+      const mobileManage = historicRow.getByRole("button", { name: "Manage Time", exact: true });
+      const mobileManageBounds = (await mobileManage.boundingBox())!;
+      assert.ok(mobileManageBounds.x >= 0 && mobileManageBounds.x + mobileManageBounds.width <= 390);
+      await mobileManage.click();
+      await first.page.getByRole("button", { name: "Close allocation", exact: true }).waitFor();
+      await first.page.screenshot({ path: join(evidence, "time-classification-mobile.png"), animations: "disabled" });
+      await first.page.keyboard.press("Escape");
+      await mobileManage.waitFor();
+      assert.ok(await mobileManage.evaluate(button => document.activeElement === button));
       await first.page.screenshot({ path: join(evidence, "historical-time-mobile.png"), fullPage: true, animations: "disabled" });
       await first.page.setViewportSize(desktopTimeViewport);
       await first.page.getByRole("navigation").getByRole("button", { name: "Projects", exact: true }).click();
@@ -1176,8 +1214,10 @@ function ClientFixture() {
         const nav = page.getByRole("navigation", { name: "Client workspace", exact: true });
         const visit = async (name: string) => {
           const menu = page.getByRole("button", { name: "Workspace navigation", exact: true });
-          if (await menu.isVisible()) await menu.click();
-          await nav.getByRole("button", { name, exact: true }).click();
+          if (await menu.isVisible()) {
+            await menu.click();
+            await page.getByRole("dialog", { name: "Workspace menu" }).getByRole("button", { name, exact: true }).click();
+          } else await nav.getByRole("button", { name, exact: true }).click();
         };
         const visitDepartment = async (name: string) => {
           await visit("Departments");
@@ -1213,7 +1253,7 @@ function ClientFixture() {
           await nav.getByRole("button", { name: "Leadership summary", exact: true }).click();
           const expand = page.getByRole("button", { name: "Explore reported hours by department" });
           await expand.click();
-          const analytics = page.getByRole("dialog", { name: "Delivery by service area analysis" });
+          const analytics = page.getByRole("dialog", { name: "Delivery by department analysis" });
           const healthHours = analytics.getByRole("button", { name: "Health, 0.5 hours" });
           await healthHours.click();
           assert.equal(await healthHours.getAttribute("aria-pressed"), "true");
@@ -1530,6 +1570,28 @@ function ClientFixture() {
       await hierarchyBrowser.page.getByRole("button", { name: "Policy assessment fixture", exact: true }).waitFor();
       await hierarchyBrowser.page.getByText("1 department · 2 active · 0 completed", { exact: true }).waitFor();
       await hierarchyBrowser.page.screenshot({ path: join(evidence, "delivery-hierarchy.png"), animations: "disabled" });
+      const editCap = hierarchyBrowser.page.getByRole("button", { name: "Edit cap for Consulting engagement fixture" });
+      await editCap.click();
+      const capEditor = hierarchyBrowser.page.getByRole("form", { name: "Edit caps for Consulting engagement fixture" });
+      const monthlyCap = capEditor.getByLabel("Monthly cap (hours)", { exact: true });
+      const originalCap = await monthlyCap.inputValue();
+      await monthlyCap.fill("1.23456");
+      await capEditor.getByRole("button", { name: "Save", exact: true }).click();
+      await capEditor.getByRole("alert").filter({ hasText: /whole number of seconds|exact second precision/ }).waitFor();
+      await monthlyCap.press("Escape");
+      await capEditor.waitFor({ state: "hidden" });
+      await editCap.focus();
+      await editCap.press("Enter");
+      await monthlyCap.fill("6.25");
+      await capEditor.screenshot({ path: join(evidence, "budget-inline-cap-editor.png"), animations: "disabled" });
+      await capEditor.getByRole("button", { name: "Save", exact: true }).click();
+      await hierarchyBrowser.page.getByText("Caps saved and utilization updated.", { exact: true }).waitFor();
+      await hierarchyBrowser.page.getByRole("listitem").filter({ has: editCap }).getByText("6.25 h", { exact: true }).waitFor();
+      assert.deepEqual(await snapshotRecords(), recordsBefore);
+      await editCap.click();
+      await monthlyCap.fill(originalCap);
+      await capEditor.getByRole("button", { name: "Save", exact: true }).click();
+      await capEditor.waitFor({ state: "hidden" });
 
       const bulkReady = root.collection("rawTime").doc("browser-bulk-ready");
       const bulkConflict = root.collection("rawTime").doc("browser-bulk-changed");

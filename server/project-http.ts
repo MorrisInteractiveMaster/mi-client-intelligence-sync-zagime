@@ -154,7 +154,7 @@ export async function projectRequest(
     return { status: 405, body: { error: "method_not_allowed" } };
   }
   const m =
-    /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|report|projects|sources|allocations|audits)(?:\/([-a-zA-Z0-9_]{1,128}))?(?:\/(publication|history|draft))?$/.exec(
+    /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|report|projects|sources|allocations|audits)(?:\/([-a-zA-Z0-9_]{1,128}))?(?:\/(publication|history|draft|caps))?$/.exec(
       url.pathname,
     );
   if (!m) return { status: 404, body: { error: "not_found" } };
@@ -244,6 +244,11 @@ export async function projectRequest(
     if (!Number.isSafeInteger(b.expectedRevision) || b.expectedRevision < 1)
       throw Error("Invalid revision");
     if (resource === "projects") {
+      if (action === "caps") {
+        only(b, ["expectedRevision", "caps"]);
+        if (b.caps === undefined) throw Error("Invalid cap change");
+        return ok(await backend.save(token, tenant, undefined, { id, expectedRevision: b.expectedRevision, caps: b.caps }));
+      }
       if (action === "draft") {
         only(b, ["expectedRevision", "action"]);
         if (b.action !== "publish" && b.action !== "discard") throw Error("Invalid draft action");

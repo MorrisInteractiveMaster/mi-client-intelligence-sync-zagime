@@ -8,11 +8,11 @@ import { chartRows } from "./DotAnalytics";
 import { Sparkline } from "./ReportingPlots";
 import { portalNavigate, usePortalLocation } from "./portal-location";
 import { PresentationContent, publishedChapters } from "./PresentationChapters";
-import { clientDelivery } from "./client-delivery";
+import { clientDelivery, type ProjectFilter } from "./client-delivery";
 
 export default function ExecutivePresentation({ report, onClose, scope = "overview", scopeTitle, onLink, draft, linked }: {
   report: ProjectReport; onClose: () => void; scope?: string; scopeTitle?: string;
-  onLink?: (view: string, month?: string) => void; draft?: boolean; linked?: boolean;
+  onLink?: (view: string, month?: string, filter?: ProjectFilter) => void; draft?: boolean; linked?: boolean;
 }) {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -37,7 +37,7 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
     { label: "Partnership", title: report.tenant.name, value: "At a glance", rows: ["Morris Interactive"] },
     { label: "Reporting period", title: "Reporting period", value: period, rows: ["Monthly reported effort for published projects"] },
     { label: "Delivery hours", title: "Published delivery", value: reportHours(report.totalSeconds) + " h", rows: ["Approved reported effort for " + period] },
-    { label: "Service areas", title: "Work across service areas", value: "", rows: chartRows(report, "distribution").map(x => x.label + " · " + reportHours(x.seconds) + " h") },
+    { label: "Departments", title: "Work across departments", value: "", rows: chartRows(report, "distribution").map(x => x.label + " · " + reportHours(x.seconds) + " h") },
     { label: "Active work", title: "Active work", value: String(active.length), rows: lines(active) },
     { label: "Milestones", title: "Progress and milestones", value: String(milestones.length), rows: milestones.slice(0, 4).map(m => m.title) },
     { label: "Completed work", title: "Completed work", value: String(completed.length), rows: lines(completed) },
@@ -59,7 +59,10 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
     { label: "Team", title: "Project team", value: "",
       rows: (report.portfolio?.directory ?? []).filter(person => person.projectIds.some(id => projects.some(p => p.id === id))).map(person => person.name + " · " + person.role) },
   ];
-  const chapters = linked ? publishedChapters(report) : undefined;
+  const chapters = linked ? publishedChapters(report, scope) : undefined;
+  if (chapters && scope !== "overview" && scopeTitle) {
+    chapters[0] = { ...chapters[0], title: scopeTitle, link: scope };
+  }
   const end = (chapters?.length ?? scenes.length) - 1;
   const current = linked && Number.isSafeInteger(requestedChapter) ? Math.min(end, Math.max(0, requestedChapter)) : Math.min(index, end);
   const scene = scenes[Math.min(current, scenes.length - 1)];

@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { AllocationCoverage, SourceMix } from "./EffortVisuals";
 import { reportHours, reportMonth } from "./dashboard-format";
 import { CsvExport } from "./CsvExport";
 import { hoursBreakdown } from "./report-csv";
@@ -15,12 +17,30 @@ type Props = {
 
 export function TimeHistorySummary({ summary, grouping, busy, onConsultant, onWorkOrder, filenamePrefix = "Morris" }: Props) {
   const { hours } = summary;
+  const [dimension, setDimension] = useState<"workOrder" | "consultant" | "morris">("workOrder");
+  const current = dimension === "morris" && !hours.byMorrisProfile?.length ? "workOrder" : dimension;
+  const groups = current === "consultant" ? hours.byConsultant : current === "morris" ? hours.byMorrisProfile ?? [] : hours.byWorkOrder;
+  const tabs: { id: typeof dimension; label: string }[] = [
+    { id: "workOrder", label: "Work orders" }, { id: "consultant", label: "Consultants" },
+  ];
+  if (hours.byMorrisProfile?.length) tabs.push({ id: "morris", label: "Morris profiles" });
   return <section className="time-history-summary" aria-label="Time summaries">
-    <div className="time-ledger-totals">
-      <div><span>Recorded</span><b>{reportHours(hours.recordedSeconds)} h</b></div>
-      <div><span>Allocated</span><b>{reportHours(hours.allocatedSeconds)} h</b></div>
-      <div><span>Unallocated</span><b>{reportHours(hours.unallocatedSeconds)} h</b></div>
+    <div className="time-analytics-grid">
+      <AllocationCoverage hours={hours} />
+      <section className="time-mix-panel" aria-label="Recorded time distribution">
+        <header className="mi-cockpit-heading"><h3>Recorded time distribution</h3>
+          <div className="mi-toggle-set" aria-label="Group recorded time">
+            {tabs.map(({ id, label }) => <button key={id} type="button" aria-pressed={current === id}
+              onClick={() => setDimension(id)}>{label}</button>)}
+          </div>
+        </header>
+        <SourceMix key={current} groups={groups} denominator={hours.recordedSeconds} label="Share of time in filter scope" busy={busy}
+          fallbackId={current === "consultant" ? "unavailable" : undefined}
+          onSelect={current === "consultant" ? onConsultant : current === "workOrder" ? onWorkOrder : undefined} />
+      </section>
     </div>
+    <details className="delivery-details time-breakdowns">
+      <summary>Exact breakdowns and CSV exports</summary>
     <details className="delivery-details">
       <summary>Hours by consultant</summary>
       <HoursTable label="Hours by consultant" filename={filenamePrefix + "_byConsultant"} rows={hours.byConsultant}
@@ -40,6 +60,7 @@ export function TimeHistorySummary({ summary, grouping, busy, onConsultant, onWo
       <HoursTable label={"Hours by " + grouping} filename={filenamePrefix + "_" + grouping} exportedRows={hours.byPeriod} rows={grouping === "month"
         ? hours.byPeriod.map(row => ({ ...row, label: reportMonth(row.label) }))
         : hours.byPeriod} busy={busy} />
+    </details>
     </details>
   </section>;
 }

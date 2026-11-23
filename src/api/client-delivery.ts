@@ -1,4 +1,5 @@
 import type { ProjectReport } from "../projects/model";
+import { calendarDate } from "../projects/delivery";
 import { reportDay, today } from "./dashboard-format";
 
 type PublishedProject = ProjectReport["projects"][number];
@@ -37,17 +38,18 @@ export function projectMeasures(project: PublishedProject, delivery: PublishedDe
 }
 
 export type ProjectFilter = "all" | "active" | "planned" | "upcoming" | "completed" | "paused" | "archived" |
-  "near" | "blocked" | "stalled" | "hours";
+  "near" | "blocked" | "stalled" | "hours" | "other" | "unaffiliated";
 export const clientProjectFilters: Record<ProjectFilter, string> = {
   all: "All delivery projects", active: "In progress", planned: "Planned", upcoming: "Upcoming", completed: "Completed",
   paused: "On hold", archived: "Archived", near: "Nearing completion", blocked: "Active blockers", stalled: "Blocked or overdue",
-  hours: "With attributable hours",
+  hours: "With attributable hours", other: "Other project statuses", unaffiliated: "Independent delivery projects",
 };
 
 export function forProjectFilter(project: ClientProject, filter: string, seconds: number) {
   if (filter === "all") return true;
   if (filter === "stalled") return Boolean(project.risk);
   if (filter === "hours") return seconds > 0;
+  if (filter === "other") return !project.active && !project.upcoming && !project.completed;
   if (filter === "planned" || filter === "paused")
     return !project.archived && !project.upcoming && !project.active && project.project.status === filter;
   if (filter === "active" || filter === "upcoming" || filter === "completed" ||
@@ -92,8 +94,7 @@ export function clientDelivery(report: ProjectReport, date = today()) {
     const parent = [...parentIds].map(id => parents.get(id)).find(item => item !== undefined) ??
       (placement?.engagementId ? parents.get(placement.engagementId) : undefined);
     const department = placement?.areaId ? departments.get(placement.areaId) : undefined;
-    return { ...projectMeasures(project, delivery, placement, date), placement, delivery, parent, parentIds, department,
-      classifiedSeconds: project.workOrderEffort?.assignedSeconds ?? project.seconds };
+    return { ...projectMeasures(project, delivery, placement, date), placement, delivery, parent, parentIds, department };
   });
   const projects = projectRows.filter(item => item.delivery?.kind !== "engagement" && item.delivery?.kind !== "service-area");
   const parentRows = [...parents.values()].map(parent => {
@@ -104,12 +105,32 @@ export function clientDelivery(report: ProjectReport, date = today()) {
   }).sort((a, b) => a.name.localeCompare(b.name, "en-CA"));
   const departmentRows = [...departments.values()].map(department => {
     const deliveryProjects = projects.filter(item => item.department?.id === department.id);
-    return { ...department, projects: deliveryProjects, counts: projectCounts(deliveryProjects),
-      seconds: deliveryProjects.reduce((total, item) => total + item.classifiedSeconds, 0) };
+    const effortProjects = projectRows.filter(item => item.department?.id === department.id);
+    return { ...department, projects: deliveryProjects, effortProjects, counts: projectCounts(deliveryProjects),
+      seconds: effortProjects.reduce((total, item) => total + item.project.seconds, 0) };
   }).sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name, "en-CA"));
   const progress = projects.filter(item => item.completion !== undefined)
     .sort((a, b) => b.completion! - a.completion! || a.project.name.localeCompare(b.project.name, "en-CA"));
   const risks = projects.filter(item => item.risk).sort((a, b) => Number(b.blocked) - Number(a.blocked) ||
     (a.overdue ?? "9999").localeCompare(b.overdue ?? "9999") || a.project.name.localeCompare(b.project.name, "en-CA"));
-  return { projects, projectRows, parentRows, departmentRows, progress, risks, counts: projectCounts(projects) };
+  const unaffiliated = projects.filter(item => !item.parent);
+  const ungroupedSeconds = projectRows.filter(item => !item.department).reduce((total, item) => total + item.project.seconds, 0);
+  return { projects, projectRows, parentRows, departmentRows, progress, risks, unaffiliated, ungroupedSeconds, counts: projectCounts(projects) };
+}
+
+export function projectCompletionHistory(
+  projects: readonly (ClientProject & { delivery?: PublishedDelivery })[], through = today(),
+) {
+  const matches = new Map<string, PublishedProject[]>();
+  for (const { project, delivery } of projects) {
+    const completedOn = delivery?.completedOn;
+    if (!calendarDate(completedOn) || completedOn > through || (project.status !== "completed" && project.status !== "closed")) continue;
+    const month = completedOn.slice(0, 7);
+    const records = matches.get(month) ?? [];
+    records.push(project);
+    matches.set(month, records);
+  }
+  return [...matches].sort(([a], [b]) => a.localeCompare(b)).map(([month, records]) => ({
+    id: month, month, projects: records.sort((a, b) => a.name.localeCompare(b.name, "en-CA")),
+  }));
 }

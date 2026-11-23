@@ -8,7 +8,7 @@ import type {
   ProjectWorkspace,
 } from "../projects/model";
 import { publicProject } from "../projects/model";
-import { Activity, Building2, CalendarDays, ChartNoAxesCombined, Clock3, ClipboardList, Eye, FolderKanban, Layers3, LayoutGrid, Monitor, Plug, Presentation, ShieldCheck, UsersRound } from "lucide-react";
+import { Activity, Building2, CalendarDays, ChartNoAxesCombined, Clock3, ClipboardList, Ellipsis, Eye, FolderKanban, Layers3, LayoutGrid, Monitor, Plug, Presentation, ShieldCheck, UsersRound } from "lucide-react";
 import { PortfolioAdmin } from "./PortfolioAdmin";
 import { ProjectReportPreview } from "./ProjectReportingCard";
 import { ContextHelp } from "./ContextHelp";
@@ -33,13 +33,14 @@ import { TimeConnectionPanel } from "./TimeConnectionPanel";
 import { QuickBooksTimeMapping } from "./QuickBooksTimeMapping";
 import { ProjectCreation } from "./ProjectCreation";
 import { ProjectManagement } from "./ProjectManagement";
-import { OperationsTrend } from "./OperationsTrend";
+import { StaffOverview } from "./StaffOverview";
+import { staffPulseStatus } from "./staff-overview-metrics";
 import { ReportingPeriod } from "./ReportingPeriod";
 import { WorkspaceNavigation, type WorkspaceGroup } from "./WorkspaceNavigation";
+import { DepartmentWorkspace } from "./DepartmentWorkspace";
 import { navigatePlatform } from "./portal-location";
 import {
   projectStatus,
-  reportDay,
   reportHours,
   reportMonth,
   reportTimestamp,
@@ -51,6 +52,7 @@ const sections = {
   clients: "Clients",
   projects: "Projects",
   management: "Project Management",
+  departments: "Departments",
   hours: "Time Allocation",
   mapping: "QuickBooks Time Mapping",
   directory: "Team Directory",
@@ -63,7 +65,7 @@ const sections = {
 };
 type Area = keyof typeof sections;
 const sectionIcons = { overview: LayoutGrid, projects: FolderKanban, management: ClipboardList, portfolio: Layers3, hours: Clock3, mapping: Layers3, activity: Activity, integrations: Plug,
-  clients: Building2, directory: UsersRound, milestones: CalendarDays, health: ChartNoAxesCombined, preview: Monitor };
+  clients: Building2, directory: UsersRound, departments: Layers3, milestones: CalendarDays, health: ChartNoAxesCombined, preview: Monitor };
 const StaffPresentation = lazy(() => import("./ExecutivePresentation"));
 export function ProjectStaffWorkspace({
   client,
@@ -112,6 +114,7 @@ export function ProjectStaffWorkspace({
   const [editorSnapshot, setEditorSnapshot] = useState<StaffProjectDetail | "new">();
   const location = usePortalLocation();
   const overviewPeriod = location.get("period") || "month";
+  const overCapOnly = location.get("budget-filter") === "over";
   const rangeStart = location.get("overview-start") || "";
   const rangeEnd = location.get("overview-end") || "";
   const platform = usePlatformRoute();
@@ -120,14 +123,17 @@ export function ProjectStaffWorkspace({
   const staffRoute = location.get("staff");
   const area: Area = staffRoute === "time" ? "integrations" : staffRoute && Object.hasOwn(sections, staffRoute) ? staffRoute as Area : "projects";
   const editorRoute = location.get("editor");
+  const department = location.get("department");
   const editingDetail = editorSnapshot && editorSnapshot !== "new" && editorSnapshot.project.id === editorRoute ? editorSnapshot : undefined;
   const editing = editorSnapshot === "new" && editorRoute === "new" ? "new" : editingDetail?.project;
   const editingDraft = editingDetail?.draft;
   const tableView = location.get("staff-layout") === "table";
   const treeView = location.get("staff-layout") === "tree";
   const statusFilter = location.get("project-filter") || "all";
+  const pulseFilter = statusFilter.startsWith("pulse-") ? statusFilter.slice(6) : undefined;
   const matchesStatus = (p: StaffProjectSummary) => statusFilter === "all" ||
-    (statusFilter === "closed" ? p.status === "closed" || p.status === "cancelled" : p.status === statusFilter);
+    (pulseFilter ? p.delivery?.kind !== "service-area" && staffPulseStatus(p, today()) === pulseFilter
+      : statusFilter === "closed" ? p.status === "closed" || p.status === "cancelled" : p.status === statusFilter);
   const allProjects = catalog ?? page.projects ?? [];
   const parentFilter = location.get("project-parent");
   const projectParents = allProjects.filter(p => p.delivery?.kind === "engagement" && !p.delivery.parentId);
@@ -154,7 +160,7 @@ export function ProjectStaffWorkspace({
   const preview = allProjects.find(p => p.id === location.get("staff-preview"));
   const previewButton = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (nativeWorkspace || (!editorDirty && !portfolioDirty)) return;
+    if (nativeWorkspace || (!editorDirty && !portfolioDirty && !managementDirty)) return;
     const previous = window.location.href;
     const guard = () => {
       if (window.location.href !== previous && !window.confirm("Discard the unsaved changes?"))
@@ -162,7 +168,7 @@ export function ProjectStaffWorkspace({
     };
     window.addEventListener("popstate", guard, true);
     return () => window.removeEventListener("popstate", guard, true);
-  }, [editorDirty, portfolioDirty, location.toString(), nativeWorkspace]);
+  }, [editorDirty, portfolioDirty, managementDirty, location.toString(), nativeWorkspace]);
   const areaHeading = useRef<HTMLHeadingElement>(null);
   const [error, setError] = useState("");
   const [listError, setListError] = useState(false);
@@ -170,7 +176,7 @@ export function ProjectStaffWorkspace({
   const [busy, setBusy] = useState(false);
   const [epoch, setEpoch] = useState(0);
   const [search, setSearch] = useState("");
-  const visibleProjects = (parentFilter && !search && catalog ? catalog : page.projects ?? [])
+  const visibleProjects = ((parentFilter || pulseFilter) && !search && catalog ? catalog : page.projects ?? [])
     .filter(project => matchesStatus(project) && matchesParent(project));
   const [draftSearch, setDraftSearch] = useState("");
   const [selectedProject, setSelectedProject] = useState<StaffProjectSummary>();
@@ -181,8 +187,20 @@ export function ProjectStaffWorkspace({
   const creation = useRef<string | undefined>(undefined);
   const hasUnsaved = editorDirty || portfolioDirty || timeDirty || managementDirty;
   const permit = () => !hasUnsaved || window.confirm("Discard the unsaved changes?");
+  function openTimeScope(filters: Record<string, string> = {}, selectedMonth?: string) {
+    if (!permit()) return;
+    const period = overviewTime?.period;
+    const anchor = selectedMonth ?? period?.start?.slice(0, 7) ?? month;
+    const fields: Record<string, string> = { period: "month" };
+    if (!selectedMonth && period?.kind === "all") fields.period = "all";
+    if (!selectedMonth && period && !["month", "all"].includes(period.kind) && period.start && period.end) {
+      Object.assign(fields, { period: "range", start: period.start, end: period.end });
+    }
+    if (nativeWorkspace) navigatePlatform(periodHref(staffPath("hours"), anchor, { ...fields, ...filters }));
+    else portalNavigate({ staff: "hours", month: anchor, editor: null, workOrder: null, consultant: null, start: null, end: null, "time-status": null, ...fields, ...filters });
+  }
   const changeArea = (next: Area) => {
-    if (area === next && !(next === "management" && managed)) return;
+    if (area === next && !(next === "management" && managed) && !(next === "projects" && editorRoute) && !(next === "departments" && department)) return;
     if (!permit()) return;
     if (editorDirty) { setEditorSnapshot(undefined); setEditorDirty(false); }
     setNotice("");
@@ -190,8 +208,8 @@ export function ProjectStaffWorkspace({
       setSearch("");
       setDraftSearch("");
     }
-    portalNavigate({ staff: next, editor: null, managed: null, subsection: next === "portfolio" && organizing ? "placements" : null,
-      view: null, chart: null, present: null, q: null, status: null, previewMode: null, previewProject: null });
+    portalNavigate({ staff: next, editor: null, managed: null, department: null, subsection: next === "portfolio" && organizing ? "placements" : null,
+      view: null, chart: null, present: null, q: null, status: null, "budget-filter": null, previewMode: null, previewProject: null });
   };
   useEffect(() => {
     if (area !== "overview") return;
@@ -213,7 +231,7 @@ export function ProjectStaffWorkspace({
     return () => abort.abort();
   }, [area, client, tenant, month, overviewPeriod, rangeStart, rangeEnd, epoch]);
   useEffect(() => {
-    if (area !== "overview" || !nativeWorkspace) return;
+    if (area !== "overview") return;
     const abort = new AbortController();
     setOverviewTrend(undefined);
     setTrendLoading(true);
@@ -222,12 +240,14 @@ export function ProjectStaffWorkspace({
       .catch(() => { if (!abort.signal.aborted) setOverviewTrend(undefined); })
       .finally(() => { if (!abort.signal.aborted) setTrendLoading(false); });
     return () => abort.abort();
-  }, [area, client, tenant, month, epoch, nativeWorkspace]);
+  }, [area, client, tenant, month, epoch]);
   useEffect(() => {
     const original = document.title;
-    document.title = (editorRoute && area === "projects" ? "Project editor" : staffRoute === "time" ? "QuickBooks Time status" : sections[area]) + " · Morris Interactive";
+    const selectedDepartment = area === "departments" && portfolio?.areas.find(row => row.id === department);
+    document.title = (editorRoute && area === "projects" ? "Project editor" : staffRoute === "time" ? "QuickBooks Time status" :
+      selectedDepartment ? selectedDepartment.name : sections[area]) + " · Morris Interactive";
     return () => { document.title = original; };
-  }, [area, editorRoute, staffRoute]);
+  }, [area, editorRoute, staffRoute, department, portfolio]);
   useEffect(() => {
     if (!preview && previewButton.current?.isConnected) previewButton.current.focus({ preventScroll: true });
   }, [preview]);
@@ -238,11 +258,11 @@ export function ProjectStaffWorkspace({
     setEditorDirty(false);
   }, [editing]);
   useEffect(() => {
-    if (!editorDirty) return;
+    if (!editorDirty && !managementDirty) return;
     const prevent = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener("beforeunload", prevent);
     return () => window.removeEventListener("beforeunload", prevent);
-  }, [editorDirty]);
+  }, [editorDirty, managementDirty]);
   const query = (cursor?: string) =>
     `month=${month}&limit=25${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
   const projectQuery = (cursor?: string) =>
@@ -328,6 +348,12 @@ export function ProjectStaffWorkspace({
       setBusy(false);
     }
   }
+  const selectDepartment = (id: string | null) => {
+    if (permit()) portalNavigate({ staff: "departments", department: id, editor: null, managed: null, subsection: null });
+  };
+  const openConfiguration = (section: string) => {
+    if (permit()) portalNavigate({ staff: "portfolio", subsection: section, editor: null, managed: null, department: null });
+  };
   const consistent = (p: ProjectPage) => {
     if (latestScope.current !== scope)
       throw Error("The reporting month changed. Refresh before continuing.");
@@ -381,35 +407,43 @@ export function ProjectStaffWorkspace({
     setAuditCursor(p.nextCursor);
   }
   const nativeArea = (id: Area) => ({
-    id, label: sections[id], icon: sectionIcons[id], active: area === id,
+    id, label: sections[id], icon: sectionIcons[id], active: area === id && !(id === "projects" && editorRoute === "new"),
     select: () => changeArea(id),
   });
   const crossLink = (id: string, label: string, icon: typeof LayoutGrid, href: string) => ({
     id, label, icon, external: true, select: () => { if (permit()) navigatePlatform(href); },
   });
   const groups: WorkspaceGroup[] = [
-    { label: "Workspace", destinations: [
-      nativeArea("overview"), nativeArea("clients"),
+    { label: "Operations", destinations: [nativeArea("overview"), nativeArea("clients")] },
+    { label: "Projects", destinations: [
+      nativeArea("projects"),
       { id: "create-project", label: "Create Project", icon: FolderKanban, active: editorRoute === "new",
         select: () => { if (editorRoute !== "new" && permit()) openDeliveryProject("new"); } },
-      nativeArea("management"), nativeArea("directory"),
+      nativeArea("management"),
+      { ...nativeArea("departments"), active: area === "departments" && !department,
+        children: [...(portfolio?.areas ?? [])].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name)).map(row => ({
+          id: "staff-department-" + row.id, label: row.name, icon: Layers3, active: area === "departments" && department === row.id,
+          select: () => selectDepartment(row.id),
+        })) },
     ] },
-    { label: "Time & Reporting", destinations: (["hours", "mapping"] as const).map(nativeArea) },
-    { label: "Delivery", destinations: (["milestones", "health", "portfolio", "activity"] as const).map(nativeArea) },
-    { label: "Client experience", destinations: [
+    { label: "Time & Budgets", destinations: (["hours", "mapping", "health"] as const).map(nativeArea) },
+    { label: "People", destinations: [nativeArea("directory")] },
+    { label: "Reporting", destinations: [
       crossLink("published-view", "Published client report", Building2, periodHref(clientBase, month)),
       crossLink("presentation", "Presentation", Presentation, periodHref(clientBase + "/present", month)),
       crossLink("draft-preview", "Draft Preview", Eye, periodHref(clientBase, month, { previewMode: "draft" })),
     ] },
+    { label: "Settings", destinations: [nativeArea("activity")] },
     ...(workspace.platformAdmin ? [{ label: "Administration", destinations: [
       crossLink("control", "Control Panel", ShieldCheck, periodHref("/control", month)),
       crossLink("employee", "Employee Mapping", UsersRound, periodHref("/control/employee-mapping", month)),
       crossLink("time-health", "Integration Health", Plug, periodHref("/control/time", month)),
     ] }] : []),
   ];
-  const pageTitle = staffRoute === "time" ? "QuickBooks Time status" : area === "projects" && editorRoute === "new" ? "Create Project" : area === "projects" && editing ? "Project setup" : sections[area];
+  const pageTitle = staffRoute === "time" ? "QuickBooks Time status" : area === "projects" && editorRoute === "new" ? "Create Project" : area === "projects" && editing ? "Project setup" :
+    area === "departments" && department ? portfolio?.areas.find(row => row.id === department)?.name ?? "Department" : sections[area];
   const content = <>
-    {nativeWorkspace && <header className="mi-page-heading"><p className="mi-kicker">{workspace.tenant.name} · {reportMonth(month)}</p>
+      {nativeWorkspace && area !== "portfolio" && <header className="mi-page-heading"><p className="mi-kicker">{area === "overview" ? workspace.tenant.name : "Morris workspace"}</p>
       <h2>{pageTitle}</h2></header>}
     {nativeWorkspace && area !== "hours" && <ReportingPeriod month={month} availableMonths={overviewTrend?.hours.byPeriod.map(row => row.label)}
       latestMonth={overviewTrend?.hours.byPeriod.at(-1)?.label}
@@ -422,75 +456,66 @@ export function ProjectStaffWorkspace({
           "overview-end": range.preset === "custom" ? end ?? null : null });
       } : undefined} />}
 
-      {area !== "overview" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
+      {area !== "overview" && (!nativeWorkspace || department || managed || editorRoute || location.has("subsection")) && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
         <button className="exec-text-button" type="button" onClick={() => changeArea("overview")}>Morris Overview</button>
         <span aria-current="page">{sections[area]}</span>
       </nav>}
-      {area === "overview" && <section aria-label="Morris operating overview">
-        <div className="delivery-section-heading"><h3>Delivery performance</h3>
-          {!nativeWorkspace && <label>Time period<select value={overviewPeriod} onChange={event => portalNavigate({ period: event.target.value })}>
+      {area === "overview" && <>
+        {!nativeWorkspace && <div className="delivery-section-heading">
+          <label>Time period<select value={overviewPeriod} onChange={event => portalNavigate({ period: event.target.value })}>
             <option value="month">{reportMonth(month)}</option><option value="current">This Month</option><option value="previous">Previous Month</option>
             <option value="year">This Year</option><option value="previous-year">Last Year</option>
             <option value="all">All History</option><option value="range">Custom Date Range</option>
-          </select></label>}
-          {!nativeWorkspace && overviewPeriod === "range" && <form className="secure-actions" onSubmit={event => {
+          </select></label>
+          {overviewPeriod === "range" && <form className="secure-actions" onSubmit={event => {
             event.preventDefault();
             const data = new FormData(event.currentTarget);
             portalNavigate({ "overview-start": String(data.get("start")), "overview-end": String(data.get("end")) });
           }}><label>From<input type="date" name="start" defaultValue={rangeStart} required /></label>
             <label>Through<input type="date" name="end" defaultValue={rangeEnd} required /></label>
-            <button type="submit">Apply dates</button></form>}</div>
-        <div className="intel-pulse" aria-label="Project status">
-          {(["active", "planned", "completed"] as const).map(status => <button className="intel-pulse-item" key={status}
-            type="button" onClick={() => changeArea("projects")}><span>{projectStatus[status]}</span><b>{catalog?.filter(p => p.status === status).length ?? "—"}</b></button>)}
-        </div>
-        <dl className={"secure-metrics" + (nativeWorkspace ? " mi-operation-metrics" : "")}>
-          {!nativeWorkspace && <div><dt>Client workspace</dt><dd>{workspace.tenant.name}</dd></div>}
-          <div><dt>Registered work orders</dt><dd>{timeStatus?.mappings.length ?? "Unavailable"}</dd></div>
-          <div data-featured="true"><dt>Hours recorded</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.recordedSeconds) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
-          <div><dt>Work-order attributed</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.attributedSeconds ?? 0) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
-          <div><dt>Remaining at parent level</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.remainingAtParentSeconds ?? 0) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
-          <div><dt>Classified hours</dt><dd>{overviewTime?.hours ? reportHours(overviewTime.hours.classifiedSeconds ?? 0) + " h" : overviewTimeError ? "Unavailable" : "Loading"}</dd></div>
-          {overviewTime?.hours && overviewTime.hours.recordedSeconds > (overviewTime.hours.attributedSeconds ?? 0) &&
-            <div><dt>Hours without a verified work-order association</dt><dd>{reportHours(overviewTime.hours.recordedSeconds - (overviewTime.hours.attributedSeconds ?? 0))} h</dd></div>}
-          <div><dt>Work orders with activity</dt><dd>{overviewTime?.hours.byWorkOrder.filter(order => order.id !== null && order.recordedSeconds > 0).length ?? "—"}</dd></div>
-          <div><dt>Allocations awaiting review</dt><dd>{overviewTime?.counts.review ?? "—"}</dd></div>
-          <div><dt>Last successful Time sync</dt><dd>{timeStatus?.lastDailySuccess ? reportTimestamp(timeStatus.lastDailySuccess) : "Unavailable"}</dd></div>
-          <div><dt>Blocked milestones</dt><dd>{catalog?.flatMap(p => p.deliveryMilestones ?? []).filter(m => m.status === "blocked").length ?? "—"}</dd></div>
-          <div><dt>Over cap</dt><dd>{overviewTotals ? deliveryOverview.filter(row => (row.health.monthlyRemaining ?? 0) < 0 || (row.health.lifetimeRemaining ?? 0) < 0).length : "—"}</dd></div>
-        </dl>
-        <div className="secure-actions">
-          <button type="button" onClick={() => openDeliveryProject("new")}>Create Project</button>
-          {overviewTime && <CsvExport filename={["Morris", workspace.tenant.name, "Overview", overviewTime.period.start ?? "All_History", overviewTime.period.end].filter(Boolean).join("_")}
-            label="Export overview CSV" data={overviewCsv(overviewTime)} />}
-          <button type="button" className="secure-secondary" onClick={() => changeArea("hours")}>Allocate Hours</button>
-          <button type="button" className="secure-secondary" onClick={() => changeArea("directory")}>Assign Team</button>
-          {nativeWorkspace ? <>
-            <PlatformLink className="platform-primary-action" href={periodHref(clientBase, month)}>View {workspace.tenant.name} Dashboard</PlatformLink>
-            <PlatformLink href={periodHref(clientBase, month, { previewMode: "draft" })}>Preview Draft Changes</PlatformLink>
-            <PlatformLink href={periodHref(staffPath("hours"), month, { period: "all" })}>Browse All History</PlatformLink>
-          </> : <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button>}
-        </div>
-        {nativeWorkspace && <OperationsTrend summary={overviewTrend} loading={trendLoading}
-          onMonth={value => { if (permit()) navigatePlatform(periodHref(staffPath("hours"), value)); }} />}
-        {overviewTime?.hours && <div className="intel-editorial platform-overview-figures">
-          <section><h3>Recorded hours by consultant</h3><ul>{overviewTime.hours.byConsultant.slice(0, 7).map(item => <li key={item.id ?? "unknown"}>
-            {item.id && nativeWorkspace ? <PlatformLink href={periodHref(staffPath("hours"), month, { period: overviewPeriod, consultant: item.id })}>{item.label}</PlatformLink> : item.label}
-            <span>{reportHours(item.recordedSeconds)} h</span>
-          </li>)}</ul>{!overviewTime.hours.byConsultant.length && <p>No consultant hours in this period.</p>}</section>
-          <section><h3>Hours by work order</h3><ul>{overviewTime.hours.byWorkOrder.slice(0, 7).map(item => <li key={item.id ?? "unknown"}>
-            {item.id && nativeWorkspace ? <PlatformLink href={periodHref(staffPath("hours"), month, { period: overviewPeriod, workOrder: item.id })}>{item.label}</PlatformLink> : item.label}
-            <span>{reportHours(item.recordedSeconds)} h recorded · {reportHours(item.allocatedSeconds)} h allocated</span>
-          </li>)}</ul>{!overviewTime.hours.byWorkOrder.length && <p>No work-order hours in this period.</p>}</section>
+            <button type="submit">Apply dates</button></form>}
         </div>}
-        <div className="intel-editorial">
-          <section><h3>Upcoming deadlines</h3>{upcoming.length ? <ul>{upcoming.map(({ project, health }) => <li key={project.id}><button type="button" className="exec-text-button" onClick={() => openDeliveryProject(project.id)}>{project.name}</button> · {reportDay(health.upcoming!)}</li>)}</ul> : <p className="secure-muted">No deadlines are recorded for upcoming work.</p>}</section>
-          <section><h3>Upcoming training</h3>{trainings.length ? <ul>{trainings.map(({ p, date }) => <li key={p.id + date}><button type="button" className="exec-text-button" onClick={() => openDeliveryProject(p.id)}>{p.name}</button> · {reportDay(date)}</li>)}</ul> : <p className="secure-muted">No upcoming sessions are recorded.</p>}</section>
-        </div>
+        <StaffOverview projects={catalog} time={overviewTime} timeError={overviewTimeError} trend={overviewTrend}
+          trendLoading={trendLoading} timeStatus={timeStatus}
+          overCap={overviewTotals ? deliveryOverview.filter(row => (row.health.monthlyRemaining ?? 0) < 0 || (row.health.lifetimeRemaining ?? 0) < 0).length : undefined}
+          upcoming={upcoming.map(row => ({ project: row.project, date: row.health.upcoming! }))}
+          training={trainings.map(({ p, date }) => ({ project: p, date }))}
+          toolbar={<div className="mi-overview-actions">
+            <button type="button" className="mi-create-project" onClick={() => openDeliveryProject("new")}>Create Project</button>
+            {nativeWorkspace ? <PlatformLink className="mi-client-launch" href={periodHref(clientBase, month)}
+              aria-label={"View " + workspace.tenant.name + " Dashboard"}>Client Dashboard</PlatformLink> :
+              <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Client Preview</button>}
+            <details className="mi-overview-more" onKeyDown={event => {
+              if (event.key !== "Escape" || !event.currentTarget.open) return;
+              event.stopPropagation();
+              event.currentTarget.open = false;
+              event.currentTarget.querySelector("summary")?.focus();
+            }}>
+              <summary aria-label="More overview actions"><Ellipsis size={18} aria-hidden="true" /></summary>
+              <div className="mi-overview-menu">
+                {overviewTime && <CsvExport filename={["Morris", workspace.tenant.name, "Overview", overviewTime.period.start ?? "All_History", overviewTime.period.end].filter(Boolean).join("_")}
+                  label="Export overview CSV" data={overviewCsv(overviewTime)} />}
+                <button type="button" className="secure-secondary" onClick={() => changeArea("directory")}>Assign Team</button>
+                {nativeWorkspace && <>
+                  <PlatformLink href={periodHref(clientBase, month, { previewMode: "draft" })}>Preview Draft Changes</PlatformLink>
+                  <PlatformLink href={periodHref(staffPath("hours"), month, { period: "all" })}>Browse All History</PlatformLink>
+                </>}
+              </div>
+            </details>
+          </div>}
+          onMonth={value => openTimeScope({}, value)} onProject={openDeliveryProject}
+          onProjects={status => {
+            if (!permit()) return;
+            setSearch("");
+            setDraftSearch("");
+            portalNavigate({ staff: "projects", editor: null, q: null, "project-filter": "pulse-" + status, "project-parent": null, engagements: null, engagement: null, "service-area": null });
+          }}
+          onTime={() => openTimeScope()} onReviewTime={() => openTimeScope({ "time-status": "review" })}
+          onHealth={() => { if (permit()) portalNavigate({ staff: "health", "budget-filter": "over" }); }} onMix={(kind, id) => openTimeScope({ [kind]: id })} />
         {!nativeWorkspace && <><h3>Workspace</h3>
-        <div className="intel-staff-overview">{Object.entries(sections).filter(([key]) => key !== "overview" && (!nativeWorkspace || key !== "integrations")).map(([key,label]) =>
+        <div className="intel-staff-overview">{Object.entries(sections).filter(([key]) => key !== "overview" && key !== "milestones").map(([key,label]) =>
           <button type="button" key={key} onClick={() => changeArea(key as Area)}>{label}</button>)}</div></>}
-      </section>}
+      </>}
       {catalogError && <p role="alert" className="secure-message secure-error">{catalogError} <button type="button" className="secure-secondary" onClick={() => setEpoch(value => value + 1)}>Reload workspace lists</button></p>}
       {area === "clients" && <section aria-label="Clients">
         <h3>{workspace.tenant.name}</h3><p>This workspace shows the client assigned to your Morris account.</p>
@@ -506,7 +531,19 @@ export function ProjectStaffWorkspace({
         onSetup={id => { if (permit()) portalNavigate({ staff: "projects", managed: null, editor: id }); }}
         onSaved={() => setEpoch(value => value + 1)} />}
       {area === "directory" && <DeliveryDirectory client={client} tenant={tenant} portfolio={portfolio} revision={page.revision} onSaved={() => setEpoch(value => value + 1)} onDenied={onDenied} />}
-      {area === "health" && <DeliveryHealth month={month} projects={allProjects} portfolio={portfolio} healthOnly onOpen={openDeliveryProject} />}
+      {nativeWorkspace && area === "directory" && <div className="mi-related-settings"><button type="button" className="secure-secondary" onClick={() => openConfiguration("directory")}>Manage directory records</button></div>}
+      {area === "departments" && <DepartmentWorkspace portfolio={portfolio} projects={allProjects} selected={department}
+        onDepartment={selectDepartment} onProject={id => { if (permit()) portalNavigate({ staff: "management", managed: id, department: null }); }}
+        onSettings={() => openConfiguration("areas")} />}
+      {nativeWorkspace && area === "health" && <div className="mi-related-settings"><button type="button" className="secure-secondary" onClick={() => openConfiguration("engagements")}>Reporting configuration</button></div>}
+      {nativeWorkspace && area === "preview" && <div className="mi-related-settings"><button type="button" className="secure-secondary" onClick={() => openConfiguration("notes")}>Manage executive updates</button></div>}
+      {area === "health" && overCapOnly && <div className="delivery-section-heading" role="status">
+        <p>Showing projects that exceed a monthly or lifetime cap.</p>
+        <button type="button" className="secure-secondary" onClick={() => { if (permit()) portalNavigate({ "budget-filter": null }); }}>Show all caps</button>
+      </div>}
+      {area === "health" && <DeliveryHealth key={month} month={month} projects={allProjects} portfolio={portfolio} healthOnly overCapOnly={overCapOnly}
+        client={client} tenant={tenant} onDirty={setManagementDirty} onRefresh={refresh} onDenied={onDenied}
+        onOpen={id => { if (permit()) openDeliveryProject(id); }} />}
       {area === "milestones" && <DeliveryMilestones month={month} client={client} tenant={tenant} projects={allProjects} onSaved={refresh} onOpen={openDeliveryProject} />}
       {area === "preview" && <DeliveryPreview client={client} tenant={tenant} month={month} />}
       {error && (
@@ -580,7 +617,9 @@ export function ProjectStaffWorkspace({
         {nativeWorkspace && <div className="project-list-controls">
           <label>Project status<select value={statusFilter} onChange={event => portalNavigate({ "project-filter": event.target.value === "all" ? null : event.target.value })}>
             <option value="all">All projects</option><option value="active">Active projects</option><option value="completed">Completed</option>
-            <option value="paused">On hold</option><option value="closed">Closed or cancelled</option></select></label>
+            <option value="paused">On hold</option><option value="closed">Closed or cancelled</option>
+            <option value="pulse-active">In progress</option><option value="pulse-upcoming">Upcoming</option><option value="pulse-completed">Completed delivery</option>
+            <option value="pulse-blocked">Blocked</option><option value="pulse-other">Other statuses</option></select></label>
           <label>Parent Project<select value={parentFilter ?? ""} disabled={!catalog} onChange={event => portalNavigate({ "project-parent": event.target.value || null })}>
             <option value="">All parent projects</option>
             {projectParents.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
@@ -790,14 +829,14 @@ export function ProjectStaffWorkspace({
       </section>
       {area === "portfolio" && <PortfolioAdmin key={organizing?.id ?? "portfolio"} client={client} tenant={tenant} month={month}
         initialProject={organizing} onDenied={onDenied} onSaved={() => setEpoch(x => x + 1)} onDirty={setPortfolioDirty} />}
-      <section hidden={area !== "hours"} className="time-allocation-panel" aria-labelledby="project-time-hours">
-        <h2
+      <section hidden={area !== "hours"} className="time-allocation-panel" aria-label="Time Allocation">
+        {(!nativeWorkspace || selectedProject) && <h2
           id="project-time-hours"
           ref={area === "hours" ? areaHeading : undefined}
           tabIndex={-1}
         >
           Project hours{selectedProject ? " · " + selectedProject.name : ""} <ContextHelp label="Recorded versus allocated hours">Recorded hours come from the time source. Reporting allocations assign all or part of a record to delivery projects without editing the original time.</ContextHelp>
-        </h2>
+        </h2>}
         {selectedProject && (
           <button
             onClick={() => {
@@ -830,7 +869,8 @@ export function ProjectStaffWorkspace({
             ))}
         {area === "hours" && <TimeAllocation client={client} tenant={tenant} month={month} projects={allProjects}
           portfolio={portfolio} onDenied={onDenied} onSaved={() => setEpoch(value => value + 1)}
-          initialConsultant={location.get("consultant") ?? undefined} initialHistory={location.get("period") === "all"}
+          initialConsultant={location.get("consultant") ?? undefined} initialPeriod={location.get("period")}
+          initialStart={location.get("start")} initialEnd={location.get("end")} initialStatus={location.get("time-status")}
           initialWorkOrder={location.get("workOrder") ?? undefined} onUnsavedChange={setTimeDirty}
           sourceLink={nativeWorkspace ? { id: location.get("source") ?? undefined,
             href: id => periodHref(staffPath("hours", id), month), backHref: periodHref(staffPath("hours"), month) } : undefined} />}
@@ -933,7 +973,7 @@ export function ProjectStaffWorkspace({
       <div className="exec-frame exec-staff-frame">
       <aside className="exec-sidebar">
       <nav aria-label="Morris workspace sections">
-        {Object.entries(sections).filter(([key]) => !nativeWorkspace || key !== "integrations").map(([key, label]) => (
+        {Object.entries(sections).filter(([key]) => key !== "milestones").map(([key, label]) => (
           <button
             key={key}
             type="button"

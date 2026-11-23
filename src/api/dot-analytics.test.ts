@@ -62,15 +62,15 @@ test("historical chart stays chronological and preserves later buckets while a h
   assert.deepEqual(chartRows(historical, "trend", { from: "2026-11", through: "2026-11" }).map(row => row.month), ["2026-11"]);
 });
 
-test("remaining work-order hours never count as classified service-area effort", () => {
+test("distribution includes only authorized approved allocations even if sent optional staff work-order metadata", () => {
   const portfolio = { areas: [{ id: "hr", name: "HR", description: "", order: 0, visible: true }], directory: [],
     engagements: [], placements: [{ id: "monthly", areaId: "hr", engagementId: "", start: "", target: "", archived: false }],
     narrative: "", action: "", history: [] };
-  const projects = [{ ...report.projects[0], seconds: 5_400, workOrderEffort: {
+  const projects = [{ ...report.projects[0], seconds: 1_800, workOrderEffort: {
     recordedSeconds: 5_400, remainingSeconds: 3_600, assignedSeconds: 1_800,
     lifetimeRecordedSeconds: 5_400, lifetimeRemainingSeconds: 3_600,
   } }];
-  assert.deepEqual(chartRows({ ...report, projects, portfolio, totalSeconds: 5_400 }, "distribution").map(row => [row.id, row.seconds]), [
-    ["recorded-remainder", 3600], ["hr", 1800],
+  assert.deepEqual(chartRows({ ...report, projects, portfolio, totalSeconds: 1_800 }, "distribution").map(row => [row.id, row.seconds]), [
+    ["hr", 1800],
   ]);
 });

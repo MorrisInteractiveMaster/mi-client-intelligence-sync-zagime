@@ -15,8 +15,9 @@ import { apiServer, RequestLimit } from "../server/http";
 import { seedProjectSynthetic } from "../server/project-operator";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
 import { projectView, type Project } from "../src/projects/model";
+import { otherContacts } from "../src/projects/other-contacts";
 
-test("native portal URLs keep authenticated roles, approved reporting, editable settings and chapter links across reload and history", { timeout: 140000 }, async () => {
+test("native portal URLs keep authenticated roles, approved reporting, editable settings and chapter links across reload and history", { timeout: 210000 }, async () => {
   const runtime = firebaseRuntime("emulator", "demo-mi-security", "mi-client-staging");
   const directory = await mkdtemp(join(tmpdir(), "mi-platform-routes-"));
   const tenant = "synthetic-platform-browser";
@@ -71,7 +72,13 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
         const denied=()=>{document.getElementById("auth-status").textContent="Workspace unavailable."};
         function Portal({workspace}) {
           const {theme,change,appearance}=usePlatformTheme(); const month=useReportingMonth("${month}"), [dirty,setDirty]=useState(false);
-          return <section className="nordic secure-shell platform-shell" data-theme={appearance}><ThemeSelector theme={theme} onChange={change}/><div id="auth-status" role="status"></div>
+          return <section className="nordic secure-shell platform-shell" data-theme={appearance}>
+            <header className="secure-masthead"><div className="secure-brandmarks">
+              <img src="/branding/zagime/zagime.jpeg" alt="Zagime Anishinabek First Nation"/>
+              <img src="/branding/morris/morris-wordmark.png" alt="Morris Interactive"/>
+            </div><div className="secure-identity"><p>{location.pathname.startsWith("/clients/") ? "Client portal" : "Morris workspace"}</p></div>
+            <div className="mi-masthead-actions"><div id="mi-workspace-commands"/><ThemeSelector theme={theme} onChange={change}/></div></header>
+            <div id="auth-status" role="status"></div>
             <PlatformApplication client={client} workspace={workspace} month={month} unsaved={dirty} onUnsavedChange={setDirty} onDenied={denied}/>
           </section>;
         }
@@ -113,16 +120,45 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
   const evidence = resolve("test-results/platform-routes-browser");
   await mkdir(evidence, { recursive: true });
   const errors: string[] = [];
+  const publicPhotos = new Set(otherContacts.map(contact => contact.photo));
   let mainBrowser: Browser | undefined;
   async function session(browser: Browser, token: "owner" | "staff" | "client", width = 1440) {
     const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 1000 }, reducedMotion: "reduce" });
     await context.addInitScript(value => { (window as Window & { __localPortalToken?: string }).__localPortalToken = value; }, token);
-    await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+    await context.route("**/*", route => {
+      const url = new URL(route.request().url());
+      if (url.origin === origin) return route.continue();
+      if (publicPhotos.has(url.href)) return route.fulfill({ status: 204 });
+      return route.abort();
+    });
     const page = await context.newPage();
     page.on("pageerror", error => errors.push(error.message));
     return { page, context };
   }
   const route = (path: string, extra = "") => origin + path + "?month=" + month + extra;
+  async function captureExperience(page: Page, name: string) {
+    const matrix = join(evidence, "experience-v2");
+    await mkdir(matrix, { recursive: true });
+    const appearance = page.getByRole("combobox", { name: "Appearance" });
+    for (const theme of ["light", "dark", "system"] as const) {
+      await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+      await appearance.selectOption(theme);
+      assert.equal(await page.locator(".platform-shell").getAttribute("data-theme"), theme === "dark" ? "dark" : "light");
+      for (const [width, height] of [[1920, 1080], [1440, 900], [1366, 768], [1024, 768], [768, 1024], [390, 844], [320, 568]]) {
+        await page.setViewportSize({ width, height });
+        await page.evaluate(() => window.scrollTo(0, 0));
+        const overflow = await page.evaluate(() => {
+          if (document.documentElement.scrollWidth <= innerWidth) return [];
+          return [...document.querySelectorAll("body *")].filter(element => element.getBoundingClientRect().right > innerWidth + 1)
+            .slice(0, 10).map(element => `${element.tagName}.${element.getAttribute("class") ?? ""} ${Math.round(element.getBoundingClientRect().right)}`);
+        });
+        assert.deepEqual(overflow, [], `${name} ${theme} fits ${width} × ${height}`);
+        await page.screenshot({ path: join(matrix, `${name}-${theme}-${width}x${height}.png`), animations: "disabled" });
+      }
+    }
+    await appearance.selectOption("light");
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
   const editPath = "/workspace/projects/" + projectId;
   async function reviewProjectEdit(page: Page, description: string) {
     await page.goto(route(editPath));
@@ -188,6 +224,13 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await admin.page.getByRole("link", { name: /View .* Dashboard/, exact: false }).first().waitFor();
     await admin.page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
     await admin.page.getByText("20.75 h", { exact: true }).first().waitFor();
+    const coverage = admin.page.getByRole("region", { name: "Time allocation coverage", exact: true });
+    await coverage.getByText("0% allocated", { exact: true }).waitFor();
+    await coverage.getByRole("meter", { name: "Share of recorded time", exact: true }).waitFor();
+    const novemberDot = admin.page.getByRole("region", { name: "Recorded hours by month", exact: true })
+      .getByRole("button", { name: /November 2026, .* recorded hours/ });
+    await novemberDot.focus();
+    await admin.page.waitForFunction(() => document.activeElement?.getAttribute("aria-label")?.includes("November 2026"));
     const createProject = admin.page.getByRole("region", { name: "Morris operating overview" })
       .getByRole("button", { name: "Create Project", exact: true });
     await createProject.waitFor();
@@ -198,6 +241,21 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await metric.getByText(expected, { exact: true }).waitFor();
     }
     await admin.page.screenshot({ path: join(evidence, "morris-workspace-native-overview.png"), fullPage: true, animations: "disabled" });
+    await captureExperience(admin.page, "morris-overview");
+    const staffNav = admin.page.getByRole("navigation", { name: "Morris workspace sections" });
+    assert.equal(await staffNav.getByRole("button", { name: "Milestones", exact: true }).count(), 0);
+    await staffNav.getByRole("button", { name: "Health", exact: true }).click();
+    await admin.page.waitForURL(route("/workspace/departments/health"));
+    await admin.page.getByText("There are no delivery projects in this department.").waitFor();
+    assert.equal(await staffNav.getByRole("button", { name: "Health", exact: true }).getAttribute("aria-current"), "page");
+    await admin.page.reload();
+    await admin.page.getByRole("heading", { name: "Health", exact: true }).waitFor();
+    await staffNav.getByRole("button", { name: "Team Directory", exact: true }).click();
+    const otherContacts = admin.page.getByRole("region", { name: "MI Other Contacts" });
+    for (const name of ["Chris Cey", "Steve Atkinson", "Monica Pollard"]) await otherContacts.getByRole("link", { name: new RegExp(name) }).waitFor();
+    await admin.page.screenshot({ path: join(evidence, "staff-directory-public-contacts.png"), fullPage: true, animations: "disabled" });
+    await staffNav.getByRole("button", { name: "Overview", exact: true }).click();
+    await admin.page.getByRole("region", { name: "Delivery pulse" }).waitFor();
     for (const width of [320, 390, 768, 1024, 1280, 1920]) {
       await admin.page.setViewportSize({ width, height: 900 });
       assert.ok(await admin.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Morris workspace fits " + width);
@@ -287,7 +345,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     const octoberReport = await october.json();
     assert.equal(octoberReport.totalSeconds, 3600);
     assert.deepEqual(octoberReport.portfolio.history.filter((row: { month: string }) => row.month === "2026-11"),
-      [{ month: "2026-11", seconds: 81900 }]);
+      [{ month: "2026-11", seconds: 7200 }]);
     assert.equal(octoberReport.portfolio.history.some((row: { month: string }) => row.month === "2025-05"), false);
     assert.deepEqual(octoberReport.historyByProject[projectId].find((row: { month: string }) => row.month === "2026-10"),
       { month: "2026-10", seconds: 3600 });
@@ -298,7 +356,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await monthControl.waitFor();
     assert.equal(await monthControl.inputValue(), "2026-10");
     const timeline = client.page.getByRole("region", { name: "Reporting period" });
-    await client.page.getByRole("button", { name: "November 2026, 22.75 hours" }).first().waitFor();
+    await client.page.getByRole("button", { name: "November 2026, 2 hours" }).first().waitFor();
     await client.page.screenshot({ path: join(evidence, "reporting-history-october.png"), fullPage: true, animations: "disabled" });
     await client.page.setViewportSize({ width: 320, height: 780 });
     const periodBounds = await timeline.boundingBox();
@@ -333,17 +391,32 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await timeline.getByRole("button", { name: "Apply range" }).click();
     await client.page.waitForURL(route(reportRoute, "&period-scope=custom&from-month=2026-09&through-month=2026-10"));
     await client.page.getByRole("button", { name: "September 2026, 1.5 hours" }).first().waitFor();
-    assert.equal(await client.page.getByRole("button", { name: "November 2026, 22.75 hours" }).count(), 0);
+    assert.equal(await client.page.getByRole("button", { name: "November 2026, 2 hours" }).count(), 0);
     await client.page.goto(route("/"));
     await client.page.waitForURL(route("/clients/zagime"));
     await client.page.getByRole("navigation", { name: "Client workspace" }).waitFor();
     await client.page.getByRole("heading", { name: /Leadership\s*summary/i }).waitFor();
     await client.page.getByLabel("All-time delivery projects", { exact: true }).getByText("All-time approved portfolio").waitFor();
     await client.page.screenshot({ path: join(evidence, "client-dashboard-native-overview.png"), fullPage: true, animations: "disabled" });
+    await captureExperience(client.page, "client-leadership");
+    const clientNav = client.page.getByRole("navigation", { name: "Client workspace" });
+    assert.equal(await clientNav.getByRole("button", { name: "Reporting history", exact: true }).count(), 0);
+    assert.equal(await client.page.getByText("LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW").count(), 0);
+    await clientNav.getByRole("button", { name: "MI Directory", exact: true }).click();
+    const clientContacts = client.page.getByRole("region", { name: "MI Other Contacts" });
+    for (const name of ["Chris Cey", "Steve Atkinson", "Monica Pollard"]) await clientContacts.getByRole("link", { name: new RegExp(name) }).waitFor();
+    await client.page.screenshot({ path: join(evidence, "client-directory-public-contacts.png"), fullPage: true, animations: "disabled" });
+    await clientNav.getByRole("button", { name: "Health", exact: true }).click();
+    await client.page.waitForURL(route("/clients/zagime/departments/health"));
+    assert.equal(await clientNav.getByRole("button", { name: "Health", exact: true }).getAttribute("aria-current"), "page");
+    await client.page.screenshot({ path: join(evidence, "client-empty-department.png"), fullPage: true, animations: "disabled" });
+    await clientNav.getByRole("button", { name: "Leadership summary", exact: true }).click();
+    await client.page.getByRole("heading", { name: /Leadership\s*summary/i }).waitFor();
     await client.page.setViewportSize({ width: 768, height: 1024 });
     assert.ok(await client.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await client.page.screenshot({ path: join(evidence, "client-dashboard-tablet.png"), fullPage: true, animations: "disabled" });
-    await client.page.getByRole("navigation", { name: "Client workspace" }).getByRole("button", { name: "Projects", exact: true }).click();
+    await client.page.getByRole("button", { name: "Workspace navigation", exact: true }).click();
+    await client.page.getByRole("dialog", { name: "Workspace menu" }).getByRole("button", { name: "Projects", exact: true }).click();
     await client.page.getByRole("heading", { name: "Published projects", exact: true }).waitFor();
     await client.page.locator(".secure-published-project .secure-project-hours > div").first().waitFor();
     const narrowestTile = await client.page.locator(".secure-published-project .secure-project-hours > div")
@@ -507,7 +580,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
           const scene = mobile.page.getByRole("dialog");
           await scene.getByRole("heading", { name: "Historical Hours and Effort" }).waitFor();
           await scene.getByRole("img", { name: "Approved reported hours by month" }).waitFor();
-          await scene.getByRole("button", { name: /November 2026.*27 h/ }).waitFor();
+          await scene.getByRole("button", { name: /November 2026.*2 h/ }).waitFor();
           assert.equal(await mobile.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
           await mobile.page.screenshot({ path: join(evidence, "client-presentation-" + engine.name() + "-390.png"), animations: "disabled" });
           await scene.getByRole("button", { name: "Close presentation" }).click();

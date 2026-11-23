@@ -200,6 +200,13 @@ export function SecureDashboard() {
   }
   return (
     <section className={"nordic secure-shell" + (route ? " platform-shell" : "")} data-theme={appearance}>
+      {route && signedIn && workspace && <a className="mi-skip-link" href="#platform-content" onClick={event => {
+        const content = document.getElementById("platform-content");
+        if (!content) return;
+        event.preventDefault();
+        content.tabIndex = -1;
+        content.focus();
+      }}>Skip to content</a>}
       <header className="secure-masthead">
         <div className="secure-brandmarks">
           {branding.clientLogo && (
@@ -224,6 +231,7 @@ export function SecureDashboard() {
           {!signedIn && !production && <Link to="/">Synthetic demonstration</Link>}
         </div>
         <div className="mi-masthead-actions">
+          {route && signedIn && <div id="mi-workspace-commands" />}
           <ThemeSelector theme={theme} onChange={change} />
           {signedIn && (
           <details className="mi-account">

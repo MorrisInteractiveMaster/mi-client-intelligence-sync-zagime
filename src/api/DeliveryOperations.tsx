@@ -1,16 +1,19 @@
 import { isBoardRole } from "../projects/directory-role";
-import { ZAGIME_CLIENT_DISPLAY_NAME } from "../config/client-identity";
+import { isOtherContact } from "../projects/other-contacts";
 import { useEffect, useState } from "react";
 import { capRollup, deliveryKindNames, MAX_DELIVERY_PROJECTS, measureDelivery, rollup } from "../projects/delivery";
 import type { Project, ProjectPage, StaffProjectSummary } from "../projects/model";
 import type { DirectoryEntry, Portfolio } from "../projects/portfolio";
 import { ApiError, type SecuredApiClient } from "./client";
 import { projectStatus, reportDay, reportHours, today } from "./dashboard-format";
-import { portalNavigate, usePortalLocation } from "./portal-location";
+import { periodHref, portalNavigate, usePortalLocation } from "./portal-location";
 import { ProjectClientReport } from "./ProjectClientReport";
 import { PersonPhoto } from "./PersonPhoto";
 import { CsvExport } from "./CsvExport";
 import { csvHours } from "./report-csv";
+import { BudgetHealthBoard } from "./BudgetHealthBoard";
+import { OtherContacts } from "./OtherContacts";
+import { PlatformLink } from "./PlatformHome";
 
 export async function projectCatalog(client: SecuredApiClient, tenant: string, month: string, signal: AbortSignal) {
   const projects: StaffProjectSummary[] = [];
@@ -57,7 +60,8 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const person = portfolio?.directory.find(p => p.id === selected);
-  const matching = (portfolio?.directory ?? []).filter(p =>
+  const synced = (portfolio?.directory ?? []).filter(p => !isOtherContact(p.profile));
+  const matching = synced.filter(p =>
     [p.name, p.profile?.title, p.role].some(value => value?.toLowerCase().includes(search.trim().toLowerCase())));
   const board = matching.filter(p => isBoardRole(p.profile?.title || p.role));
   const team = matching.filter(p => !isBoardRole(p.profile?.title || p.role));
@@ -77,8 +81,8 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
     {notice && <p className="secure-message" role="status">{notice}</p>}
     <label>Search people<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
     {!portfolio && <p className="secure-empty" role="status">Loading team profiles…</p>}
-    {portfolio && !portfolio.directory.length && <p className="secure-empty">No team profiles yet. Sync the Morris team or add a manual profile in portfolio management.</p>}
-    {portfolio?.directory.length ? <>
+    {portfolio && !synced.length && <p className="secure-empty">No team profiles yet. Sync the Morris team or add a manual profile.</p>}
+    {synced.length ? <>
       {[{ name: "Board", people: board }, { name: "Team", people: team }].map(group => group.people.length > 0 && <section
         key={group.name} aria-label={group.name} className="mi-directory-group">
         <h4>{group.name}</h4>
@@ -90,6 +94,7 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
       </section>)}
       {!matching.length && <p className="secure-empty">No profiles match this search.</p>}
     </> : null}
+    <OtherContacts />
     {person && <form className="secure-form" key={person.id} onSubmit={e => {
       e.preventDefault();
       const data = new FormData(e.currentTarget);
@@ -125,40 +130,47 @@ export function DeliveryPreview({ client, tenant, month, standalone = false }: {
   const previewProject = location.get("previewProject");
   const [error, setError] = useState("");
   useEffect(() => {
+    if (standalone && !requestedScope) return;
     const controller = new AbortController();
     client.call<{id: string; label: string}[]>(tenant, "client-preview/scopes", { signal: controller.signal }).then(value => {
       if (!controller.signal.aborted) setProfiles(value);
     }).catch(() => { if (!controller.signal.aborted) setError("Client access profiles are temporarily unavailable."); });
     return () => controller.abort();
-  }, [client, tenant]);
+  }, [client, tenant, standalone, requestedScope]);
   const entitled = standalone || mode === "draft" || Boolean(scope);
   return <section aria-label="Preview as client">
-    <div className="delivery-section-heading"><div><h3>{standalone ? ZAGIME_CLIENT_DISPLAY_NAME + " dashboard" : "Preview as client"}</h3><p>{standalone ? "The published view shows projects shared with all approved client profiles." : "Published preview follows the selected client access profile. Draft preview includes saved changes and private projects."}</p></div>
-      {!standalone && <button type="button" className="secure-secondary" onClick={() => portalNavigate({
+    {!standalone && <div className="delivery-section-heading"><p>Published preview follows the selected client access profile. Draft preview includes saved changes and private projects.</p>
+      <button type="button" className="secure-secondary" onClick={() => portalNavigate({
         staff: previewProject ? "projects" : "overview", editor: previewProject, previewProject: null, previewMode: null,
         view: null, q: null, status: null, present: null, chart: null,
-      })}>{previewProject ? "Back to project" : "Back to overview"}</button>}</div>
-    <div className="delivery-filters">
+      })}>{previewProject ? "Back to project" : "Back to overview"}</button></div>}
+    <div className="delivery-filters mi-preview-controls">
+      {standalone && <PlatformLink href={periodHref("/workspace", month)}>Back to Morris Workspace</PlatformLink>}
       <label>Preview mode<select value={mode} onChange={e => { setError(""); portalNavigate({
         previewMode: e.target.value === "draft" ? "draft" : null,
         view: previewProject ? "project:" + previewProject : location.get("view"), q: null, present: null, chart: null,
-      }, true); }}><option value="published">Live published view</option><option value="draft">Staff-only draft preview</option></select></label>
+      }, true); }}><option value="published">Published client view</option><option value="draft">Staff draft preview</option></select></label>
       {mode === "published" && !standalone && <label>Client access profile<select value={scope} onChange={e => { portalNavigate({ previewScope: e.target.value || null }); setError(""); }}><option value="">Select an approved profile</option>{profiles?.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>}
+      {entitled && <p className="delivery-watermark" data-draft={mode === "draft"}>{mode === "draft" ? "DRAFT PREVIEW · MORRIS STAFF ONLY" : "LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW"}</p>}
+      {standalone && <PlatformLink href={periodHref("/workspace/portfolio", month, { subsection: "notes" })}>Manage executive updates</PlatformLink>}
     </div>
     {error && <p role="alert">{error}</p>}
-    {entitled && <div className="delivery-preview-frame"><p className="delivery-watermark">{mode === "draft" ? "DRAFT PREVIEW · MORRIS STAFF ONLY" : "LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW"}</p>
+    {entitled && <div className="delivery-preview-frame">
       <ProjectClientReport client={client} tenant={tenant} month={month} preview={{ mode, ...(mode === "published" && (!standalone ? scope : requestedScope && scope === requestedScope) ? { scope } : {}) }}
         onDenied={() => setError("This client access profile is no longer available.")} /></div>}
   </section>;
 }
 
-export function DeliveryHealth({ projects, portfolio, month, healthOnly = false, onOpen }: {
-  projects: StaffProjectSummary[]; portfolio?: Portfolio; month?: string; healthOnly?: boolean; onOpen: (id: string) => void;
+export function DeliveryHealth({ projects, portfolio, month, healthOnly = false, overCapOnly = false, onOpen, client, tenant, onRefresh, onDenied, onDirty }: {
+  projects: StaffProjectSummary[]; portfolio?: Portfolio; month?: string; healthOnly?: boolean; overCapOnly?: boolean; onOpen: (id: string) => void;
+  client?: SecuredApiClient; tenant?: string; onRefresh?: () => void; onDenied?: () => void; onDirty?: (dirty: boolean) => void;
 }) {
   const [search, setSearch] = useState("");
   const [layout, setLayout] = useState("tree");
   const [area, setArea] = useState("");
   const [group, setGroup] = useState("");
+  const [capEditor, setCapEditor] = useState<string>();
+  useEffect(() => () => onDirty?.(false), [onDirty]);
   const index = new Map(projects.map(p => [p.id, p]));
   const totals = rollup(projects);
   const caps = capRollup(projects);
@@ -177,6 +189,13 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
   }
   const placements = new Map(portfolio?.placements.map(p => [p.id, p]));
   const people = new Map(portfolio?.directory.map(p => [p.id, p.name]));
+  const describeBranch = (branch: StaffProjectSummary[]) => {
+    const delivery = branch.filter(child => child.delivery?.kind !== "service-area");
+    const active = delivery.filter(child => child.status === "active").length;
+    const completed = delivery.filter(child => child.status === "completed").length;
+    const departments = new Set(branch.map(child => child.delivery?.areaId ?? placements.get(child.id)?.areaId).filter(Boolean)).size;
+    return `${departments} ${departments === 1 ? "department" : "departments"} · ${active} active · ${completed} completed`;
+  };
   const depth = (p: StaffProjectSummary) => {
     const path = [];
     let parent = p.delivery?.parentId;
@@ -189,6 +208,11 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
     return path;
   };
   const rows = projects.map(p => ({ p, trail: depth(p), area: p.delivery?.areaId ?? placements.get(p.id)?.areaId, group: p.delivery?.groupId ?? placements.get(p.id)?.engagementId }))
+    .filter(({ p }) => {
+      if (!overCapOnly) return true;
+      const result = measureDelivery(p, caps.get(p.id)!, asOf);
+      return (result.monthlyRemaining ?? 0) < 0 || (result.lifetimeRemaining ?? 0) < 0;
+    })
     .filter(row => (!area || row.area === area) && (!group || row.group === group) && [row.p.name, ...row.trail].join(" ").toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a,b) => (layout === "tree" ? [...a.trail, a.p.name].join(" / ").localeCompare([...b.trail, b.p.name].join(" / ")) : a.p.name.localeCompare(b.p.name)));
   const budgetRows = [...(portfolio?.areas ?? []).map(item => ({ item, classification: "Department", matches: (p: StaffProjectSummary) => (p.delivery?.areaId ?? placements.get(p.id)?.areaId) === item.id })),
@@ -199,8 +223,8 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
       return { item, classification, month, lifetime };
     });
   return <section>
-    <div className="delivery-section-heading"><div><h3>{healthOnly ? "Budgets and delivery health" : "Project hierarchy"}</h3>
-      <p>Allocated hours measure effort. Milestones and manual assessments measure completion.</p></div>
+    <div className="delivery-section-heading"><div><h3>{healthOnly ? "Project caps and progress" : "Project hierarchy"}</h3>
+      <p>Hours measure effort. Milestones and manual assessments measure completion.</p></div>
       <CsvExport filename={["Morris", healthOnly ? "Delivery_Health" : "Project_Hierarchy", month].filter(Boolean).join("_")}
         label={healthOnly ? "Export budgets and health CSV" : "Export hierarchy CSV"}
         data={{
@@ -210,10 +234,12 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
           rows: rows.map(({ p, trail, area }) => {
             const sum = totals.get(p.id)!;
             const cap = caps.get(p.id)!;
-            const result = measureDelivery({ ...p, milestones: p.deliveryMilestones ?? p.milestones }, cap, asOf);
+            const delivery = p.delivery && (healthOnly && p.draftCaps
+              ? { ...p.delivery, monthlyCap: p.draftCaps.monthlyCap, lifetimeCap: p.draftCaps.lifetimeCap } : p.delivery);
+            const result = measureDelivery({ ...p, delivery, milestones: p.deliveryMilestones ?? p.milestones }, cap, asOf);
             return [p.name, trail.join(" / "), portfolio?.areas.find(item => item.id === area)?.name,
-              csvHours(sum.monthly), csvHours(sum.lifetime), csvHours(p.delivery?.monthlyCap), csvHours(cap.monthly), csvHours(result.monthlyRemaining),
-              csvHours(p.delivery?.lifetimeCap), csvHours(cap.lifetime), csvHours(result.lifetimeRemaining),
+              csvHours(sum.monthly), csvHours(sum.lifetime), csvHours(delivery?.monthlyCap), csvHours(cap.monthly), csvHours(result.monthlyRemaining),
+              csvHours(delivery?.lifetimeCap), csvHours(cap.lifetime), csvHours(result.lifetimeRemaining),
               result.completion, result.health, result.upcoming, p.published ? "Published" : "Private", projectStatus[p.status]];
           }),
         }} />
@@ -223,13 +249,18 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
         <dd>{reportHours(month)} h allocated monthly · {item.monthlyCap === undefined ? "No monthly cap" : reportHours(item.monthlyCap - month) + " h remaining"}</dd>
         <dd>{reportHours(lifetime)} h allocated lifetime · {item.lifetimeCap === undefined ? "No lifetime cap" : reportHours(item.lifetimeCap - lifetime) + " h remaining"}</dd>
       </div>)}</dl></details>}
-    <div className="delivery-filters"><label>Search hierarchy<input type="search" value={search} onChange={e => setSearch(e.target.value)} /></label>
-      <label>Department<select value={area} onChange={e => setArea(e.target.value)}><option value="">All departments</option>{portfolio?.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-      {healthOnly && <label>Legacy reporting group<select value={group} onChange={e => setGroup(e.target.value)}><option value="">All groups</option>{portfolio?.engagements.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
-      <label>Layout<select value={layout} onChange={e => setLayout(e.target.value)}><option value="tree">Hierarchy</option><option value="table">Alphabetical table</option></select></label>
+    <div className="delivery-filters"><label>{healthOnly ? "Search projects" : "Search hierarchy"}<input type="search" value={search} disabled={Boolean(capEditor)} onChange={e => setSearch(e.target.value)} /></label>
+      <label>Department<select value={area} disabled={Boolean(capEditor)} onChange={e => setArea(e.target.value)}><option value="">All departments</option>{portfolio?.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+      {healthOnly && !!portfolio?.engagements.length && <label>Legacy reporting group<select value={group} disabled={Boolean(capEditor)} onChange={e => setGroup(e.target.value)}><option value="">All groups</option>{portfolio.engagements.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
+      <label>{healthOnly ? "Order" : "Layout"}<select value={layout} disabled={Boolean(capEditor)} onChange={e => setLayout(e.target.value)}><option value="tree">Hierarchy</option><option value="table">{healthOnly ? "Alphabetical" : "Alphabetical table"}</option></select></label>
     </div>
     {!rows.length && <p className="secure-empty">No projects match.</p>}
-    {!!rows.length && <div className="intel-table-scroll" tabIndex={0} aria-label="Project hierarchy table"><table><thead><tr>
+    {healthOnly && !!rows.length && <BudgetHealthBoard asOf={asOf} client={client} tenant={tenant}
+      editing={capEditor} onEditing={setCapEditor} onDirty={onDirty} onRefresh={onRefresh} onOpen={onOpen} onDenied={onDenied}
+      rows={rows.map(({ p, trail, area }) => ({ project: p, trail, department: portfolio?.areas.find(item => item.id === area)?.name,
+        branchSummary: descendants.has(p.id) ? describeBranch(descendants.get(p.id)!) : undefined,
+        effort: totals.get(p.id)!, consumed: caps.get(p.id)! }))} />}
+    {!healthOnly && !!rows.length && <div className="intel-table-scroll" tabIndex={0} aria-label="Project hierarchy table"><table><thead><tr>
       <th scope="col">Project / parent</th><th scope="col">Department / type</th><th scope="col">Managers</th><th scope="col">Allocated effort</th><th scope="col">Remaining cap</th><th scope="col">Completion and health</th><th scope="col">Publication</th>
     </tr></thead><tbody>{rows.map(({ p, trail, area }) => {
       const sum = totals.get(p.id)!;
@@ -238,14 +269,11 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
       const managers = p.delivery?.managerIds ?? (placements.get(p.id)?.leadId ? [placements.get(p.id)!.leadId] : []);
       const branch = descendants.get(p.id) ?? [];
       const projectsBelow = branch.filter(child => child.delivery?.kind !== "service-area");
-      const active = projectsBelow.filter(child => child.status === "active").length;
-      const completed = projectsBelow.filter(child => child.status === "completed").length;
-      const departments = new Set(branch.map(child => child.delivery?.areaId ?? placements.get(child.id)?.areaId).filter(Boolean)).size;
       const upcoming = branch.flatMap(child => [child.delivery?.deadline, ...(child.deliveryMilestones ?? [])
         .filter(m => !m.completed && m.status !== "waived").map(m => m.date)]).filter((date): date is string => Boolean(date && date >= asOf)).sort()[0];
       return <tr key={p.id}><th scope="row"><button type="button" className="exec-text-button" style={{ marginInlineStart: layout === "tree" ? Math.min(trail.length, 5) * 12 : 0 }} onClick={() => onOpen(p.id)}>{p.name}</button>
         <small>{trail.length ? trail.join(" / ") : "Client root"}{projectsBelow.length ? " · " + projectsBelow.length + (projectsBelow.length === 1 ? " descendant project" : " descendant projects") : ""}</small>
-        {!!branch.length && <small>{departments} {departments === 1 ? "department" : "departments"} · {active} active · {completed} completed</small>}</th>
+        {!!branch.length && <small>{describeBranch(branch)}</small>}</th>
         <td>{portfolio?.areas.find(a => a.id === area)?.name ?? "Unclassified"}<small>{p.delivery?.kind ? deliveryKindNames[p.delivery.kind] : "Legacy project"} · {p.delivery?.type ?? "Engagement type not configured"}</small></td>
         <td>{managers.map(id => people.get(id)).filter(Boolean).join(", ") || "Unassigned"}</td>
         <td>{reportHours(sum.monthly)} h monthly<small>{reportHours(sum.lifetime)} h lifetime</small>

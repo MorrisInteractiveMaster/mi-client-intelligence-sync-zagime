@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Check, ChevronRight, FolderKanban, Layers3 } from "lucide-react";
 import type { Delivery } from "../projects/delivery";
 import { hoursToSeconds } from "../projects/duration";
@@ -11,7 +11,7 @@ import "./project-creation.css";
 
 const projectKinds = [
   { value: "engagement", label: "Parent Project", description: "Organize work across departments.", Icon: FolderKanban },
-  { value: "project", label: "Delivery Project", description: "Track a piece of work under a parent project and department.", Icon: Layers3 },
+  { value: "project", label: "Delivery Project", description: "Track work within a parent project and department.", Icon: Layers3 },
 ] as const;
 const arrangements = [
   { value: "hourly", label: "Hourly" },
@@ -69,9 +69,11 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
   const [publishSummary, setPublishSummary] = useState(saved?.publishSummary ?? false);
   const [publishStartStatus, setPublishStartStatus] = useState(saved?.publishStartStatus ?? !project);
   const [error, setError] = useState("");
+  const [invalidStep, setInvalidStep] = useState<Step>();
   const heading = useRef<HTMLHeadingElement>(null);
+  const fieldId = useId();
 
-  useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [step]);
+  useEffect(() => { heading.current?.focus(); }, [step]);
 
   const parents = projects.filter(p => p.delivery?.kind === "engagement" && !p.delivery.parentId && p.id !== project?.id);
   const departments = [...(portfolio?.areas ?? [])].sort(byOrder);
@@ -99,6 +101,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
     setter(value);
     onDirty();
     setError("");
+    setInvalidStep(undefined);
   }
 
   function validate(part: Step) {
@@ -126,6 +129,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
       setStep(steps[position + 1]);
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : "Check the fields and try again.");
+      setInvalidStep(step);
     }
   }
 
@@ -177,35 +181,39 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
     } catch (problem) {
       setStep(checking);
       setError(problem instanceof Error ? problem.message : "The project could not be saved.");
+      setInvalidStep(checking);
     }
   }
 
-  return <form className="secure-form creation-wizard" aria-label={project ? "Edit a project" : "Create a project"} onSubmit={submit} noValidate>
+  return <form className="secure-form creation-wizard" data-step={step} aria-label={project ? "Edit a project" : "Create a project"} onSubmit={submit} noValidate>
     <header className="creation-head">
-      <div><p className="secure-eyebrow">{project?.published ? "Published project" : "Project setup"}</p>
-        <h3>{project ? "Edit project" : "Create a project"}</h3></div>
+      <h3>{project ? "Edit project" : "Create a project"}</h3>
       {project?.published && <p>{canPublishNow ? "Save a private draft or publish these changes to authorized clients." :
         "Changes are saved as a private draft for review."}</p>}
     </header>
     <ol className="creation-steps" aria-label="Project setup steps">{steps.map((item, index) =>
-      <li key={item} aria-current={step === item ? "step" : undefined} data-completed={position > index || undefined}>
+      <li key={item} aria-label={titles[item]} aria-current={step === item ? "step" : undefined} data-completed={position > index || undefined}>
         <span className="creation-step-number" aria-hidden="true">{position > index ? <Check size={14} /> : index + 1}</span>
-        <span>{titles[item]}</span>
+        <span className="creation-step-title">{titles[item]}</span>
       </li>)}</ol>
     <div className="creation-body">
       <p className="creation-step-label">Step {position + 1} of {steps.length}</p>
       <h4 ref={heading} tabIndex={-1}>{titles[step]}</h4>
     </div>
-    <fieldset className="creation-fields" disabled={busy}>
+    <fieldset className="creation-fields" disabled={busy} aria-describedby={error ? fieldId + "-error" : undefined}>
       <legend className="creation-legend">{titles[step]}</legend>
       {step === "identity" && <>
         {legacy ? <p className="secure-muted">This existing record keeps its current project structure.</p> :
           <div className="creation-kinds">{projectKinds.map(option =>
             <label key={option.value} className={kind === option.value ? "creation-kind-selected" : undefined}>
-              <input type="radio" name="project-kind" aria-label={option.label} checked={kind === option.value} onChange={() => change(setKind, option.value)} />
-              <option.Icon size={21} aria-hidden="true" /><span>{option.label}<small>{option.description}</small></span>
+              <input type="radio" name="project-kind" aria-label={option.label} aria-describedby={fieldId + option.value}
+                checked={kind === option.value} onChange={() => change(setKind, option.value)} />
+              <span className="creation-kind-icon"><option.Icon size={21} aria-hidden="true" /></span>
+              <span className="creation-kind-copy"><span>{option.label}</span><small id={fieldId + option.value}>{option.description}</small></span>
             </label>)}</div>}
-        <label>Project name<input value={name} maxLength={200} required onChange={event => change(setName, event.target.value)} /></label>
+        <label>Project name<input value={name} maxLength={200} required aria-invalid={invalidStep === "identity" || undefined}
+          aria-describedby={invalidStep === "identity" ? fieldId + "-error" : undefined}
+          onChange={event => change(setName, event.target.value)} /></label>
       </>}
       {step === "location" && <>
         {!legacy && <div className="creation-columns">
@@ -281,13 +289,13 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
           Share schedule and hours caps with clients when published</label>}
         {!project && !canPublish && <p className="secure-muted">A publisher must approve this project before clients can see it.</p>}
       </>}
+      {error && <p id={fieldId + "-error"} className="secure-error" role="alert">{error}</p>}
     </fieldset>
-    {error && <p className="secure-error" role="alert">{error}</p>}
     <div className="creation-actions">
       <button type="button" className="secure-secondary" onClick={onCancel} disabled={busy}>Cancel</button>
       <div>
         {position > 0 && <button type="button" className="secure-secondary" disabled={busy}
-          onClick={() => { setStep(steps[position - 1]); setError(""); }}>Back</button>}
+          onClick={() => { setStep(steps[position - 1]); setError(""); setInvalidStep(undefined); }}>Back</button>}
         {step === "review" ? <>
           <button type="submit" className={canPublishNow ? "secure-secondary" : undefined} disabled={busy}>{!project || project.published ? "Save Draft" : "Save Changes"}</button>
           {canPublishNow && <button type="submit" value="publish" disabled={busy}>{project ? "Save & Publish" : "Create & Publish"}</button>}

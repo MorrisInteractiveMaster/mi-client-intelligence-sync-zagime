@@ -1,4 +1,5 @@
 import { isZagimeClient, ZAGIME_CLIENT_DISPLAY_NAME } from "../config/client-identity";
+import { X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ProjectPage, StaffProjectSummary } from "../projects/model";
 import type { Portfolio } from "../projects/portfolio";
@@ -46,15 +47,22 @@ type Props = {
   onUnsavedChange?: (dirty: boolean) => void;
   initialConsultant?: string;
   initialWorkOrder?: string;
-  initialHistory?: boolean;
+  initialPeriod?: string | null;
+  initialStart?: string | null;
+  initialEnd?: string | null;
+  initialStatus?: string | null;
 };
 export function TimeAllocation(props: Props) {
-  return <MonthAllocation key={JSON.stringify([props.tenant, props.month, props.sourceLink?.id, props.initialConsultant, props.initialWorkOrder, props.initialHistory])} {...props} />;
+  return <MonthAllocation key={JSON.stringify([props.tenant, props.month, props.sourceLink?.id, props.initialConsultant, props.initialWorkOrder, props.initialPeriod, props.initialStart, props.initialEnd, props.initialStatus])} {...props} />;
 }
 
-function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied, onSaved, sourceLink, onUnsavedChange, initialConsultant, initialWorkOrder, initialHistory }: Props) {
+function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied, onSaved, sourceLink, onUnsavedChange, initialConsultant, initialWorkOrder, initialPeriod, initialStart, initialEnd, initialStatus }: Props) {
   const linkedConsultant = initialConsultant && /^[A-Za-z0-9_-]{1,128}$/.test(initialConsultant) ? initialConsultant : "";
   const linkedWorkOrder = initialWorkOrder && /^[A-Za-z0-9_-]{1,128}$/.test(initialWorkOrder) ? initialWorkOrder : "";
+  const linkedStart = initialPeriod === "range" && calendarDate(initialStart) && calendarDate(initialEnd) && initialStart <= initialEnd ? initialStart : undefined;
+  const linkedEnd = linkedStart && calendarDate(initialEnd) ? initialEnd : undefined;
+  const linkedPeriod = linkedStart ? "range" : initialPeriod === "all" || (initialPeriod !== "month" && linkedConsultant) ? "all" : undefined;
+  const linkedStatus = initialStatus === "review" ? "review" : undefined;
   const periodSelectId = useId();
   const [rows, setRows] = useState<StaffSource[]>();
   const [cursor, setCursor] = useState<string>();
@@ -62,17 +70,17 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   const [summary, setSummary] = useState<SourceSummary>();
   const [applied, setApplied] = useState<AppliedFilters>({});
   const [appliedMonth, setAppliedMonth] = useState(month);
-  const [preset, setPreset] = useState<TimePreset>(linkedConsultant || initialHistory ? "all" : "specific");
+  const [preset, setPreset] = useState<TimePreset>(linkedPeriod ?? "specific");
   const [reference, setReference] = useState(month);
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const [start, setStart] = useState(linkedStart ?? "");
+  const [end, setEnd] = useState(linkedEnd ?? "");
   const [order, setOrder] = useState<SavedScope["order"]>("oldest");
   const [group, setGroup] = useState<TimeGrouping>("month");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<SourceFilters["status"]>();
+  const [status, setStatus] = useState<SourceFilters["status"]>(linkedStatus);
   const [workOrder, setWorkOrder] = useState(linkedWorkOrder);
   const [consultant, setConsultant] = useState(linkedConsultant);
   const [area, setArea] = useState("");
@@ -142,13 +150,13 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   useEffect(() => {
     mounted.current = true;
     setRows(undefined); setSummary(undefined); setCursor(undefined); setApplied({});
-    setSearch(""); setStatus(undefined); setWorkOrder(linkedWorkOrder); setConsultant(linkedConsultant); setArea(""); setProjectFilter("");
+    setSearch(""); setStatus(linkedStatus); setWorkOrder(linkedWorkOrder); setConsultant(linkedConsultant); setArea(""); setProjectFilter("");
     setFrom(""); setThrough(""); setEditor(undefined); setSelected([]); setUndo(undefined); setNotice("");
     const initialFilters: AppliedFilters = linkedId ? { period: "all", entry: linkedId }
-      : { ...(linkedConsultant || initialHistory ? { period: "all" } : {}), consultant: linkedConsultant, workOrder: linkedWorkOrder };
+      : { period: linkedPeriod, start: linkedStart, end: linkedEnd, status: linkedStatus, consultant: linkedConsultant, workOrder: linkedWorkOrder };
     void load(undefined, initialFilters, month, Boolean(linkedId));
     return () => { mounted.current = false; request.current?.abort(); };
-  }, [client, tenant, month, linkedId, linkedConsultant, linkedWorkOrder, initialHistory]);
+  }, [client, tenant, month, linkedId, linkedConsultant, linkedWorkOrder, linkedPeriod, linkedStart, linkedEnd, linkedStatus]);
   useEffect(() => {
     if (editor && drawer.current && !drawer.current.open) {
       drawer.current.showModal();
@@ -318,10 +326,10 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     } catch (e) { failed(e); }
   }
   return <div className="delivery-allocation">
-    <div className="delivery-section-heading"><div><h3>Recorded time · {periodLabel}</h3><p>Review source hours and allocate them to delivery projects.</p></div>
+    <div className="delivery-section-heading time-workbench-heading"><div><h3>Recorded time · {periodLabel}</h3><p>Review QuickBooks Time records and classify hours when a delivery project is known.</p></div>
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => void load(undefined, applied, appliedMonth, Boolean(linkedId))}>Load authorized time</button></div>
     {linkedId && sourceLink && <PlatformLink href={sourceLink.backHref}>Back to Time Allocation</PlatformLink>}
-    {!linkedId && <form className="time-history-toolbar" aria-label="Reporting period" onSubmit={event => { event.preventDefault(); changePeriod(chosenScope); }}>
+    {!linkedId && <div className="time-workbench-controls"><form className="time-history-toolbar" aria-label="Reporting period" onSubmit={event => { event.preventDefault(); changePeriod(chosenScope); }}>
       <div><label htmlFor={periodSelectId}>Period</label><select id={periodSelectId} value={preset} onChange={e => setPreset(e.target.value as TimePreset)}>
         {Object.entries(timePresets).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
       </select></div>
@@ -330,21 +338,24 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
         <label>Period starts<input type="date" value={start} required max={end || undefined} onChange={e => setStart(e.target.value)} /></label>
         <label>Period ends<input type="date" value={end} required min={start || undefined} onChange={e => setEnd(e.target.value)} /></label>
       </>}
+      <button type="submit" disabled={busy}>Apply period</button>
+      <details className="time-advanced time-period-options"><summary>Reporting options</summary><div className="time-advanced-grid">
       <label>Sort time entries<select value={order} onChange={e => setOrder(e.target.value as SavedScope["order"])}>
         <option value="newest">Newest first</option><option value="oldest">Oldest first</option>
       </select></label>
       <label>Summarize by<select value={group} onChange={e => setGroup(e.target.value as TimeGrouping)}>
         <option value="month">Month</option><option value="quarter">Quarter</option><option value="year">Year</option>
       </select></label>
-      <button type="submit" disabled={busy}>Apply period</button>
       <button type="button" className="secure-secondary" disabled={busy} onClick={saveScope}>Save reporting scope</button>
       <button type="button" className="secure-secondary" disabled={busy} onClick={restoreScope}>Use saved scope</button>
-    </form>}
-    {!linkedId && <form className="delivery-filters" aria-label="Time entry filters" onSubmit={event => {
+      </div></details>
+    </form>
+    <form className="time-filter-form" aria-label="Time entry filters" onSubmit={event => {
       event.preventDefault();
       void load(undefined, { ...applied, search: search.trim(), status, workOrder, consultant, area, project: projectFilter, from, through });
     }}>
       <label>{summary?.period.kind === "month" || !summary ? "Search month" : "Search period"}<input type="search" value={search} maxLength={120} onChange={e => setSearch(e.target.value)} /></label>
+      <details className="time-advanced time-filter-options"><summary>Advanced filters</summary><div className="time-advanced-grid">
       <label>Work order<select value={workOrder} onChange={e => setWorkOrder(e.target.value)}><option value="">All</option>
         {workOrder && !summary?.workOrders.some(item => item.id === workOrder) && <option value={workOrder}>{workOrder}</option>}
         {summary?.workOrders.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
@@ -356,15 +367,16 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       <label>Allocation status<select value={status ?? ""} onChange={e => setStatus((e.target.value || undefined) as SourceFilters["status"])}><option value="">All</option><option value="queue">Has unallocated time</option>{Object.entries(sourceStatusLabels).map(([id,label]) => <option key={id} value={id}>{label}</option>)}</select></label>
       <label>From<input type="date" min={summary?.period.start} max={summary?.period.end} value={from} onChange={e => setFrom(e.target.value)} /></label>
       <label>Through<input type="date" min={from || summary?.period.start} max={summary?.period.end} value={through} onChange={e => setThrough(e.target.value)} /></label>
+      </div></details>
       <button type="submit" disabled={busy}>Apply filters</button>
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
         setSearch(""); setStatus(undefined); setWorkOrder(""); setConsultant(""); setArea(""); setProjectFilter(""); setFrom(""); setThrough("");
         const { period, start, end, order, group } = applied;
         void load(undefined, { period, start, end, order, group });
       }}>Clear filters</button>
-    </form>}
+    </form></div>}
     {summary && !linkedId && <>
-      <p role="status">Scope · {scope.length ? scope.join(" · ") : summary.period.kind === "month" ? "Entire month" : periodLabel} · {summary.matched} {summary.matched === 1 ? "match" : "matches"} out of {summary.monthTotal} {summary.period.kind === "month" ? "month" : "period"} entries</p>
+      <p role="status" className="time-scope-status">Scope · {scope.length ? scope.join(" · ") : summary.period.kind === "month" ? "Entire month" : periodLabel} · {summary.matched} {summary.matched === 1 ? "match" : "matches"} out of {summary.monthTotal} {summary.period.kind === "month" ? "month" : "period"} entries</p>
       <CsvExport label="Export time entries CSV"
         filename={["Morris", clientName, "Time", applied.workOrder, applied.consultant,
           summary.period.kind === "month" ? appliedMonth : summary.period.start ?? "All_History",
@@ -380,7 +392,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       }} onWorkOrder={id => {
         setWorkOrder(id); void load(undefined, { ...applied, workOrder: id });
       }} />
-      <dl className="secure-metrics" aria-label="Counts across all matching entries before the allocation status filter">
+      <dl className="time-counts" aria-label="Counts across all matching entries before the allocation status filter">
         <div><dt>Total in filter scope</dt><dd>{summary.counts.total}</dd></div>
         {Object.entries(sourceStatusLabels).map(([id, label]) => <div key={id}><dt>{label}</dt><dd>{summary.counts[id as keyof typeof sourceStatusLabels]}</dd></div>)}
       </dl>
@@ -405,29 +417,29 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     {!rows && !error && <p role="status">Loading recorded time…</p>}
     {rows && rows.length === 0 && <p className="secure-empty">{linkedId ? "This time entry is unavailable in this workspace." : "No entries match these filters."}</p>}
     {!!rows?.length && <div className="intel-table-scroll time-entries" tabIndex={0} role="region" aria-label="Recorded time table">
-      <table><thead><tr><th scope="col">Select</th><th scope="col">Date</th>{rows.some(row => row.consultantName) && <th scope="col">Consultant</th>}{rows.some(row => row.description) && <th scope="col">Original provider notes</th>}
+      <table role="table"><thead role="rowgroup"><tr role="row"><th scope="col">Select</th><th scope="col">Date</th>{rows.some(row => row.consultantName) && <th scope="col">Consultant</th>}{rows.some(row => row.description) && <th scope="col">Original provider notes</th>}
         <th scope="col">Work order</th><th scope="col">Recorded</th><th scope="col">Reporting</th><th scope="col">Assignment</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
-      <tbody>{rows.map(source => <tr key={source.id}>
-        <td><input aria-label={"Select entry on " + source.date} type="checkbox" disabled={source.conflict || source.needsReview || source.portions.length > 0 || source.seconds === 0}
+      <tbody role="rowgroup">{rows.map(source => <tr key={source.id} role="row">
+        <td role="cell" data-cell="Select"><input aria-label={"Select entry on " + source.date} type="checkbox" disabled={source.conflict || source.needsReview || source.portions.length > 0 || source.seconds === 0}
           checked={selected.includes(source.id)} onChange={e => setSelected(old => e.target.checked ? [...old, source.id] : old.filter(id => id !== source.id))} /></td>
-        <td>{reportDay(source.date)}</td>
-        {rows.some(row => row.consultantName) && <td><div className="time-profile">
+        <td role="cell" data-cell="Date">{reportDay(source.date)}</td>
+        {rows.some(row => row.consultantName) && <td role="cell" data-cell="Consultant"><div className="time-profile">
           {source.wordpressProfile?.photo && <img src={source.wordpressProfile.photo} alt={source.wordpressProfile.alt || ""} width="32" height="32" loading="lazy" />}
           <span>{source.consultantName}{source.wordpressProfile?.title && <small>{source.wordpressProfile.title}</small>}</span>
         </div></td>}
-        {rows.some(row => row.description) && <td>{source.description}</td>}<td><b>{source.workOrderName || source.sourceWorkOrderId}</b></td>
-        <td>{reportHours(source.seconds)} h</td><td>{source.annotations?.reportingDescription || "No reporting description"}</td>
-        <td>{source.portions.length ? source.portions.map(p => <div key={p.projectId}>{projectName(p.projectId)}<small>{resolvedParent(p.projectId) ? projectName(resolvedParent(p.projectId)) + " · " : ""}{areaLabel(resolvedArea(p.projectId))}</small></div>) : "Unassigned"}
+        {rows.some(row => row.description) && <td role="cell" data-cell="Original provider notes">{source.description}</td>}<td role="cell" data-cell="Work order"><b>{source.workOrderName || source.sourceWorkOrderId}</b></td>
+        <td role="cell" data-cell="Recorded">{reportHours(source.seconds)} h</td><td role="cell" data-cell="Reporting">{source.annotations?.reportingDescription || "—"}</td>
+        <td role="cell" data-cell="Assignment">{source.portions.length ? source.portions.map(p => <div key={p.projectId}>{projectName(p.projectId)}<small>{resolvedParent(p.projectId) ? projectName(resolvedParent(p.projectId)) + " · " : ""}{areaLabel(resolvedArea(p.projectId))}</small></div>) : "Unassigned"}
           {(source.annotations?.parentId || source.annotations?.areaId) && <small>Reporting: {source.annotations.parentId ? projectName(source.annotations.parentId) + " · " : ""}{areaLabel(source.annotations.areaId ?? "")}</small>}</td>
-        <td>{sourceStatusLabels[sourceStatus(source)]}<small>{reportHours(source.unallocatedSeconds)} h at work order</small>
+        <td role="cell" data-cell="Status">{sourceStatusLabels[sourceStatus(source)]}<small>{reportHours(source.unallocatedSeconds)} h at work order</small>
           <small>{approvalLabel(source)}</small></td>
-        <td><button type="button" className="platform-primary-action" disabled={busy} onClick={() => edit(source)}>Manage Time</button></td>
+        <td role="cell" data-cell="Actions"><button type="button" className="platform-primary-action" disabled={busy} onClick={() => edit(source)}>Manage Time</button></td>
       </tr>)}</tbody></table></div>}
     {cursor && <button type="button" className="secure-secondary" disabled={busy} onClick={() => void load(cursor)}>More recorded time</button>}
     {editor && <dialog className="time-alloc-drawer" ref={drawer} aria-label="Time allocation" onCancel={e => { e.preventDefault(); if (!busy) close(); }}>
-      <div className="delivery-section-heading"><h3 ref={heading} tabIndex={-1}>Allocate {reportHours(editor.seconds)} recorded hours</h3><button type="button" className="secure-secondary" disabled={busy} onClick={() => close()}>Close allocation</button></div>
+      <div className="delivery-section-heading time-drawer-heading"><h3 ref={heading} tabIndex={-1}>Allocate {reportHours(editor.seconds)} recorded hours</h3><button type="button" className="secure-secondary" aria-label="Close allocation" disabled={busy} onClick={() => close()}><X size={18} aria-hidden="true" /></button></div>
       <p>{reportDay(editor.date)} · {editor.workOrderName || editor.sourceWorkOrderId} · {editor.seconds.toLocaleString("en-CA")} original seconds</p>
-      <details open><summary>Original source details</summary><dl>
+      <details><summary>Original source details</summary><dl>
         {editor.consultantName && <div><dt>Consultant name</dt><dd>{editor.consultantName}</dd></div>}
         {editor.sourcePersonId && <div><dt>Consultant identifier</dt><dd>{editor.sourcePersonId}</dd></div>}
         {editor.description && <div><dt>Original provider notes</dt><dd className="time-original-note">{editor.description}</dd></div>}

@@ -7,7 +7,7 @@ import { ApiError, type SecuredApiClient } from "./client";
 import { reportHours, reportMonth } from "./dashboard-format";
 import { hoursToSeconds } from "../projects/duration";
 import { ContextHelp } from "./ContextHelp";
-import { portalNavigate, usePortalLocation } from "./portal-location";
+import { portalNavigate, usePlatformRoute, usePortalLocation } from "./portal-location";
 
 type Snapshot = { revision: number; portfolio: Portfolio; totals?: PortfolioTotals[] };
 const editorSections = {
@@ -34,6 +34,7 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
   onDenied: () => void; onSaved: () => void; onDirty: (value: boolean) => void;
 }) {
   const requested = usePortalLocation().get("subsection");
+  const nativeWorkspace = usePlatformRoute()?.kind === "staff";
   const section: PortfolioSection = requested && Object.hasOwn(editorSections, requested) ? requested as PortfolioSection : initialProject ? "placements" : "areas";
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [editing, setEditing] = useState<PortfolioRecord>();
@@ -157,11 +158,18 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
   const publishedCheck = (value: boolean, label: string) => <label className="exec-check"><input type="checkbox" name="visible" defaultChecked={value} />{label}</label>;
   const selected = projects.find(p => p.id === projectId);
   const currentPlacement = config.placements.find(x => x.id === projectId);
+  const sectionTitle = nativeWorkspace ? ({ areas: "Departments", engagements: "Reporting configuration", placements: "Project placement",
+    directory: "Directory settings", notes: "Executive updates" })[section] : editorSections[section][0];
   return <section className="exec-portfolio" aria-labelledby="portfolio-management">
-    <div className="secure-section-heading"><div><h2 id="portfolio-management">Portfolio management</h2><p>Organize delivery projects, configure reporting plans and curate published content.</p></div></div>
-    <nav className="secure-tabs" aria-label="Portfolio settings">
+    {nativeWorkspace ? <div className="delivery-section-heading"><h2 id="portfolio-management">{sectionTitle}</h2>
+      <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
+        if (discard()) portalNavigate({ staff: section === "engagements" ? "health" : section === "directory" ? "directory" :
+          section === "placements" ? "management" : section === "notes" ? "preview" : "departments", subsection: null });
+      }}>Back to workspace</button></div> : <>
+      <div className="secure-section-heading"><div><h2 id="portfolio-management">Portfolio management</h2><p>Organize delivery projects, configure reporting plans and curate published content.</p></div></div>
+      <nav className="secure-tabs" aria-label="Portfolio settings">
       {Object.entries(editorSections).map(([key, [label, Icon]]) => <button type="button" aria-pressed={key === section} disabled={busy} key={key} onClick={() => choose(key as PortfolioSection)}><Icon size={16} aria-hidden="true" />{label}</button>)}
-    </nav>
+      </nav></>}
     {error && <p className="secure-message secure-error" role="alert">{error}</p>}
     {notice && <p className="secure-message" role="status">{notice}</p>}
     {error && <button type="button" disabled={busy} onClick={() => { if (discard()) { setEditing(undefined); setDirty(false); setError(""); setReload(x => x + 1); } }}>Refresh settings</button>}
@@ -175,7 +183,7 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
       {cursor && <button type="button" disabled={busy} onClick={() => void find(undefined, cursor)}>More projects</button>}
       {selected && <button type="button" disabled={busy} onClick={() => edit(currentPlacement ?? blank("placements", month, selected.id))}>Organize {selected.name}</button>}
     </div> : <div className="exec-panel">
-      <div className="secure-section-heading"><h3>{editorSections[section][0]}</h3><button type="button" disabled={busy} onClick={() => edit(section === "notes" ? config.notes.find(n => n.month === month) ?? blank(section, month, "") : blank(section, month, ""))}>{section === "notes" ? "Edit " + reportMonth(month) : "Add record"}</button></div>
+      <div className="secure-section-heading">{!nativeWorkspace && <h3>{editorSections[section][0]}</h3>}<button type="button" disabled={busy} onClick={() => edit(section === "notes" ? config.notes.find(n => n.month === month) ?? blank(section, month, "") : blank(section, month, ""))}>{section === "notes" ? "Edit " + reportMonth(month) : "Add record"}</button></div>
       <ul className="exec-admin-list">
         {config[section].slice().sort((a, b) => "order" in a && "order" in b ? byOrder(a, b) : b.id.localeCompare(a.id)).map(item => <li key={item.id}>
           <div><b>{"name" in item ? item.name : reportMonth(item.id)}</b><span>{item.visible ? "Available to eligible clients" : "Morris only"}</span>
@@ -194,7 +202,7 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
       </li>)}</ul>
     </section>}
     {record && <form className="exec-panel exec-admin-editor" key={section + ":" + record.id} onSubmit={event => void save(event)} onChange={() => setDirty(true)}>
-      <h3 tabIndex={-1} ref={heading}>{editorSections[section][0]} editor</h3>
+      <h3 tabIndex={-1} ref={heading}>{sectionTitle} editor</h3>
       <fieldset disabled={busy} className="exec-form-grid">
         {"name" in record && <>
           <label>Name<input name="name" defaultValue={record.name} required maxLength={section === "areas" ? 80 : 120} /></label>
