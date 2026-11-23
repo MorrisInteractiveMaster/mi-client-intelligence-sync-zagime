@@ -1,6 +1,8 @@
+import { ZAGIME_CLIENT_DISPLAY_NAME } from "./client-identity";
+
 /** Approved assets only. Null deliberately renders an elegant text placeholder. */
 export const branding = {
-  clientName: "Zagimē Anishinabēk",
+  clientName: ZAGIME_CLIENT_DISPLAY_NAME,
   partnerName: "Morris Interactive",
   clientLogo: "branding/zagime/zagime.jpeg" as string | null,
   partnerLogo: "branding/morris/morris-wordmark.png" as string | null,

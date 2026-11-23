@@ -1,3 +1,4 @@
+import { parseTimeMappingReview } from "../src/projects/time";
 import { portfolioLimits, type PortfolioSection } from "../src/projects/portfolio";
 import type { IncomingMessage } from "node:http";
 import type { ProjectBackend } from "./project-workspace";
@@ -115,7 +116,7 @@ export async function projectRequest(
         Object.keys(body).some(
           (k) =>
             !(
-              action === "mapping" ? ["jobcodeId", "projectId"] : ["jobcodeId"]
+              action === "mapping" ? ["jobcodeId", "projectId", "review"] : ["jobcodeId"]
             ).includes(k),
         )
       )
@@ -126,7 +127,9 @@ export async function projectRequest(
         status: 200,
         body:
           action === "mapping"
-            ? await time.approve(tenant, who, body.jobcodeId, body.projectId, disconnected)
+            ? time.requiresMappingReview()
+              ? await time.confirmMapping(tenant, who, body.jobcodeId, body.projectId, parseTimeMappingReview(body.review))
+              : await time.approve(tenant, who, body.jobcodeId, body.projectId, disconnected)
             : await time.sync(tenant, who, body.jobcodeId, disconnected),
       };
     }
@@ -220,8 +223,14 @@ export async function projectRequest(
   if (url.search) throw Error("Invalid query");
   if (req.method === "POST" && resource === "projects" && !id) {
     const b = await readBody();
+    const wrapped = Object.hasOwn(b, "project");
+    if (wrapped) {
+      only(b, ["project", "publish"]);
+      if (typeof b.publish !== "boolean") throw Error("Invalid publication");
+    }
     return ok(
-      await backend.save(token, tenant, b, {
+      await backend.save(token, tenant, wrapped ? b.project : b, {
+        ...(wrapped ? { publishOnCreate: b.publish } : {}),
         idempotency:
           typeof req.headers["idempotency-key"] === "string"
             ? req.headers["idempotency-key"]
@@ -244,16 +253,18 @@ export async function projectRequest(
         b,
         action === "publication"
           ? ["expectedRevision", "published"]
-          : ["expectedRevision", "patch"],
+          : ["expectedRevision", "patch", "publish"],
       );
       if (action && action !== "publication") throw Error("Invalid action");
       if (action === "publication" && typeof b.published !== "boolean")
         throw Error("Invalid publication");
+      if (b.publish !== undefined && typeof b.publish !== "boolean") throw Error("Invalid publication");
       return ok(
         await backend.save(token, tenant, b.patch, {
           id,
           expectedRevision: b.expectedRevision,
           ...(action === "publication" ? { published: b.published } : {}),
+          ...(b.publish !== undefined ? { publishOnSave: b.publish } : {}),
         }),
       );
     }

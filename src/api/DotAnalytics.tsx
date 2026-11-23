@@ -83,7 +83,7 @@ export function DotChart({ report, kind, onLink, onOpen, expanded, monthRange, d
           <caption>{caption}</caption><thead><tr><th scope="col">{trend ? "Month" : "Group"}</th><th scope="col">Hours</th></tr></thead>
           <tbody>{rows.map(row => <tr key={row.id}><th scope="row">{row.label}</th><td>{reportHours(row.seconds)}</td></tr>)}</tbody>
         </table></details>
-        {!draft && <CsvExport filename={"Morris_Zagime_" + kind + "_" + report.month} label="Export chart CSV"
+        {!draft && <CsvExport filename={"Morris_" + report.tenant.name + "_" + kind + "_" + report.month} label="Export chart CSV"
           data={{ headers: [trend ? "Month" : "Group", "Reported hours"],
             rows: rows.map(row => [row.month ?? row.label, csvHours(row.seconds)]) }} />}
       </div>

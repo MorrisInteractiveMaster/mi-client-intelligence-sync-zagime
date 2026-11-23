@@ -1,3 +1,4 @@
+import { ZAGIME_CLIENT_DISPLAY_NAME } from "../config/client-identity";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize, Pause, Play, Printer, RotateCcw, X } from "lucide-react";
 import type { ProjectReport } from "../projects/model";
@@ -100,7 +101,7 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
     }}>
     <div className="exec-presentation-stage intel-presentation-stage" data-chapter={current} ref={stage}>
     <header className="exec-presentation-top">
-      <img src={brandAsset("branding/zagime/zagime-main-logo.png")} alt="Zagimē Anishinabēk" />
+      <img src={brandAsset("branding/zagime/zagime-main-logo.png")} alt={ZAGIME_CLIENT_DISPLAY_NAME} />
       {draft && <strong className="mi-presentation-draft">Draft · Morris staff only</strong>}
       <button className="exec-icon" type="button" aria-label="Close presentation" onClick={onClose}><X size={20} /></button>
     </header>

@@ -103,7 +103,7 @@
 .nordic.secure-shell.platform-shell .secure-card.secure-published-project { display: flex; flex-direction: column; align-items: stretch; min-width: 0; border-color: #e1e9ee; }
 .platform-shell .secure-published-project .secure-badge { align-self: flex-start; }
 .platform-shell .secure-published-project .intel-open-project { align-self: flex-start; margin-top: auto; }
-.nordic.secure-shell.platform-shell .delivery-watermark { position: sticky; top: 4px; z-index: 4; width: max-content; max-width: 100%; margin: 7px auto; border-radius: 8px; padding: 4px 10px; font-size: .69rem; letter-spacing: .05em; background: #faf1cc; border-color: #c0a54d; color: #352c1b; box-shadow: var(--mi-shadow); }
+.nordic.secure-shell.platform-shell .delivery-watermark { position: fixed; inset: auto max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) auto; z-index: 4; width: max-content; max-width: calc(100% - 16px); margin: 0; border-radius: 6px; padding: 4px 8px; font-size: .64rem; letter-spacing: .04em; background: #faf1cc; border: 1px solid #c0a54d; color: #352c1b; box-shadow: var(--mi-shadow); pointer-events: none; }
 @media (max-width: 860px) {
   .mi-workspace-frame,.mi-workspace-frame[data-collapsed="true"] { display: block; }
   .mi-workspace-sidebar { display: none; }
@@ -148,19 +148,6 @@
 .nordic.secure-shell.platform-shell .mi-sign-in-panel .secure-actions button { min-height: 44px; background: var(--mi-action); color: #fff; border-color: #214e73; box-shadow: none; }
 .nordic.secure-shell.platform-shell .mi-sign-in-panel .secure-actions button + button { background: #edf2f7; color: #133450; border-color: #dae4eb; }
 .nordic.secure-shell.platform-shell .mi-sign-in-panel :is(a,button,input):focus-visible { outline-color: #276a9c; }
-.mi-management-picker,.mi-progress-fields { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,240px),1fr)); gap: 10px; margin: 12px 0; }
-.mi-management-picker label,.mi-progress-fields label { display: grid; gap: 5px; font-weight: 650; }
-.mi-management-picker :is(input,select),.mi-progress-fields :is(input,select,textarea) { width: 100%; }
-.mi-management-empty,.mi-progress-editor { margin-top: 14px; padding: clamp(12px,2vw,23px); border-radius: 14px; background: white; box-shadow: var(--mi-shadow); }
-.mi-management-empty svg { color: #245983; }
-.mi-management-empty h3,.mi-management-empty p { margin: 5px 0; }
-.mi-progress-editor header > h3 { margin: 5px 0; font-size: clamp(1.25rem,2.8vw,2rem); }
-.mi-progress-editor .mi-kicker { color: #486279; margin: 2px 0; }
-.mi-progress-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 15px; margin: 12px 0; padding: 10px 12px; background: #e9f0f6; border-radius: 10px; }
-.mi-progress-summary progress { flex: 1 0 min(120px,100%); accent-color: #275679; }
-.mi-progress-fields { border: 0; padding: 0; min-width: 0; }
-.mi-progress-fields .mi-blocker-toggle { display: flex; align-items: center; align-self: end; min-height: 44px; justify-content: flex-start; gap: 7px; }
-.mi-blocker-toggle input { width: auto; }
 @media (max-width: 650px) {
   .nordic.secure-shell.platform-shell .platform-sign-in { grid-template-columns: 1fr; min-height: 0; gap: 16px; }
   .mi-sign-in-story { gap: 4px; }
@@ -203,8 +190,6 @@
 .nordic.secure-shell.platform-shell .mi-operations-trend summary { padding: 8px 0; }
 .nordic.secure-shell.platform-shell .mi-operation-metrics { grid-template-columns: repeat(auto-fit,minmax(min(100%,164px),1fr)); }
 .nordic.secure-shell.platform-shell .mi-operation-metrics dd { font-size: clamp(1rem,1.45vw,1.36rem); }
-.nordic.secure-shell.platform-shell .mi-progress-fields .mi-blocker-toggle { display: flex; grid-column: 1/-1; }
-.platform-shell .mi-progress-fields .mi-blocker-toggle input { width: auto; }
 .platform-shell .reporting-period__label { text-wrap: nowrap; }
 .mi-legacy-sign-in { display: contents; }
 .nordic.secure-shell.platform-shell :is(h1,h2,h3,h4) { font-family: inherit; }

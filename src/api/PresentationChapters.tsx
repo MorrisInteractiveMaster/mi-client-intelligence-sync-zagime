@@ -1,3 +1,4 @@
+import { ZAGIME_CLIENT_DISPLAY_NAME } from "../config/client-identity";
 import { useState } from "react";
 import type { ProjectReport } from "../projects/model";
 import { chartRows } from "./DotAnalytics";
@@ -111,7 +112,7 @@ export function PresentationContent({ chapter, onLink, month, draft }: { chapter
     </div>
     <div className="mi-chart-actions">
       <details><summary>Show data table</summary>{table}</details>
-      {!draft && month && <CsvExport filename={"Morris_Zagime_" + chapter.title.replace(/[^a-zA-Z0-9]+/g, "_") + "_" + month}
+      {!draft && month && <CsvExport filename={"Morris_" + ZAGIME_CLIENT_DISPLAY_NAME + "_" + chapter.title.replace(/[^a-zA-Z0-9]+/g, "_") + "_" + month}
         label="Export chart CSV" data={{ headers: [chapter.timeline ? "Month" : "Name", unit === "percent" ? "Percent" : "Reported hours"],
           rows: rows.map(row => [row.month ?? row.label, unit === "percent" ? row.value : csvHours(row.value)]) }} />}
     </div>

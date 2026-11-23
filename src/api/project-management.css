@@ -1,0 +1,148 @@
+@property --mi-progress {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 0%;
+}
+.mi-project-management {
+  --mi-management-ink: light-dark(#142c44, #e6eff9);
+  --mi-management-muted: light-dark(#455c71, #bdcede);
+  --mi-management-surface: light-dark(#fff, #15283c);
+  --mi-management-tint: light-dark(#edf4fa, #20384f);
+  --mi-management-line: light-dark(#d1dee9, #50677c);
+  --mi-management-accent: light-dark(#245b89, #b3d7fa);
+  --mi-management-risk: light-dark(#932f38, #ffbec3);
+  color: var(--mi-management-ink);
+  min-width: 0;
+}
+.mi-management-search { max-width: 46rem; margin-block-end: 1rem; }
+.mi-project-management-empty, .mi-management-editor {
+  padding: clamp(.875rem, 3vw, 2rem);
+  background: var(--mi-management-surface);
+  border: 1px solid var(--mi-management-line);
+  border-radius: 14px;
+  box-shadow: 0 8px 26px #0a274613;
+}
+.mi-project-management-empty > svg { color: var(--mi-management-accent); }
+.mi-management-editor h3, .mi-management-editor h4, .mi-project-management-empty h3 { margin-block: 0 .3rem; color: var(--mi-management-ink); }
+.mi-management-editor h3 { font-size: clamp(1.375rem, 1rem + 1.6vw, 2.25rem); line-height: 1.16; overflow-wrap: anywhere; }
+.mi-management-editor h4 { font-size: 1.125rem; }
+.mi-management-editor p, .mi-project-management-empty p { color: var(--mi-management-muted); margin-block: .25rem; overflow-wrap: anywhere; }
+.mi-management-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem; }
+.mi-management-editor > .mi-management-heading { margin-block-end: 1rem; }
+.mi-management-path, .mi-management-subtitle { font-size: .875rem; }
+.mi-management-progress {
+  display: grid;
+  gap: .75rem;
+  padding: clamp(.75rem, 2vw, 1.5rem);
+  border-radius: 12px;
+  background: var(--mi-management-tint);
+}
+.mi-manual-progress-value {
+  color: var(--mi-management-accent);
+  font-size: clamp(1.375rem, 1rem + 2.3vw, 2.5rem);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  min-width: 3ch;
+}
+.mi-management-progress input[type="range"] {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  transition: --mi-progress .22s ease-out;
+}
+.mi-management-progress input[type="range"]:active { transition: none; }
+.mi-management-progress input[type="range"]::-webkit-slider-runnable-track {
+  height: .5625rem;
+  border-radius: 1rem;
+  background: linear-gradient(to right, var(--mi-management-accent) var(--mi-progress), var(--mi-management-line) var(--mi-progress));
+}
+.mi-management-progress input[type="range"]::-moz-range-track { height: .5625rem; border-radius: 1rem; background: var(--mi-management-line); }
+.mi-management-progress input[type="range"]::-moz-range-progress { height: .5625rem; border-radius: 1rem; background: var(--mi-management-accent); }
+.mi-management-progress input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: -.46875rem;
+  border-radius: 50%;
+  background: var(--mi-management-accent);
+  box-shadow: 0 0 0 .2rem var(--mi-management-surface);
+  transition: box-shadow .16s ease;
+}
+.mi-management-progress input[type="range"]::-moz-range-thumb {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--mi-management-accent);
+  box-shadow: 0 0 0 .2rem var(--mi-management-surface);
+  transition: box-shadow .16s ease;
+}
+.mi-management-progress input[type="range"]:active::-webkit-slider-thumb { box-shadow: 0 0 0 .35rem var(--mi-management-surface); }
+.mi-management-progress input[type="range"]:active::-moz-range-thumb { box-shadow: 0 0 0 .35rem var(--mi-management-surface); }
+.mi-management-progress input[type="range"]:focus-visible { outline: 2px solid var(--mi-management-accent); outline-offset: 3px; }
+.mi-completion-presets, .mi-management-save { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.mi-management-editor .mi-completion-presets button[aria-pressed="true"] {
+  border-color: var(--mi-management-accent);
+  box-shadow: inset 0 0 0 1px var(--mi-management-accent);
+}
+.mi-progress-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); align-items: start; gap: .75rem; }
+.mi-progress-facts > label, .mi-management-notes label, .mi-add-milestones > label, .mi-management-dialog > label { display: grid; gap: .375rem; font-weight: 650; }
+.mi-progress-facts strong { font-size: .875rem; }
+.mi-management-editor :is(select, textarea, input:not([type="range"], [type="checkbox"])) { width: 100%; min-width: 0; }
+.mi-management-editor > :is(.mi-management-blocker, .mi-management-checklist, .mi-management-notes, .mi-management-save) {
+  border-top: 1px solid var(--mi-management-line);
+  margin-block-start: 1rem;
+  padding-block-start: 1rem;
+}
+.mi-management-blocker { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .75rem; justify-content: space-between; }
+.mi-management-blocker h4, .mi-milestone-detail :is(b,p) { display: flex; align-items: center; gap: .375rem; }
+.mi-management-blocker[data-blocked="true"] h4, .mi-milestone-detail b { color: var(--mi-management-risk); }
+.mi-management-checklist ul, .mi-management-notes ul { list-style: none; display: grid; gap: .375rem; padding: 0; }
+.mi-management-checklist li {
+  border: 1px solid var(--mi-management-line);
+  border-radius: 8px;
+  min-height: 44px;
+  padding: .375rem .75rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .25rem .75rem;
+}
+.mi-management-checklist li[data-blocked="true"] {
+  border-inline-start: .25rem solid var(--mi-management-risk);
+  background: light-dark(#fff1f2, #411f2c);
+}
+.mi-management-editor .mi-milestone-check {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-height: 44px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.mi-milestone-check input { accent-color: var(--mi-management-accent); width: 1.125rem; height: 1.125rem; flex: 0 0 auto; }
+.mi-milestone-detail { grid-column: 1/-1; padding-block-end: .25rem; font-size: .875rem; }
+.mi-management-editor summary { min-height: 44px; cursor: pointer; padding-block: .65rem; font-weight: 650; }
+.mi-add-milestones[open] > :not(summary), .mi-management-dialog > label { margin-block: .5rem; }
+.mi-template-choices { margin: 0; padding: .25rem .625rem .5rem; border: 1px solid var(--mi-management-line); border-radius: 8px; min-width: 0; }
+.mi-template-choices > div { border-bottom: 1px solid var(--mi-management-line); }
+.mi-template-choices > div:last-of-type { border-bottom: 0; }
+.mi-template-choices > div > input { margin-bottom: .375rem; }
+.mi-management-notes li { border-inline-start: 2px solid var(--mi-management-line); padding-inline-start: .75rem; }
+.mi-management-notes li span { font-size: .875rem; }
+.mi-management-save { justify-content: flex-start; }
+.mi-management-save span { font-size: .875rem; color: var(--mi-management-muted); }
+@media (max-width: 430px) {
+  .mi-management-checklist li { grid-template-columns: minmax(0, 1fr); }
+  .mi-milestone-actions { justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mi-management-progress input[type="range"] { transition: none; }
+  .mi-management-progress input[type="range"]::-webkit-slider-thumb { transition: none; }
+  .mi-management-progress input[type="range"]::-moz-range-thumb { transition: none; }
+}

@@ -1,0 +1,136 @@
+.mi-combobox, .mi-calendar-field {
+  --mi-picker-surface: light-dark(#fff, #15283c);
+  --mi-picker-text: light-dark(#182d42, #e7effb);
+  --mi-picker-line: light-dark(#bbc9d6, #52677c);
+  --mi-picker-action: light-dark(#234b71, #a7c9ea);
+  display: grid;
+  gap: .375rem;
+  min-width: 0;
+  position: relative;
+}
+.mi-combobox > label, .mi-calendar-field > label { color: var(--mi-picker-text); font-weight: 650; }
+.mi-combobox-input, .secure-form button.mi-calendar-toggle, button.mi-calendar-toggle {
+  display: flex;
+  align-items: center;
+  gap: .625rem;
+  min-height: 44px;
+  padding-inline: .75rem;
+  color: var(--mi-picker-text);
+  background: var(--mi-picker-surface);
+  border: 1px solid var(--mi-picker-line);
+  border-radius: 8px;
+  width: 100%;
+  text-align: start;
+}
+.mi-combobox-input:focus-within { outline: 2px solid var(--mi-picker-action); outline-offset: 2px; }
+.mi-combobox-input > svg, .mi-calendar-toggle > svg { flex: 0 0 auto; color: var(--mi-picker-action); }
+.mi-combobox .mi-combobox-input input[type], .mi-combobox .mi-combobox-input input {
+  box-shadow: none;
+  appearance: none;
+  color: inherit;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  padding: .5rem 0;
+  min-height: 42px;
+  border: none;
+  background: transparent;
+  outline: none;
+}
+.mi-combobox-input input::placeholder { color: light-dark(#536779, #bacbdb); }
+.mi-combobox button.mi-combobox-toggle, .secure-form .mi-combobox button.mi-combobox-toggle {
+  border: none;
+  color: var(--mi-picker-action);
+  background: transparent;
+  display: grid;
+  padding: 0;
+  min-width: 32px;
+  min-height: 42px;
+  place-items: center;
+}
+.mi-combobox-popover {
+  position: absolute;
+  inset: calc(100% + .25rem) 0 auto;
+  max-height: min(18rem, 40dvh);
+  z-index: 8;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-radius: 8px;
+  border: 1px solid var(--mi-picker-line);
+  background: var(--mi-picker-surface);
+  color: var(--mi-picker-text);
+  box-shadow: 0 12px 30px #08172435;
+}
+.mi-combobox-popover ul { display: grid; gap: 2px; padding: 4px; margin: 0; list-style: none; }
+.mi-combobox-popover li {
+  cursor: pointer;
+  border-radius: 5px;
+  min-height: 44px;
+  display: grid;
+  align-content: center;
+  padding: .5rem .75rem;
+  overflow-wrap: anywhere;
+}
+.mi-combobox-popover li[data-active="true"], .mi-combobox-popover li:hover {
+  color: light-dark(#153955, #e6f3ff);
+  background: light-dark(#e6eff8, #274865);
+}
+.mi-combobox-popover li span { font-size: .8rem; }
+.mi-combobox-popover p { padding: .625rem .75rem; margin: 0; }
+.mi-calendar-selected { display: flex; flex-wrap: wrap; gap: .375rem; padding: 0; margin: .2rem 0; list-style: none; }
+.mi-calendar-selected li { border: 1px solid var(--mi-picker-line); border-radius: 6px; padding: .25rem .5rem; }
+.mi-picker-dialog {
+  background: light-dark(#fff, #15283c);
+  color: light-dark(#182d42, #e7effb);
+  border: 1px solid light-dark(#bbc9d6, #52677c);
+  border-radius: 14px;
+  box-shadow: 0 24px 65px #05152462;
+  width: min(27rem, calc(100% - 1.25rem));
+  max-width: none;
+  box-sizing: border-box;
+  padding: clamp(.5rem, 4vw, 1.25rem);
+  max-height: calc(100dvh - 1rem);
+  overflow: auto;
+}
+.mi-picker-dialog::backdrop { background: #071a2bb3; }
+.mi-picker-dialog :is(header, footer), .mi-calendar-navigation {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.mi-picker-dialog header { margin-bottom: .5rem; }
+.mi-picker-dialog header h3 { margin: 0; font-size: 1.125rem; }
+.mi-picker-dialog footer { justify-content: flex-end; margin-top: 1rem; }
+.mi-picker-dialog button, .secure-form .mi-picker-dialog button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: .375rem .625rem;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: inherit;
+  background: transparent;
+}
+.mi-picker-dialog button:disabled { opacity: .45; }
+.mi-picker-dialog button:focus-visible, .mi-calendar-toggle:focus-visible {
+  outline: 2px solid light-dark(#24578c, #90c4f5);
+  outline-offset: 1px;
+}
+.mi-picker-dialog button:not(:disabled):hover { background: light-dark(#e6eff8, #284661); }
+.mi-picker-dialog button.mi-picker-primary, .mi-picker-dialog [aria-selected="true"] button {
+  color: light-dark(#fff, #0d2340);
+  background: light-dark(#244e78, #accef4);
+}
+.mi-picker-dialog button.mi-picker-primary:not(:disabled):hover, .mi-picker-dialog [aria-selected="true"] button:hover {
+  color: light-dark(#fff, #0d2340);
+  background: light-dark(#163c61, #c0dcf7);
+}
+.mi-calendar-grid [role="row"] { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
+.mi-calendar-grid [role="columnheader"] { font-weight: 700; font-size: .75rem; padding: .45rem 0; }
+.mi-calendar-grid [role="gridcell"] button { width: 100%; min-width: 0; padding-inline: 0; }
+.mi-calendar-grid button[aria-current="date"] { border-color: currentColor; font-weight: 750; }
+.mi-calendar-grid button[data-other-month="true"] { opacity: .65; }

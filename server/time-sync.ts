@@ -10,7 +10,9 @@ import {
   timeTotalsWrite,
   type TimeTotals,
 } from "./time-totals";
-import type { TimeProjectMetadata, TimeStatus } from "../src/projects/time";
+import { readPortfolio } from "./portfolio";
+import type { Project } from "../src/projects/model";
+import type { TimeMappingReview, TimeProjectMetadata, TimeStatus } from "../src/projects/time";
 import { timeDetailsRef, type StoredTimeDetails } from "./time-details";
 import { enrichTimeDetails, inventoryTimeDetails, timeSourceRevision } from "./time-enrichment";
 import {
@@ -222,6 +224,7 @@ export class TimeSync {
                 unallocatedSeconds: rowMonth.recorded - rowMonth.allocated,
                 lifetimeRecordedSeconds:
                   perPeriod.get("lifetime")?.get(anchor!)?.recorded ?? 0,
+                lifetimeAllocatedSeconds: perPeriod.get("lifetime")?.get(anchor!)?.allocated ?? 0,
               }
             : {}),
           jobcodeId: m.jobcodeId,
@@ -237,8 +240,11 @@ export class TimeSync {
                 canRelink:
                   m.scopeProjectId === "time-" + key(m.account, m.jobcodeId) &&
                   !m.sourceJob.missing,
+                canReview: daily?.customerBound === true && m.sourceJob.active && !m.sourceJob.missing &&
+                  m.scopeProjectId === "time-" + key(m.account, m.jobcodeId) &&
+                  m.projectId === m.scopeProjectId && m.reviewedAttribution !== true,
                 mappingState:
-                  m.projectId === "time-" + key(m.account, m.jobcodeId)
+                  m.projectId === "time-" + key(m.account, m.jobcodeId) && !m.reviewedAttribution
                     ? ("registered" as const)
                     : ("linked" as const),
               }
@@ -258,6 +264,7 @@ export class TimeSync {
           ? {
               customerScoped: true,
               customerVerified: daily?.customerBound === true,
+              ...(daily?.customerBound === true ? { verifiedCustomerId: customerParentId } : {}),
               ...(daily?.errorStage
                 ? {
                     errorStage: daily.errorStage as
@@ -373,11 +380,19 @@ export class TimeSync {
       return { changed: true };
     }, singleAttempt);
   }
+  requiresMappingReview() {
+    return Boolean(this.connection?.customerParentId);
+  }
+  async confirmMapping(tenant: string, who: VerifiedIdentity, job: string, project: string, review: TimeMappingReview) {
+    if (!this.allowed(tenant, who) || !this.connection?.customerParentId) throw Error("Forbidden");
+    return this.link(tenant, who, timeId(job), safeId(project), review);
+  }
   private async link(
     tenant: string,
     who: VerifiedIdentity,
     job: string,
     project: string,
+    review?: TimeMappingReview,
   ) {
     return this.store.db.runTransaction(
       async (tx) => {
@@ -387,7 +402,7 @@ export class TimeSync {
           root.collection("projects").doc(project),
           this.mapping(root, job),
         );
-        const p = target.data();
+        const p = target.data() as Project | undefined;
         const m = entry.data() as TimeMappingRecord | undefined;
         if (
           p?.tenantId !== tenant ||
@@ -400,17 +415,44 @@ export class TimeSync {
           m.sourceJob?.missing !== false
         )
           throw Error("Forbidden");
-        if (m.projectId === project) return { changed: false };
+        if (review) {
+          const anchor = "time-" + key(m.account, job);
+          if (m.reviewedAttribution === true && m.projectId === project) return { changed: false };
+          if (m.projectId !== review.previousProjectId || m.projectId !== anchor ||
+              m.scopeProjectId !== anchor || !m.sourceJob?.active) throw Error("Time mapping conflict");
+          if (!p.delivery || p.delivery.kind !== review.targetKind ||
+              p.status === "cancelled" || p.status === "closed") throw Error("Invalid Time mapping target");
+          if (p.delivery.kind === "engagement" && p.delivery.parentId) throw Error("Invalid Time mapping target");
+          if (p.delivery.kind === "project") {
+            const { parentId, areaId } = p.delivery;
+            if (!parentId || !areaId || parentId === p.id) throw Error("Invalid Time mapping target");
+            if (review.parentId !== parentId || review.areaId !== areaId) throw Error("Time mapping conflict");
+            const [parent, portfolio] = await Promise.all([
+              tx.get(root.collection("projects").doc(safeId(parentId))),
+              readPortfolio(tx, root),
+            ]);
+            const record = parent.data() as Project | undefined;
+            if (record?.tenantId !== tenant || record.schemaVersion !== 2 || record.id !== parentId ||
+                record.delivery?.kind !== "engagement" || record.delivery.parentId ||
+                !portfolio.areas.some(area => area.id === areaId)) throw Error("Invalid Time mapping target");
+          }
+          const [binding, totals, checkpoint] = await tx.getAll(
+            timeRun(root, this.catalogKey()), timeProjectTotal(root, anchor, "lifetime"), this.checkpoint(root, job),
+          );
+          if (binding.get("customerBound") !== true) throw Error("Forbidden");
+          if (checkpoint.get("failed") === true || (totals.get("recorded") ?? 0) !== review.recordedSeconds ||
+              (totals.get("allocated") ?? 0) !== review.allocatedSeconds) throw Error("Time mapping conflict");
+        } else if (m.projectId === project) return { changed: false };
         // Adoption keeps legacy totals intact, including when old jobcodes share an anchor.
         if (m.scopeProjectId !== "time-" + key(m.account, job))
           throw Error("Time mapping conflict");
-        tx.update(entry.ref, { projectId: project });
+        tx.update(entry.ref, { projectId: project, ...(review ? { reviewedAttribution: true } : {}) });
         this.audit(
           tx,
           root,
           who.subject,
           project,
-          "time-work-order-linked",
+          review ? "time-work-order-mapping-reviewed" : "time-work-order-linked",
           meta.revision,
         );
         return { changed: true };

@@ -12,10 +12,13 @@ import { today } from "./dashboard-format";
 import { portalNavigate, usePlatformRoute, useReportingMonth } from "./portal-location";
 import { PlatformApplication } from "./PlatformApplication";
 import "./platform.css";
+import "./platform-theme.css";
+import { ThemeSelector, usePlatformTheme } from "./PlatformTheme";
 import "../reporting/nordic.css";
 const enabled = import.meta.env.VITE_ENABLE_SECURE_API === "true";
 const production = import.meta.env.VITE_DASHBOARD_DEPLOYMENT === "production";
 export function SecureDashboard() {
+  const { theme, change, appearance } = usePlatformTheme();
   const [auth, setAuth] = useState<Auth>();
   const [microsoftProof, setMicrosoftProof] = useState<{
     idToken: string;
@@ -196,7 +199,7 @@ export function SecureDashboard() {
     }
   }
   return (
-    <section className={"nordic secure-shell" + (route ? " platform-shell" : "")}>
+    <section className={"nordic secure-shell" + (route ? " platform-shell" : "")} data-theme={appearance}>
       <header className="secure-masthead">
         <div className="secure-brandmarks">
           {branding.clientLogo && (
@@ -214,13 +217,15 @@ export function SecureDashboard() {
         </div>
         <div className="secure-identity">
           <h1>
-            {route ? (route.kind === "client" ? "Zagimē Client Intelligence" : "Morris Interactive") : workspace?.role === "client"
+            {route ? (route.kind === "client" ? branding.clientName : "Morris Interactive") : workspace?.role === "client"
               ? "Client intelligence dashboard"
               : "Morris protected workspace"}
           </h1>
           {!signedIn && !production && <Link to="/">Synthetic demonstration</Link>}
         </div>
-        {signedIn && (
+        <div className="mi-masthead-actions">
+          <ThemeSelector theme={theme} onChange={change} />
+          {signedIn && (
           <details className="mi-account">
             <summary><UserRound size={17} aria-hidden="true" /> Account</summary>
             <div className="mi-account-menu"><p>{workspace?.role === "staff" ? "Morris workspace" : "Protected session"}</p><button
@@ -238,7 +243,8 @@ export function SecureDashboard() {
           >
             Sign out
           </button></div></details>
-        )}
+          )}
+        </div>
       </header>
       {!signedIn ? (
         <section className={"secure-sign-in" + (route ? " platform-sign-in" : "")} aria-label="Sign in">

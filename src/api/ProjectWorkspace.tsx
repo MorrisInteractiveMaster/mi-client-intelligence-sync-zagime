@@ -5,8 +5,6 @@ import type {
   ProjectPage,
   ProjectDraftMetadata,
   StaffProjectDetail,
-  ProjectMilestone,
-  ProjectUpdate,
   StaffProjectSummary,
   ProjectWorkspace,
 } from "../projects/model";
@@ -18,7 +16,7 @@ import { ContextHelp } from "./ContextHelp";
 import "./executive.css";
 import "./intelligence.css";
 import "./delivery-operations.css";
-import { DeliveryDirectory, DeliveryFields, DeliveryHealth, DeliveryMilestones, DeliveryPreview, projectCatalog, readDeliveryForm } from "./DeliveryOperations";
+import { DeliveryDirectory, DeliveryHealth, DeliveryMilestones, DeliveryPreview, projectCatalog } from "./DeliveryOperations";
 import { TimeAllocation } from "./TimeAllocation";
 import type { Portfolio } from "../projects/portfolio";
 import type { TimeStatus } from "../projects/time";
@@ -33,7 +31,7 @@ import { allAuthorizedRows, authorizedPages, overviewCsv, staffProjectCsv } from
 import type { SourceSummary } from "./types";
 import { precedingTimeMonth, reportingTimeMonth } from "../projects/time-history";
 import { TimeConnectionPanel } from "./TimeConnectionPanel";
-import { ProjectTimelineFields } from "./ProjectTimelineFields";
+import { QuickBooksTimeMapping } from "./QuickBooksTimeMapping";
 import { ProjectCreation } from "./ProjectCreation";
 import { ProjectManagement } from "./ProjectManagement";
 import { OperationsTrend } from "./OperationsTrend";
@@ -55,6 +53,7 @@ const sections = {
   projects: "Projects",
   management: "Project Management",
   hours: "Time Allocation",
+  mapping: "QuickBooks Time Mapping",
   directory: "Team Directory",
   milestones: "Milestones",
   health: "Budgets & Delivery Health",
@@ -64,7 +63,7 @@ const sections = {
   activity: "Audit & Settings",
 };
 type Area = keyof typeof sections;
-const sectionIcons = { overview: LayoutGrid, projects: FolderKanban, management: ClipboardList, portfolio: Layers3, hours: Clock3, activity: Activity, integrations: Plug,
+const sectionIcons = { overview: LayoutGrid, projects: FolderKanban, management: ClipboardList, portfolio: Layers3, hours: Clock3, mapping: Layers3, activity: Activity, integrations: Plug,
   clients: Building2, directory: UsersRound, milestones: CalendarDays, health: ChartNoAxesCombined, preview: Monitor };
 const StaffPresentation = lazy(() => import("./ExecutivePresentation"));
 export function ProjectStaffWorkspace({
@@ -113,8 +112,6 @@ export function ProjectStaffWorkspace({
   const [auditCursor, setAuditCursor] = useState<string>();
   const [editing, setEditing] = useState<Project | "new">();
   const [editingDraft, setEditingDraft] = useState<ProjectDraftMetadata>();
-  const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
-  const [milestones, setMilestones] = useState<ProjectMilestone[]>([]);
   const location = usePortalLocation();
   const overviewPeriod = location.get("period") || "month";
   const rangeStart = location.get("overview-start") || "";
@@ -131,6 +128,20 @@ export function ProjectStaffWorkspace({
   const matchesStatus = (p: StaffProjectSummary) => statusFilter === "all" ||
     (statusFilter === "closed" ? p.status === "closed" || p.status === "cancelled" : p.status === statusFilter);
   const allProjects = catalog ?? page.projects ?? [];
+  const parentFilter = location.get("project-parent");
+  const projectParents = allProjects.filter(p => p.delivery?.kind === "engagement" && !p.delivery.parentId);
+  const ancestry = new Map(allProjects.map(project => [project.id, project.delivery?.parentId]));
+  function matchesParent(project: StaffProjectSummary) {
+    if (!parentFilter) return true;
+    const seen = new Set<string>();
+    let id: string | undefined = project.id;
+    while (id && !seen.has(id)) {
+      if (id === parentFilter) return true;
+      seen.add(id);
+      id = ancestry.get(id);
+    }
+    return false;
+  }
   const overviewTotals = area === "overview" && catalog ? capRollup(catalog) : undefined;
   const deliveryOverview = overviewTotals && catalog ? catalog.map(p => ({
     project: p, health: measureDelivery({ ...p, milestones: p.deliveryMilestones }, overviewTotals.get(p.id)!, today()),
@@ -152,13 +163,14 @@ export function ProjectStaffWorkspace({
     return () => window.removeEventListener("popstate", guard, true);
   }, [editorDirty, portfolioDirty, location.toString(), nativeWorkspace]);
   const areaHeading = useRef<HTMLHeadingElement>(null);
-  const editorHeading = useRef<HTMLHeadingElement>(null);
   const [error, setError] = useState("");
   const [listError, setListError] = useState(false);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [epoch, setEpoch] = useState(0);
   const [search, setSearch] = useState("");
+  const visibleProjects = (parentFilter && !search && catalog ? catalog : page.projects ?? [])
+    .filter(project => matchesStatus(project) && matchesParent(project));
   const [draftSearch, setDraftSearch] = useState("");
   const [selectedProject, setSelectedProject] = useState<StaffProjectSummary>();
   const lock = useRef(false);
@@ -222,7 +234,6 @@ export function ProjectStaffWorkspace({
     areaHeading.current?.focus();
   }, [area]);
   useEffect(() => {
-    if (editing) editorHeading.current?.focus();
     setEditorDirty(false);
   }, [editing]);
   useEffect(() => {
@@ -289,7 +300,7 @@ export function ProjectStaffWorkspace({
     if (!page.revision) return;
     if (editorRoute === "new") {
       creation.current ??= `${Date.now()}-${crypto.randomUUID()}`;
-      setUpdates([]); setMilestones([]); setEditingDraft(undefined); setEditing("new");
+      setEditingDraft(undefined); setEditing("new");
       return;
     }
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(editorRoute)) { setError("This editor link is unavailable."); return; }
@@ -298,8 +309,6 @@ export function ProjectStaffWorkspace({
       .then(detail => {
         if (abort.signal.aborted || latestScope.current !== scope) return;
         if (detail.revision !== page.revision) throw Error("Refresh the workspace before editing.");
-        setUpdates(detail.project.updates ?? []);
-        setMilestones(detail.project.milestones ?? []);
         setEditingDraft(detail.draft);
         setEditing(detail.project);
       }).catch(error => { if (!abort.signal.aborted) failed(error); });
@@ -334,20 +343,6 @@ export function ProjectStaffWorkspace({
   function previewChanges(projectId: string) {
     portalNavigate({ staff: "preview", editor: null, previewProject: projectId, previewMode: "draft",
       view: "project:" + projectId, chart: null, present: null, q: null, status: null });
-  }
-  function changeLifecycle(project: Project, status: Project["status"], label: string) {
-    const visibility = project.published ? " This saves a draft for publication review." : "";
-    if (!window.confirm(label + " for " + project.name + "?" + visibility)) return;
-    const { name, progress, description, internalNotes, plan, workOrderReference, updates, milestones, delivery } = project;
-    void perform(async () => {
-      await client.call(tenant, "projects/" + project.id, {
-        method: "PATCH", body: { expectedRevision: page.revision, patch: {
-          name, status, progress, description, internalNotes, plan, workOrderReference, updates, milestones, delivery,
-        } },
-      });
-      setEpoch(value => value + 1);
-      setNotice(project.published ? "Status saved to the draft." : "Project status saved.");
-    });
   }
   function changePublication(project: StaffProjectSummary) {
     if (!window.confirm(project.published ? "Remove this project from client reporting?" : "Publish approved project information to authorized clients?")) return;
@@ -394,7 +389,8 @@ export function ProjectStaffWorkspace({
     id, label, icon, external: true, select: () => { if (permit()) navigatePlatform(href); },
   });
   const groups: WorkspaceGroup[] = [
-    { label: "Workspace", destinations: (["overview", "clients", "projects", "management", "hours", "directory"] as const).map(nativeArea) },
+    { label: "Workspace", destinations: (["overview", "clients", "projects", "management", "directory"] as const).map(nativeArea) },
+    { label: "Time & Reporting", destinations: (["hours", "mapping"] as const).map(nativeArea) },
     { label: "Delivery", destinations: (["milestones", "health", "portfolio", "activity"] as const).map(nativeArea) },
     { label: "Client experience", destinations: [
       crossLink("published-view", "Published client report", Building2, periodHref(clientBase, month)),
@@ -461,12 +457,12 @@ export function ProjectStaffWorkspace({
         </dl>
         <div className="secure-actions">
           <button type="button" onClick={() => openDeliveryProject("new")}>Create Project</button>
-          {overviewTime && <CsvExport filename={["Morris", tenant, "Overview", overviewTime.period.start ?? "All_History", overviewTime.period.end].filter(Boolean).join("_")}
+          {overviewTime && <CsvExport filename={["Morris", workspace.tenant.name, "Overview", overviewTime.period.start ?? "All_History", overviewTime.period.end].filter(Boolean).join("_")}
             label="Export overview CSV" data={overviewCsv(overviewTime)} />}
           <button type="button" className="secure-secondary" onClick={() => changeArea("hours")}>Allocate Hours</button>
           <button type="button" className="secure-secondary" onClick={() => changeArea("directory")}>Assign Team</button>
           {nativeWorkspace ? <>
-            <PlatformLink className="platform-primary-action" href={periodHref(clientBase, month)}>View Zagimē Dashboard</PlatformLink>
+            <PlatformLink className="platform-primary-action" href={periodHref(clientBase, month)}>View {workspace.tenant.name} Dashboard</PlatformLink>
             <PlatformLink href={periodHref(clientBase, month, { previewMode: "draft" })}>Preview Draft Changes</PlatformLink>
             <PlatformLink href={periodHref(staffPath("hours"), month, { period: "all" })}>Browse All History</PlatformLink>
           </> : <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button>}
@@ -498,7 +494,7 @@ export function ProjectStaffWorkspace({
           <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button></div>
       </section>}
       {area === "management" && <ProjectManagement client={client} tenant={tenant} selected={managed}
-        projects={allProjects} directory={portfolio?.directory} onDirty={setManagementDirty} onDenied={onDenied}
+        projects={allProjects} areas={portfolio?.areas} canPublish={workspace.canPublish === true} onDirty={setManagementDirty} onDenied={onDenied}
         onSelect={id => { if (permit()) portalNavigate({ staff: "management", managed: id ?? null }); }}
         onSetup={id => { if (permit()) portalNavigate({ staff: "projects", managed: null, editor: id }); }}
         onSaved={() => setEpoch(value => value + 1)} />}
@@ -521,16 +517,71 @@ export function ProjectStaffWorkspace({
           Working…
         </p>
       )}
-      <section hidden={area !== "projects"} aria-labelledby="staff-projects">
-        {nativeWorkspace && <div className="secure-actions">
+      {area === "projects" && editorRoute && (editing ? <>
+        {!portfolio && catalogError && <div className="secure-actions">
+          <p role="alert">Project setup could not load the departments and team directory.</p>
+          <button type="button" className="secure-secondary" onClick={() => setEpoch(value => value + 1)}>Retry project setup</button>
+        </div>}
+        <ProjectCreation key={editing === "new" ? "new" : editing.id + ":" + (editingDraft?.revision ?? 0)}
+          project={editing === "new" ? undefined : editing} projects={allProjects} portfolio={portfolio}
+          busy={busy || !page.revision || !portfolio} canPublish={workspace.canPublish === true}
+          onDirty={() => setEditorDirty(true)} onCancel={() => {
+            if (editorDirty && !window.confirm("Discard the unsaved project changes?")) return;
+            setEditorDirty(false);
+            creation.current = undefined;
+            portalNavigate({ ...(nativeWorkspace && { staff: "management", managed: editing === "new" ? null : editing.id }), editor: null });
+          }} onSave={(project, publish) => void perform(async () => {
+            if (editing === "new") {
+              const result = await client.call<{ id: string }>(tenant, "projects", {
+                method: "POST", key: creation.current, body: { project, publish },
+              });
+              creation.current = undefined;
+              setEditorDirty(false);
+              portalNavigate(nativeWorkspace ? { staff: "management", managed: result.id, editor: null } : { editor: null }, true);
+              setEpoch(value => value + 1);
+              setNotice(publish ? "Project created and published." : "Project saved as a private draft.");
+              return;
+            }
+            const result = await client.call<{ draft?: ProjectDraftMetadata; changed: boolean }>(tenant, "projects/" + editing.id, {
+              method: "PATCH", body: { expectedRevision: page.revision, patch: project },
+            });
+            setEditorDirty(false);
+            setEpoch(value => value + 1);
+            if (editing.published) {
+              setNotice(result.draft ? "Draft saved. Clients still see the last approved version." : "No project changes to save.");
+            } else {
+              portalNavigate(nativeWorkspace ? { staff: "management", managed: editing.id, editor: null } : { editor: null }, true);
+              setNotice(result.changed ? "Project changes saved." : "No project changes to save.");
+            }
+          })} />
+        {editing !== "new" && <div className="secure-actions creation-related" aria-label="Project actions">
+          <button type="button" className="secure-secondary" disabled={busy}
+            onClick={() => { if (permit()) portalNavigate({ staff: "management", managed: editing.id, editor: null }); }}>Manage delivery progress</button>
+          {editing.published && editingDraft && <>
+            <button type="button" className="secure-secondary" disabled={busy || editorDirty}
+              onClick={() => previewChanges(editing.id)}>Preview Changes</button>
+            {workspace.canPublish && <button type="button" disabled={busy || editorDirty}
+              onClick={() => resolveDraft(editing.id, "publish")}>Publish Changes</button>}
+            <button type="button" className="secure-secondary" disabled={busy || editorDirty}
+              onClick={() => resolveDraft(editing.id, "discard")}>Discard Draft</button>
+          </>}
+        </div>}
+      </> : !error && <p role="status">Loading project editor&hellip;</p>)}
+      <section hidden={area !== "projects" || Boolean(editorRoute)} aria-labelledby="staff-projects">
+        {nativeWorkspace && <div className="project-list-controls">
           <label>Project status<select value={statusFilter} onChange={event => portalNavigate({ "project-filter": event.target.value === "all" ? null : event.target.value })}>
             <option value="all">All projects</option><option value="active">Active projects</option><option value="completed">Completed</option>
             <option value="paused">On hold</option><option value="closed">Closed or cancelled</option></select></label>
-          <button type="button" className="secure-secondary" disabled={busy || !catalog} onClick={() => setPublicationReview(true)}>Review and Publish Existing Projects</button>
+          <label>Parent Project<select value={parentFilter ?? ""} disabled={!catalog} onChange={event => portalNavigate({ "project-parent": event.target.value || null })}>
+            <option value="">All parent projects</option>
+            {projectParents.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </select></label>
+          <button type="button" className="secure-secondary" disabled={busy || !catalog || workspace.canPublish === false} onClick={() => setPublicationReview(true)}>Review &amp; Publish</button>
           <button type="button" className="secure-secondary" aria-pressed={location.has("engagements")}
-            onClick={() => portalNavigate({ engagements: location.has("engagements") ? null : "1", engagement: null, "service-area": null })}>By Parent Engagement</button>
+            onClick={() => portalNavigate({ engagements: location.has("engagements") ? null : "1", engagement: null, "service-area": null })}>By Parent Project</button>
         </div>}
-        {area === "projects" && location.has("engagements") && <EngagementOverview month={month} projects={allProjects} onOpen={id => portalNavigate({ staff: "projects", editor: id, engagements: null, engagement: null, "service-area": null })} />}
+        {area === "projects" && location.has("engagements") && <EngagementOverview month={month} projects={allProjects} areas={portfolio?.areas}
+          onOpen={id => portalNavigate({ staff: "projects", editor: id, engagements: null, engagement: null, "service-area": null })} />}
         {area === "projects" && publicationReview && <PublicationReview projects={allProjects} client={client} tenant={tenant}
           revision={page.revision} onClose={() => setPublicationReview(false)} onSaved={refresh} />}
         <div className="secure-section-heading">
@@ -603,176 +654,27 @@ export function ProjectStaffWorkspace({
             </button>
           )}
         </form>
-        {!location.has("engagements") && <CsvExport filename={["Morris", tenant, "Projects", month, statusFilter === "all" ? "" : statusFilter].filter(Boolean).join("_")}
-          scope={JSON.stringify([search, page.revision])} label="Export projects CSV" disabled={busy || !page.revision} onDenied={onDenied}
+        {!location.has("engagements") && <CsvExport filename={["Morris", workspace.tenant.name, "Projects", month, statusFilter === "all" ? "" : statusFilter].filter(Boolean).join("_")}
+          scope={JSON.stringify([search, parentFilter, statusFilter, page.revision])} label="Export projects CSV" disabled={busy || !page.revision} onDenied={onDenied}
           load={async signal => {
             const query = new URLSearchParams({ month, ...(search ? { search } : {}) });
             const rows = await allAuthorizedRows("projects", query, signal, authorizedPages(client, tenant));
-            return staffProjectCsv(month, rows.filter(matchesStatus));
+            return staffProjectCsv(month, rows.filter(project => matchesStatus(project) && matchesParent(project)));
           }} />}
         {page.revision === 0 && !listError && (
           <p className="secure-empty" role="status">
             Loading projects…
           </p>
         )}
-        {page.revision > 0 && !page.projects?.length && (
+        {page.revision > 0 && !visibleProjects.length && (
           <p className="secure-empty">
             {search
               ? page.nextCursor
                 ? "No matches on this page. Continue searching to check more projects."
                 : "No matching projects."
-              : "No projects yet. Create one without a work order."}
+              : parentFilter || statusFilter !== "all" ? "No projects match these filters."
+                : "No projects yet. Create one without a work order."}
           </p>
-        )}
-        {editing === "new" && <ProjectCreation projects={allProjects} portfolio={portfolio} busy={busy || !page.revision}
-          onDirty={() => setEditorDirty(true)} onCancel={() => {
-            if (editorDirty && !window.confirm("Discard the unsaved project changes?")) return;
-            creation.current = undefined;
-            portalNavigate({ editor: null });
-          }} onSave={(project, openDetails) => void perform(async () => {
-            const result = await client.call<{ id: string }>(tenant, "projects", { method: "POST", key: creation.current, body: project });
-            creation.current = undefined;
-            setEditorDirty(false);
-            portalNavigate({ editor: openDetails ? result.id : null }, true);
-            setEpoch(value => value + 1);
-            setNotice("Project saved as a private draft.");
-          })} />}
-        {editing && editing !== "new" && (
-          <form
-            className="secure-form secure-project-editor"
-            key={editing.id + ":" + editing.status}
-            onChange={() => setEditorDirty(true)}
-            onSubmit={(e) => {
-              e.preventDefault();
-              const f = new FormData(e.currentTarget);
-              void perform(async () => {
-                const original = editing;
-                const patch = {
-                  name: String(f.get("name")),
-                  updates,
-                  milestones,
-                  status: String(f.get("status")),
-                  progress: original.progress,
-                  description: String(f.get("description")),
-                  internalNotes: String(f.get("notes")),
-                  workOrderReference: String(f.get("workOrder")),
-                  delivery: readDeliveryForm(f, original, portfolio?.placements.find(p => p.id === original?.id)),
-                  plan: original.plan,
-                };
-                const result = await client.call<{ draft?: ProjectDraftMetadata; changed: boolean }>(
-                  tenant,
-                  `projects/${original.id}`,
-                  {
-                    method: "PATCH",
-                    body: { expectedRevision: page.revision, patch },
-                  },
-                );
-                setEditorDirty(false);
-                if (original.published) {
-                  setEpoch(value => value + 1);
-                  setNotice(result.draft ? "Draft saved. Clients still see the last approved version." : "No project changes to save.");
-                } else {
-                  portalNavigate({ editor: null }, true);
-                  refresh();
-                }
-              });
-            }}
-          >
-            <h3 ref={editorHeading} tabIndex={-1}>
-              Edit project
-            </h3>
-            <details className="delivery-details">
-              <summary>Project lifecycle</summary>
-              <p>{editing.published ? "Status changes need publication before clients will see them." : "The project remains private."}</p>
-              <div className="secure-actions">
-                {["completed", "closed", "cancelled"].includes(editing.status)
-                  ? <button type="button" className="secure-secondary" disabled={busy || editorDirty} onClick={() => changeLifecycle(editing, "active", "Reopen project")}>Reopen project</button>
-                  : <button type="button" className="secure-secondary" disabled={busy || editorDirty} onClick={() => changeLifecycle(editing, "completed", "Mark completed")}>Mark completed</button>}
-                {editing.status !== "closed" && <button type="button" className="secure-secondary" disabled={busy || editorDirty} onClick={() => changeLifecycle(editing, "closed", "Close project")}>Close project</button>}
-                {editing.status !== "cancelled" && <button type="button" className="secure-secondary" disabled={busy || editorDirty} onClick={() => changeLifecycle(editing, "cancelled", "Cancel project")}>Cancel project</button>}
-              </div>
-            </details>
-            <fieldset className="secure-editor-grid" disabled={busy}>
-              <label>
-                Project name
-                <input
-                  name="name"
-                  required
-                  maxLength={200}
-                  defaultValue={editing.name}
-                />
-              </label>
-              <label>
-                Status
-                <select
-                  name="status"
-                  defaultValue={editing.status}
-                >
-                  {Object.entries(projectStatus).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <input name="progress" type="hidden" value={editing.delivery?.manualCompletion ?? ""} />
-              <label className="secure-field-wide">
-                Client description
-                <textarea
-                  name="description"
-                  maxLength={4000}
-                  defaultValue={editing.description}
-                />
-              </label>
-              <label className="secure-field-wide">
-                Internal notes
-                <textarea
-                  name="notes"
-                  maxLength={4000}
-                  defaultValue={editing.internalNotes}
-                />
-              </label>
-              <label>
-                Work-order reference (optional)
-                <input
-                  name="workOrder"
-                  maxLength={120}
-                  defaultValue={
-                    editing.workOrderReference ?? ""
-                  }
-                />
-              </label>
-            </fieldset>
-            <DeliveryFields project={editing} projects={allProjects} portfolio={portfolio} mappings={timeStatus?.mappings} />
-            {nativeWorkspace ? <button type="button" className="secure-secondary" disabled={busy}
-              onClick={() => { if (permit()) portalNavigate({ staff: "management", managed: editing.id, editor: null }); }}>Manage delivery progress</button> :
-              <ProjectTimelineFields {...{ updates, milestones, setUpdates, setMilestones }} disabled={busy} people={portfolio?.directory} />}
-            <p>
-              {editing.published
-                ? "Save a draft and preview it before publishing. Clients see the last approved version until you publish changes."
-                : "This project stays private until you publish it."}
-            </p>
-            <div className="secure-actions">
-              <button type="submit" disabled={busy || page.revision === 0}>
-                {editing.published ? "Save Draft" : "Save project"}
-              </button>
-              {editing.published && editingDraft && <>
-                <button className="secure-secondary" type="button" disabled={busy || editorDirty || !page.revision}
-                  onClick={() => previewChanges(editing.id)}>Preview Changes</button>
-                <button type="button" disabled={busy || editorDirty || !page.revision}
-                  onClick={() => resolveDraft(editing.id, "publish")}>Publish Changes</button>
-                <button className="secure-secondary" type="button" disabled={busy || editorDirty || !page.revision}
-                  onClick={() => resolveDraft(editing.id, "discard")}>Discard Draft</button>
-              </>}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => { if (!editorDirty || window.confirm("Discard the unsaved project changes?")) portalNavigate({ editor: null }); }}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
         )}
         <div className="intel-workspace-toolbar" aria-label="Project layout">
           <button type="button" aria-pressed={!tableView && !treeView} className="secure-secondary" onClick={() => portalNavigate({ "staff-layout": null })}>Project list</button>
@@ -781,7 +683,7 @@ export function ProjectStaffWorkspace({
         </div>
         {tableView && <div className="intel-table-scroll" tabIndex={0} role="region" aria-label="Projects table">
           <table><thead><tr><th scope="col">Project</th><th scope="col">Status</th><th scope="col">Visibility</th><th scope="col">Reported effort</th><th scope="col">Work order</th><th scope="col">Publication</th></tr></thead>
-          <tbody>{page.projects?.filter(matchesStatus).map(p => <tr key={p.id}><th scope="row"><button type="button" className="exec-text-button" disabled={busy}
+          <tbody>{visibleProjects.map(p => <tr key={p.id}><th scope="row"><button type="button" className="exec-text-button" disabled={busy}
             onClick={() => { if (!editorDirty || window.confirm("Discard the unsaved project changes?")) portalNavigate({ staff: "projects", editor: p.id }); }}>{p.name}</button></th>
             <td>{projectStatus[p.status]}</td><td>{p.published ? (p.draft ? "Published · Draft changes" : "Published") : "Unpublished"}</td><td>{reportHours(p.seconds)} h</td><td>{p.workOrderReference || "—"}</td>
             <td><div className="secure-actions">
@@ -795,7 +697,7 @@ export function ProjectStaffWorkspace({
         </div>}
         {treeView && <DeliveryHealth month={month} projects={allProjects} portfolio={portfolio} onOpen={openDeliveryProject} />}
         <div hidden={tableView || treeView} className="secure-project-grid delivery-project-index">
-          {page.projects?.filter(matchesStatus).map((p) => (
+          {visibleProjects.map((p) => (
             <article className="secure-card" key={p.id}>
               <div className="secure-card-flags">
                 <p className="secure-badge" data-status={p.status}>
@@ -871,7 +773,7 @@ export function ProjectStaffWorkspace({
             </article>
           ))}
         </div>
-        {page.nextCursor && (
+        {page.nextCursor && (!parentFilter || search || !catalog) && (
           <button disabled={busy} onClick={() => void perform(moreProjects)}>
             {search ? "Continue searching" : "More projects"}
           </button>
@@ -917,21 +819,6 @@ export function ProjectStaffWorkspace({
                 </div>
               </dl>
             ))}
-        {area === "hours" && (
-          <TimeConnectionPanel
-            client={client}
-            tenant={tenant}
-            month={month}
-            projectId={selectedProject?.id}
-            refreshVersion={epoch}
-            projects={allProjects}
-            busy={busy}
-            run={perform}
-            onChanged={() => setEpoch((x) => x + 1)}
-            onDenied={onDenied}
-            manage={false}
-          />
-        )}
         {area === "hours" && <TimeAllocation client={client} tenant={tenant} month={month} projects={allProjects}
           portfolio={portfolio} onDenied={onDenied} onSaved={() => setEpoch(value => value + 1)}
           initialConsultant={location.get("consultant") ?? undefined} initialHistory={location.get("period") === "all"}
@@ -939,6 +826,8 @@ export function ProjectStaffWorkspace({
           sourceLink={nativeWorkspace ? { id: location.get("source") ?? undefined,
             href: id => periodHref(staffPath("hours", id), month), backHref: periodHref(staffPath("hours"), month) } : undefined} />}
       </section>
+      {area === "mapping" && <QuickBooksTimeMapping client={client} tenant={tenant} month={month}
+        projects={allProjects} portfolio={portfolio} onDenied={onDenied} onSaved={refresh} />}
       <section hidden={area !== "activity"} aria-labelledby="staff-audits">
         <h2
           id="staff-audits"

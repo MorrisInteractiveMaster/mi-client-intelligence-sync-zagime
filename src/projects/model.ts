@@ -16,6 +16,7 @@ export interface ProjectMilestone {
   ownerId?: string;
   body?: string;
   completedAt?: string;
+  blocker?: { message: string; internal?: string; blockedOn: string; resolvedOn?: string };
 }
 export interface ProjectUpdate {
   id: string;
@@ -67,6 +68,10 @@ export type ManagedProject = Pick<
   | "milestones"
   | "delivery"
 >;
+type PublicMilestone = Omit<ProjectMilestone, "visible" | "blocker"> & {
+  blocker?: Omit<NonNullable<ProjectMilestone["blocker"]>, "internal">;
+};
+
 export type ProjectView = Pick<
   Project,
   | "schemaVersion"
@@ -81,7 +86,7 @@ export type ProjectView = Pick<
 > & {
   lifetimeSeconds: number;
   updates?: (Omit<ProjectUpdate, "visible"> & { visible: true })[];
-  milestones?: (Omit<ProjectMilestone, "visible"> & { visible: true })[];
+  milestones?: (PublicMilestone & { visible: true })[];
 };
 
 export type StaffProjectSummary = ProjectView & {
@@ -111,6 +116,7 @@ export interface ProjectWorkspace {
   tenant: { id: string; name: string };
   integrations?: { accounting: "disabled"; time: "disabled" };
   platformAdmin?: true;
+  canPublish?: boolean;
 }
 export interface ProjectReport {
   month: string;
@@ -120,10 +126,12 @@ export interface ProjectReport {
   sourceUpdatedAt?: string;
   presentationTitle?: string;
   portfolio?: PublishedPortfolio;
+  historyByProject?: Record<string, PublishedPortfolio["history"]>;
   hierarchy?: Record<string, {
     parentId?: string; kind?: Delivery["kind"]; type?: Delivery["type"]; completion?: number; start?: string; deadline?: string;
     monthlyCap?: number; lifetimeCap?: number; monthlyCapUsed?: number; lifetimeCapUsed?: number; managerIds?: string[];
-    blocker?: { active: boolean; message: string };
+    blocker?: { active: boolean; message: string; resolvedOn?: string };
+    completedOn?: string;
   }>;
   projects: (Omit<
     ProjectView,
@@ -132,7 +140,7 @@ export interface ProjectReport {
     seconds: number;
     workOrderEffort?: import("./effort").WorkOrderEffort;
     updates?: Omit<ProjectUpdate, "visible">[];
-    milestones?: Omit<ProjectMilestone, "visible">[];
+    milestones?: PublicMilestone[];
   })[];
 }
 export interface ProjectPage {
@@ -174,7 +182,7 @@ function timeline(value: unknown, kind: "updates" | "milestones") {
             "title",
             "date",
             "visible",
-            ...(update ? ["body"] : ["completed", "status", "weight", "ownerId", "body", "completedAt"]),
+            ...(update ? ["body"] : ["completed", "status", "weight", "ownerId", "body", "completedAt", "blocker"]),
           ].includes(key),
       ) ||
       typeof item.id !== "string" ||
@@ -212,9 +220,24 @@ function timeline(value: unknown, kind: "updates" | "milestones") {
       (item.ownerId !== undefined && (typeof item.ownerId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(item.ownerId))) ||
       (item.completedAt !== undefined && (!item.completed || !calendarDate(item.completedAt))))
       throw Error("Invalid project milestone");
-    return { ...common, completed: item.completed, ...Object.fromEntries(
+    const blocker = item.blocker === undefined ? undefined : milestoneBlocker(item.blocker, item.status);
+    return { ...common, completed: item.completed, ...(blocker && { blocker }), ...Object.fromEntries(
       ["status", "weight", "ownerId", "body", "completedAt"].filter(key => item[key] !== undefined).map(key => [key, item[key]])) };
   });
+}
+
+function milestoneBlocker(value: unknown, status: unknown): ProjectMilestone["blocker"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("Invalid milestone blocker");
+  const b = value as Record<string, unknown>;
+  if (Object.keys(b).some(key => !["message", "internal", "blockedOn", "resolvedOn"].includes(key)) ||
+    typeof b.message !== "string" || !b.message.trim() || b.message.length > MAX_PROJECT_UPDATE_TEXT ||
+    b.internal !== undefined && (typeof b.internal !== "string" || b.internal.length > 2000) ||
+    !calendarDate(b.blockedOn) ||
+    (b.resolvedOn === undefined ? status !== "blocked" : status === "blocked" || !calendarDate(b.resolvedOn) || b.resolvedOn < b.blockedOn))
+    throw Error("Invalid milestone blocker");
+  return { message: b.message.trim(), blockedOn: b.blockedOn,
+    ...(typeof b.internal === "string" && b.internal.trim() && { internal: b.internal.trim() }),
+    ...(calendarDate(b.resolvedOn) && { resolvedOn: b.resolvedOn }) };
 }
 
 function updateFields({
@@ -234,8 +257,11 @@ function milestoneFields({
   status,
   body,
   completedAt,
+  blocker,
 }: Omit<ProjectMilestone, "visible">) {
-  return { id, title, date, completed, ...(status && { status }), ...(body && { body }), ...(completedAt && { completedAt }) };
+  return { id, title, date, completed, ...(status && { status }), ...(body && { body }), ...(completedAt && { completedAt }),
+    ...(blocker && { blocker: { message: blocker.message, blockedOn: blocker.blockedOn,
+      ...(blocker.resolvedOn && { resolvedOn: blocker.resolvedOn }) } }) };
 }
 
 export function approvedProjectContent(p: Project, includeUndated = true) {

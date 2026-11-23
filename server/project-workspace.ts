@@ -1,3 +1,5 @@
+import { reportingAnchors } from "./time-attribution";
+import { clientDisplayName } from "../src/config/client-identity";
 import { reportingTimeMonth } from "../src/projects/time-history";
 import { readSourcePage } from "./source-page";
 import { readWorkOrderEffort, timeProjectTotal, type TimeTotals } from "./time-totals";
@@ -106,12 +108,13 @@ export class ProjectStore {
     return this.db.runTransaction(async (tx) => {
       const a = await this.access(tx, tenant, who);
       return {
-        tenant: { id: tenant, name: portalSettings(a.meta.portalSettings).clientLabel || a.meta.name },
+        tenant: { id: tenant, name: clientDisplayName({ id: tenant, name: a.meta.name }, portalSettings(a.meta.portalSettings).clientLabel) },
         role: a.staff ? "staff" : "client",
         revision: a.staff ? a.meta.revision : 0,
         ...(a.platformAdmin ? { platformAdmin: true as const } : {}),
         ...(a.staff
           ? {
+              canPublish: a.platformAdmin || !portalSettings(a.meta.portalSettings).ownerPublishes,
               integrations: {
                 accounting: "disabled" as const,
                 time: "disabled" as const,
@@ -149,20 +152,27 @@ export class ProjectStore {
       expectedRevision?: number;
       idempotency?: string;
       published?: boolean;
+      publishOnCreate?: boolean;
+      publishOnSave?: boolean;
       draftAction?: "publish" | "discard";
     },
     now: number,
   ) {
     if (options.published !== undefined && typeof options.published !== "boolean") throw Error("Invalid publication");
+    if (options.publishOnCreate !== undefined && (options.id || typeof options.publishOnCreate !== "boolean"))
+      throw Error("Invalid publication");
+    if (options.publishOnSave !== undefined && (!options.id || typeof options.publishOnSave !== "boolean" ||
+      options.published !== undefined || options.draftAction)) throw Error("Invalid publication");
     const requested = options.published === undefined && !options.draftAction ? managedProject(input) : undefined;
     const idem = !options.id
-      ? creationKey(options.idempotency ?? "", who.subject, now, requested)
+      ? creationKey(options.idempotency ?? "", who.subject, now,
+        options.publishOnCreate ? { project: requested, publish: true } : requested)
       : undefined;
     return this.db.runTransaction(
       async (tx) => {
         const a = await this.access(tx, tenant, who);
         if (!a.staff) throw Error("Forbidden");
-        if ((options.published !== undefined || options.draftAction === "publish") &&
+        if ((options.published !== undefined || options.publishOnCreate || options.publishOnSave || options.draftAction === "publish") &&
           portalSettings(a.meta.portalSettings).ownerPublishes && !a.platformAdmin) throw Error("Platform publication approval required");
         const idemRef = idem
           ? a.root.collection("idempotency").doc(key("project-v2", idem.id))
@@ -203,7 +213,18 @@ export class ProjectStore {
         const managed = old && requested
           ? approvedContent(overlayProject(editBase!, requested))
           : (options.draftAction === "publish" ? pending!.content : requested);
-        if (old && !options.draftAction && (managed
+        if (options.publishOnSave !== undefined && managed) {
+          const today = deliveryDate(new Date(now));
+          const before = new Map((editBase?.milestones ?? []).map(item => [item.id, item]));
+          if (((managed.status === "completed" && editBase?.status !== "completed") ||
+            (managed.delivery?.manualCompletion === 100 && editBase?.delivery?.manualCompletion !== 100)) &&
+            (managed.status !== "completed" || managed.delivery?.manualCompletion !== 100 ||
+              !managed.delivery.completedOn || managed.delivery.completedOn > today))
+            throw Error("Invalid project completion");
+          if (managed.milestones?.some(item => item.completed && !before.get(item.id)?.completed &&
+            (!item.completedAt || item.completedAt > today))) throw Error("Invalid milestone completion");
+        }
+        if (old && !options.draftAction && !(options.publishOnSave && (!old.published || pending)) && (managed
           ? isDeepStrictEqual(approvedContent(editBase!), managed)
           : old.published === options.published))
           return { id, revision: a.meta.revision, changed: false,
@@ -216,7 +237,8 @@ export class ProjectStore {
             ...(delivery?.training?.facilitatorIds ?? []), ...(managed.milestones ?? []).flatMap(m => m.ownerId ? [m.ownerId] : [])].some(person => !people.has(person)) ||
             (delivery?.areaId && !portfolio.areas.some(area => area.id === delivery.areaId)) ||
             (delivery?.groupId && !portfolio.engagements.some(group => group.id === delivery.groupId))) throw Error("Invalid delivery references");
-          if (old?.delivery?.structure === 2 && delivery?.structure !== 2) throw Error("Invalid project hierarchy");
+          if (old?.delivery?.structure === 3 && delivery?.structure !== 3 ||
+            old?.delivery?.structure === 2 && delivery?.structure === undefined) throw Error("Invalid project hierarchy");
           if (!old || delivery?.kind !== old.delivery?.kind || delivery?.structure !== old.delivery?.structure ||
             delivery?.parentId !== old.delivery?.parentId || delivery?.areaId !== old.delivery?.areaId) {
             const nodes = await tx.get(a.root.collection("projects").where("schemaVersion", "==", 2).limit(MAX_DELIVERY_PROJECTS + 1));
@@ -226,12 +248,13 @@ export class ProjectStore {
               if (row.tenantId !== tenant || row.id !== node.id) throw Error("Forbidden");
               return [node.id, row.delivery] as const;
             }));
-            if (delivery?.parentId !== old?.delivery?.parentId && delivery?.structure !== 2)
+            if (delivery?.parentId !== old?.delivery?.parentId && !delivery?.structure)
               throw Error("Invalid project hierarchy");
             graph.set(id, delivery);
             checkDeliveryStructure(graph);
           }
           const jobs = delivery?.workOrderIds;
+          if (!old && delivery?.structure === 3 && jobs?.length) throw Error("Invalid work order selection");
           if (jobs?.length && !isDeepStrictEqual(jobs, old?.delivery?.workOrderIds)) {
             const verified = await tx.get(a.root.collection("timeMappings").where("jobcodeId", "in", jobs).limit(100));
             if (jobs.some(job => !verified.docs.some(doc => doc.data().jobcodeId === job && doc.data().sourceJob?.missing !== true)))
@@ -241,28 +264,51 @@ export class ProjectStore {
         const at = new Date(now).toISOString();
         const revision = a.meta.revision + 1;
         if (!Number.isSafeInteger(revision)) throw Error("Invalid revision");
-        const audit = (action: string) => {
+        const audit = (action: string, milestoneId?: string) => {
           const auditId = randomUUID();
           tx.create(a.root.collection("audits").doc(auditId), {
             id: auditId, tenantId: tenant, actor: who.subject, action, entityId: id, at, revision,
+            ...(milestoneId && { milestoneId }),
           });
+        };
+        const advanceRevision = (action: string) => {
+          audit(action);
           tx.update(a.root, { revision });
+        };
+        const auditActions = () => {
+          if (!old || !requested || !managed) return;
+          if (managed.status === "completed" && editBase?.status !== "completed") audit("project-work-completed");
+          const oldBlocker = editBase?.delivery?.blocker;
+          const newBlocker = managed.delivery?.blocker;
+          if (newBlocker?.active && !oldBlocker?.active) audit("project-blocked");
+          if (oldBlocker?.active && !newBlocker?.active) audit("project-blocker-resolved");
+          const before = new Map((editBase?.milestones ?? []).map(milestone => [milestone.id, milestone]));
+          for (const milestone of managed.milestones ?? []) {
+            const previous = before.get(milestone.id);
+            if (!previous) audit("project-milestone-added", milestone.id);
+            if (milestone.completed && !previous?.completed) audit("project-milestone-completed", milestone.id);
+            if (!milestone.completed && previous?.completed) audit("project-milestone-reopened", milestone.id);
+            if (milestone.status === "blocked" && previous?.status !== "blocked") audit("project-milestone-blocked", milestone.id);
+            if (previous?.status === "blocked" && milestone.status !== "blocked") audit("project-milestone-blocker-resolved", milestone.id);
+          }
         };
         const draftRecord: Omit<ProjectDraftDocument, "state"> =
           { tenantId: tenant, projectId: id, revision, actor: who.subject, updatedAt: at };
-        if (old?.published && requested) {
+        if (old?.published && requested && !options.publishOnSave) {
           tx.set(pendingRef, { ...draftRecord, state: "draft", base: base!, content: managed! });
-          audit("project-draft-saved");
+          advanceRevision("project-draft-saved");
+          auditActions();
           return { id, revision, changed: true, draft: { revision, updatedAt: at } };
         }
         if (options.draftAction === "discard") {
           tx.set(pendingRef, { ...draftRecord, state: "discarded" });
-          audit("project-draft-discarded");
+          advanceRevision("project-draft-discarded");
           return { id, revision, changed: true };
         }
         const p: Project = old
           ? {
               ...(managed ? overlayProject(old, managed) : { ...old, published: options.published! }),
+              ...(options.publishOnSave && { published: true }),
               updatedAt: at,
               updatedBy: who.subject,
             }
@@ -272,7 +318,7 @@ export class ProjectStore {
               tenantId: tenant,
               source: null,
               ...managed!,
-              published: false,
+              published: options.publishOnCreate === true,
               createdAt: at,
               updatedAt: at,
               createdBy: who.subject,
@@ -293,9 +339,12 @@ export class ProjectStore {
           ...projectView(p, view?.data()?.lifetimeSeconds ?? 0),
           ...approvedProjectContent(p, false),
         });
-        if (options.draftAction === "publish") tx.set(pendingRef, { ...draftRecord, state: "published" });
-        audit(options.draftAction === "publish" ? "project-draft-published"
-          : old ? managed ? "project-edited" : "publication-changed" : "project-created");
+        if (options.draftAction === "publish" || options.publishOnSave && pending)
+          tx.set(pendingRef, { ...draftRecord, state: "published" });
+        advanceRevision(options.draftAction === "publish" ? "project-draft-published"
+          : options.publishOnSave ? "project-edited-and-published"
+          : old ? managed ? "project-edited" : "publication-changed" : options.publishOnCreate ? "project-created-and-published" : "project-created");
+        auditActions();
         const result = { id, revision, changed: true };
         if (idemRef)
           tx.create(idemRef, {
@@ -429,8 +478,9 @@ export class ProjectStore {
         const draft = readProjectDraft(pending[i], tenant);
         return draft ? overlayProject(project, draft.content) : project;
       });
+      const anchors = await reportingAnchors(tx, a.root, visible.map(view => view.id));
       const effort = await readWorkOrderEffort(tx, a.root, visible.map(v => v.id),
-        month, visible.map((v, i) => periodSeconds(periods[i], v.id, month)));
+        month, visible.map((v, i) => periodSeconds(periods[i], v.id, month)), anchors);
       const projects = visible.map((v, i) => {
         const view = v.data() as ProjectView;
         const project = projectDetails[i];
@@ -459,20 +509,29 @@ export class ProjectStore {
       const months = [...new Set([...recent, ...(timeMonths?.docs.map(doc => doc.id) ?? [])])].sort()
         .filter(candidate => candidate !== month);
       const history: { month: string; seconds: number }[] = [];
-      const refsPerMonth = visible.length * 2;
+      const projectHistory = new Map(projects.map(project =>
+        [project.id, project.seconds > 0 ? [{ month, seconds: project.seconds }] : []]));
+      const refsPerMonth = visible.reduce((sum, view) => sum + 1 + (anchors.get(view.id)?.length ?? 0), 0);
       const pageSize = Math.max(1, Math.floor(500 / Math.max(1, refsPerMonth)));
       for (let offset = 0; offset < months.length; offset += pageSize) {
         const page = months.slice(offset, offset + pageSize);
         const documents = visible.length ? await tx.getAll(...page.flatMap(period => visible.flatMap(v => [
-          a.root.collection("projectPeriods").doc(key(period, v.id)), timeProjectTotal(a.root, v.id, period),
+          a.root.collection("projectPeriods").doc(key(period, v.id)),
+          ...(anchors.get(v.id) ?? []).map(anchor => timeProjectTotal(a.root, anchor, period)),
         ]))) : [];
         page.forEach((period, pageIndex) => {
-          const seconds = visible.reduce((total, view, index) => {
-            const position = pageIndex * refsPerMonth + index * 2;
-            const fact = (documents[position + 1].data() as TimeTotals | undefined) ?? { recorded: 0, allocated: 0 };
-            const remainder = fact.recorded - fact.allocated;
-            if (!Number.isSafeInteger(remainder) || remainder < 0) throw Error("Invalid reporting summary");
-            return total + periodSeconds(documents[position], view.id, period) + remainder;
+          let position = pageIndex * refsPerMonth;
+          const seconds = visible.reduce((total, view) => {
+            const assigned = periodSeconds(documents[position++], view.id, period);
+            const remainder = (anchors.get(view.id) ?? []).reduce((sum) => {
+              const fact = (documents[position++].data() as TimeTotals | undefined) ?? { recorded: 0, allocated: 0 };
+              const available = fact.recorded - fact.allocated;
+              if (!Number.isSafeInteger(available) || available < 0) throw Error("Invalid reporting summary");
+              return sum + available;
+            }, 0);
+            const effort = assigned + remainder;
+            if (effort > 0) projectHistory.get(view.id)?.push({ month: period, seconds: effort });
+            return total + effort;
           }, 0);
           if (!Number.isSafeInteger(seconds)) throw Error("Invalid reporting summary");
           if (seconds || recent.has(period)) history.push({ month: period, seconds });
@@ -496,10 +555,12 @@ export class ProjectStore {
         const summary = measureDelivery({ ...publishedView, milestones: project.milestones?.filter(m => m.visible), delivery: settings },
           cap, deliveryDate());
         hierarchy[project.id] = {
-          ...(settings.blocker?.message ? { blocker: { active: settings.blocker.active, message: settings.blocker.message } } : {}),
-          ...(settings.structure === 2 ? { kind: settings.kind } : {}),
+          ...(settings.blocker?.message ? { blocker: { active: settings.blocker.active, message: settings.blocker.message,
+            ...(settings.blocker.resolvedOn && { resolvedOn: settings.blocker.resolvedOn }) } } : {}),
+          ...(settings.structure ? { kind: settings.kind } : {}),
           ...(settings.parentId && visibleIds.has(settings.parentId) ? { parentId: settings.parentId } : {}),
           ...(summary.completion !== undefined ? { completion: summary.completion } : {}),
+          ...(settings.completedOn && { completedOn: settings.completedOn }),
           ...(settings.publishSummary ? {
             type: settings.type,
             ...(settings.monthlyCap !== undefined ? { monthlyCap: settings.monthlyCap, monthlyCapUsed: cap.monthly } : {}),
@@ -515,13 +576,15 @@ export class ProjectStore {
       if (!Number.isSafeInteger(totalSeconds))
         throw Error("Invalid reporting summary");
       return {
-        tenant: { id: tenant, name: settings.clientLabel || a.meta.name },
+        tenant: { id: tenant, name: clientDisplayName({ id: tenant, name: a.meta.name }, settings.clientLabel) },
         month,
         reportingThroughMonth,
         totalSeconds,
         ...(settings.presentationTitle ? { presentationTitle: settings.presentationTitle } : {}),
         projects,
         portfolio,
+        historyByProject: Object.fromEntries([...projectHistory].filter(([, periods]) => periods.length)
+          .map(([projectId, periods]) => [projectId, periods.sort((a, b) => b.month.localeCompare(a.month))])),
         ...(Object.keys(hierarchy).length ? { hierarchy } : {}),
       };
     });

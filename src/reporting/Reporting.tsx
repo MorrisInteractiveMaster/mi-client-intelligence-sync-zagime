@@ -1,3 +1,4 @@
+import { ZAGIME_CLIENT_DISPLAY_NAME } from "../config/client-identity";
 import { useReporting } from "./ReportingContext";
 import { Dots } from "./Dots";
 import { useEffect, useRef, useState } from "react";
@@ -47,7 +48,7 @@ export function Reporting() {
       <header>
         <img
           src={`${import.meta.env.BASE_URL}branding/zagime/zagime.jpeg`}
-          alt="Zagimē Anishinabēk"
+          alt={ZAGIME_CLIENT_DISPLAY_NAME}
         />
         <div>
           <small>Morris Interactive · Delivery partner</small>

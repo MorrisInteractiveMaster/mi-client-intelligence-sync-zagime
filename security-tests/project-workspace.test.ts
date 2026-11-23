@@ -725,6 +725,15 @@ function ClientFixture() {
         else await page.getByRole("heading", { name: "Published projects", exact: true }).waitFor();
         return { context, page };
       };
+      await json(await request("directory/wordpress-sync", "POST", {}));
+      const contact = { id: "reviewed-contact", name: "Approved synthetic contact", role: "Delivery lead",
+        responsibility: "Coordinates delivery", internalContact: "INTERNAL-CONTACT", publicContact: "Approved contact channel",
+        areaId: "health", projectIds: [], order: 1, active: true, visible: true };
+      await json(await request("portfolio", "PATCH", { section: "directory", record: contact, expectedRevision: await revision() }));
+      await json(await request("projects", "POST", {
+        ...projectInput, name: "Browser parent project",
+        delivery: { structure: 3, kind: "engagement", type: "hourly", managerIds: ["wordpress-41"], teamIds: [] },
+      }, staff.idToken, Date.now() + "-" + crypto.randomUUID()), 201);
       const first = await session(1440);
       await first.page
         .getByRole("searchbox", { name: "Search projects" })
@@ -768,61 +777,62 @@ function ClientFixture() {
       await first.page
         .getByRole("button", { name: "Create project", exact: true })
         .click();
-      await first.page
-        .getByLabel("Project name", { exact: true })
-        .fill("Browser saved project");
       const creationForm = first.page.getByRole("form", { name: "Create a project", exact: true });
+      await creationForm.getByRole("radio", { name: "Delivery Project", exact: true }).check();
+      await creationForm.getByLabel("Project name", { exact: true }).fill("Browser saved project");
       await creationForm.screenshot({ path: join(evidence, "project-creation-wizard.png"), animations: "disabled" });
-      await creationForm.getByRole("button", { name: "Next", exact: true }).click();
-      await creationForm.getByRole("button", { name: "Next", exact: true }).click();
-      await creationForm.getByText("Optional reporting target", { exact: true }).click();
-      await first.page
-        .getByLabel("Planned hours", { exact: true })
-        .fill("1.25");
-      await first.page.screenshot({ path: join(evidence, "project-editor.png"), animations: "disabled" });
-      await first.page
-        .getByRole("button", { name: "Create parent engagement", exact: true })
-        .click();
-      await first.page
-        .getByRole("heading", { name: "Browser saved project", exact: true })
-        .waitFor();
-      await first.page
-        .getByRole("button", {
-          name: "Edit Browser saved project",
-          exact: true,
-        })
-        .click();
-      await first.page.getByText("Project lifecycle", { exact: true }).click();
-      first.page.once("dialog", dialog => void dialog.accept());
-      await first.page.getByRole("button", { name: "Mark completed", exact: true }).click();
-      await first.page.getByText("Project status saved.", { exact: true }).waitFor();
-      await first.page.locator('select[name="status"] option:checked').filter({ hasText: /^Completed$/ }).waitFor({ state: "attached" });
-      await first.page.getByText("Project lifecycle", { exact: true }).click();
-      first.page.once("dialog", dialog => void dialog.accept());
-      await first.page.getByRole("button", { name: "Reopen project", exact: true }).click();
-      await first.page.getByText("Project status saved.", { exact: true }).waitFor();
-      await first.page.locator('select[name="status"] option:checked').filter({ hasText: /^In progress$/i }).waitFor({ state: "attached" });
-      await first.page
-        .getByLabel("Internal notes", { exact: true })
-        .fill("Browser synthetic private note");
-      await first.page.getByLabel("Client description").fill("Published synthetic project description");
-      await first.page.getByRole("button", { name: "Add update", exact: true }).click();
-      await first.page.getByLabel("Update title").fill("Approved delivery update");
-      await first.page.getByLabel("Update text").fill("The client can see this update.");
-      await first.page.getByLabel("Show this update to clients").check();
-      await first.page.getByRole("button", { name: "Add update", exact: true }).click();
-      await first.page.getByLabel("Update title").nth(1).fill("PRIVATE-UPDATE");
-      await first.page.getByLabel("Update text").nth(1).fill("Private draft detail.");
-      await first.page.getByRole("button", { name: "Add milestone", exact: true }).click();
-      await first.page.getByLabel("Milestone title").fill("Approved milestone");
-      await first.page.getByLabel("Milestone completed").check();
-      await first.page.getByLabel("Show this milestone to clients").check();
-      await first.page
-        .getByRole("button", { name: "Save project", exact: true })
-        .click();
-      await first.page
-        .getByLabel("Internal notes", { exact: true })
-        .waitFor({ state: "detached" });
+      await creationForm.getByRole("button", { name: "Continue", exact: true }).click();
+      await creationForm.getByRole("combobox", { name: "Parent Project", exact: true }).fill("Browser parent");
+      await creationForm.getByRole("option", { name: "Browser parent project", exact: true }).click();
+      await creationForm.getByRole("combobox", { name: "Department", exact: true }).fill("Heal");
+      await creationForm.getByRole("option", { name: "Health", exact: true }).click();
+      await creationForm.getByRole("button", { name: "Continue", exact: true }).click();
+      await creationForm.getByLabel("Client-facing description").fill("Published synthetic project description");
+      await creationForm.getByRole("button", { name: "Continue", exact: true }).click();
+      const arrangement = creationForm.getByLabel("Arrangement", { exact: true });
+      await arrangement.selectOption("fixed-fee");
+      await creationForm.getByLabel("Hour cap", { exact: true }).waitFor();
+      assert.equal(await creationForm.getByLabel("Monthly budgeted hours").count(), 0);
+      await arrangement.selectOption("training");
+      await creationForm.getByLabel("Program length in days").fill("2");
+      await creationForm.getByRole("button", { name: "Continue", exact: true }).click();
+      await creationForm.getByRole("alert").filter({ hasText: "Choose exactly one distinct calendar date per program day." }).waitFor();
+      await arrangement.selectOption("workshop");
+      await creationForm.getByRole("button", { name: /Program dates/ }).click();
+      const programCalendar = creationForm.getByRole("dialog", { name: "Program dates", exact: true });
+      const currentMonthDays = programCalendar.locator('button[data-other-month="false"]');
+      await currentMonthDays.nth(2).click();
+      await currentMonthDays.nth(8).click();
+      await programCalendar.getByRole("button", { name: "Apply dates" }).click();
+      assert.ok(await creationForm.getByText("Expected completion", { exact: false }).isVisible());
+      await arrangement.selectOption("hourly");
+      await creationForm.getByLabel("Whole-project budgeted hours").fill("1.25");
+      await creationForm.getByRole("button", { name: "Continue", exact: true }).click();
+      await creationForm.getByRole("group", { name: /Project Managers/ }).getByRole("checkbox", { name: /Approved synthetic contact/ }).check();
+      await creationForm.getByRole("button", { name: "Continue", exact: true }).click();
+      await creationForm.getByRole("button", { name: "Save Draft", exact: true }).click();
+      await first.page.getByRole("heading", { name: "Browser saved project", exact: true }).waitFor();
+      await first.page.getByRole("button", { name: "Edit Browser saved project", exact: true }).click();
+      const editingForm = first.page.getByRole("form", { name: "Edit a project", exact: true });
+      assert.equal(await editingForm.getByLabel("Project name", { exact: true }).inputValue(), "Browser saved project");
+      await editingForm.screenshot({ path: join(evidence, "project-editor.png"), animations: "disabled" });
+      await editingForm.getByRole("button", { name: "Cancel", exact: true }).click();
+      const savedBrowserProject = (await root.collection("projects").where("name", "==", "Browser saved project").get()).docs[0];
+      const browserProject = savedBrowserProject.data();
+      assert.equal(browserProject.delivery.structure, 3);
+      assert.equal(browserProject.delivery.lifetimeCap, 4500);
+      const { name, description, delivery } = browserProject;
+      await json(await request("projects/" + savedBrowserProject.id, "PATCH", {
+        expectedRevision: await revision(), patch: {
+          name, description, delivery, plan: { basis: "fixed", targetSeconds: 4500 }, status: "active", progress: 100,
+          internalNotes: "Browser synthetic private note",
+          updates: [
+            { id: "browser-approved-update", title: "Approved delivery update", body: "The client can see this update.", date: "2026-11-19", visible: true },
+            { id: "browser-private-update", title: "PRIVATE-UPDATE", body: "Private draft detail.", date: "2026-11-19", visible: false },
+          ],
+          milestones: [{ id: "browser-approved-milestone", title: "Approved milestone", date: "2026-11-20", visible: true, completed: true }],
+        },
+      }));
       await first.page.reload({ waitUntil: "networkidle" });
       const card = first.page.locator("article").filter({
         has: first.page.getByRole("heading", {
@@ -1047,10 +1057,6 @@ function ClientFixture() {
       await json(await patchPortfolio("engagements", group, prior));
       assert.equal((await patchPortfolio("engagements", group, prior)).status, 409);
       assert.equal((await patchPortfolio("engagements", group, undefined, client.idToken)).status, 403);
-      const contact = { id: "reviewed-contact", name: "Approved synthetic contact", role: "Delivery lead",
-        responsibility: "Coordinates delivery", internalContact: "INTERNAL-CONTACT", publicContact: "Approved contact channel",
-        areaId: "health", projectIds: [], order: 1, active: true, visible: true };
-      await json(await patchPortfolio("directory", contact));
       await json(await patchPortfolio("directory", { ...contact, id: "unlinked", name: "UNLINKED-DIRECTORY" }));
       await json(await patchPortfolio("directory", { ...contact, id: "private", name: "PRIVATE-DIRECTORY", visible: false, projectIds: [persisted.id] }));
       const placement = { id: persisted.id, areaId: "health", engagementId: group.id, leadId: contact.id,
@@ -1093,8 +1099,13 @@ function ClientFixture() {
       await previewPage.screenshot({ path: join(evidence, "staff-draft-preview.png"), fullPage: true, animations: "disabled" });
       await previewPage.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Projects", exact: true }).click();
       await previewPage.getByRole("button", { name: "Edit Browser saved project", exact: true }).click();
-      await previewPage.getByLabel("Client description").fill("Editorial revision in progress");
-      await previewPage.getByRole("button", { name: "Save Draft", exact: true }).click();
+      const draftForm = previewPage.getByRole("form", { name: "Edit a project" });
+      const continueDraft = draftForm.getByRole("button", { name: "Continue", exact: true });
+      await continueDraft.click();
+      await continueDraft.click();
+      await draftForm.getByLabel("Client-facing description").fill("Editorial revision in progress");
+      for (let i = 0; i < 3; i++) await continueDraft.click();
+      await draftForm.getByRole("button", { name: "Save Draft", exact: true }).click();
       await previewPage.getByText("Draft saved. Clients still see the last approved version.", { exact: true }).waitFor();
       await previewPage.getByRole("button", { name: "Preview Changes", exact: true }).click();
       await previewPage.getByText("DRAFT PREVIEW · MORRIS STAFF ONLY", { exact: true }).waitFor();
@@ -1167,27 +1178,39 @@ function ClientFixture() {
           if (await menu.isVisible()) await menu.click();
           await nav.getByRole("button", { name, exact: true }).click();
         };
-        await visit("Health");
+        const visitDepartment = async (name: string) => {
+          await visit("Departments");
+          await page.getByRole("region", { name: "Published departments" }).getByRole("button", { name: new RegExp("^" + name + "\\b") }).click();
+        };
+        await visitDepartment("Health");
         await page.getByText("Approved health service area.").waitFor();
         await page.getByText("Approved delivery group", { exact: true }).waitFor();
+        const departmentMetrics = page.getByRole("region", { name: "Health delivery metrics" });
+        await departmentMetrics.getByRole("button", { name: /November 2026 hours/ }).click();
+        await page.getByText(/With attributable hours/).filter({ hasText: /project/ }).waitFor();
+        await page.getByLabel("Sort by").selectOption("completion");
+        assert.match(page.url(), /project-sort=completion/);
         await page.screenshot({ path: join(evidence, "area-" + width + ".png"), fullPage: true });
         await visit("MI Directory");
         await page.getByRole("heading", { name: "Approved synthetic contact" }).waitFor();
         assert.doesNotMatch(await page.locator("body").innerText(), /INTERNAL-CONTACT|PRIVATE-DIRECTORY|UNLINKED-DIRECTORY/);
         await page.screenshot({ path: join(evidence, "directory-" + width + ".png"), fullPage: true });
         await visit("Leadership summary");
+        await page.getByLabel("All-time delivery projects", { exact: true }).getByText("All-time approved portfolio", { exact: true }).waitFor();
+        assert.equal(await nav.getByRole("button", { name: "Engagements", exact: true }).count(), 0);
+        assert.equal(await nav.getByRole("button", { name: "Milestones", exact: true }).count(), 0);
         await page.waitForFunction(() => document.activeElement?.classList.contains("exec-content"));
         await page.evaluate(() => window.scrollTo(0, 0));
         await page.screenshot({ path: join(evidence, "leadership-" + width + ".png"), animations: "disabled" });
         if (width === 1440) {
           for (const area of ["Finance", "HR", "CFW", "Health", "Miscellaneous", "Training"]) {
-            await nav.getByRole("button", { name: area, exact: true }).click();
+            await visitDepartment(area);
             await page.getByRole("heading", { name: area, exact: true }).waitFor();
             assert.match(await page.title(), new RegExp(area));
             await page.screenshot({ path: join(evidence, "service-" + area.toLowerCase() + ".png"), animations: "disabled" });
           }
           await nav.getByRole("button", { name: "Leadership summary", exact: true }).click();
-          const expand = page.getByRole("button", { name: "Expand delivery by service area" });
+          const expand = page.getByRole("button", { name: "Explore reported hours by department" });
           await expand.click();
           const analytics = page.getByRole("dialog", { name: "Delivery by service area analysis" });
           const healthHours = analytics.getByRole("button", { name: "Health, 0.5 hours" });
@@ -1417,6 +1440,45 @@ function ClientFixture() {
       ]) assert.equal((await request(route, "GET", undefined, client.idToken)).status, 403);
       assert.equal((await request("directory/wordpress-sync", "POST", {}, client.idToken)).status, 403);
 
+      const createAndPublish = {
+        project: {
+          ...projectInput, name: "Approved on creation fixture", internalNotes: "PRIVATE-CREATION-NOTE",
+          delivery: { structure: 3, kind: "engagement", type: "hourly", managerIds: ["wordpress-41"], teamIds: [] },
+        },
+        publish: true,
+      };
+      const createKey = Date.now() + "-" + crypto.randomUUID();
+      const createPolicy = { clientLabel: "", presentationTitle: "", ownerPublishes: true };
+      await root.update({ portalSettings: createPolicy });
+      const createRevision = await revision();
+      const createAudits = await auditCount();
+      assert.equal((await json(await request("workspace"))).canPublish, false);
+      assert.equal((await request("projects", "POST", createAndPublish, client.idToken, createKey)).status, 403);
+      assert.equal((await request("projects", "POST", createAndPublish, staff.idToken, createKey)).status, 403);
+      assert.equal(await revision(), createRevision);
+      assert.equal(await auditCount(), createAudits);
+      assert.equal((await root.collection("projects").where("name", "==", createAndPublish.project.name).count().get()).data().count, 0);
+      await root.update({ portalSettings: { ...createPolicy, ownerPublishes: false } });
+      assert.equal((await json(await request("workspace"))).canPublish, true);
+      const createdPublic = await Promise.all([
+        request("projects", "POST", createAndPublish, staff.idToken, createKey).then(r => json(r, 201)),
+        request("projects", "POST", createAndPublish, staff.idToken, createKey).then(r => json(r, 201)),
+      ]);
+      assert.deepEqual(createdPublic[0], createdPublic[1]);
+      assert.equal(await revision(), createRevision + 1);
+      assert.equal(await auditCount(), createAudits + 1);
+      const [publishedProject, publishedProjection] = await Promise.all([
+        root.collection("projects").doc(createdPublic[0].id).get(),
+        root.collection("projectViews").doc(createdPublic[0].id).get(),
+      ]);
+      assert.equal(publishedProject.data()?.published, true);
+      assert.equal(publishedProjection.data()?.published, true);
+      assert.doesNotMatch(JSON.stringify(publishedProjection.data()), /PRIVATE-CREATION-NOTE/);
+      const createEvents = await root.collection("audits").where("entityId", "==", publishedProject.id).get();
+      assert.deepEqual(createEvents.docs.map(doc => doc.data().action), ["project-created-and-published"]);
+      assert.equal((await request("projects", "POST", { ...createAndPublish, publish: false }, staff.idToken, createKey)).status, 409);
+      assert.deepEqual((await root.collection("rawTime").doc("synthetic-time").get()).data(), sourceBefore);
+
       // Isolated work-order identities and imported total. These represent the
       // source contract shape without contacting QuickBooks or adding real records.
       const fixtureJobs = ["132160684", "135372950", "132160686", "136571342"];
@@ -1527,46 +1589,158 @@ function ClientFixture() {
       assert.equal(hierarchyDraft.projects.filter((item: { id: string }) => [direct.id, nested.id].includes(item.id))
         .reduce((total: number, item: { seconds: number }) => total + item.seconds, 0), 18_000 + 1_733);
       const hierarchyNavigation = bulkPage.getByRole("navigation", { name: "Morris workspace sections" });
+      const managementBrowser = await session(1440);
+      try {
+        const page = managementBrowser.page;
+        await page.goto(origin + "/workspace/project-management?month=2026-11");
+        const picker = page.getByRole("combobox", { name: "Find a project" });
+        await picker.fill(persisted.name);
+        await page.getByRole("option", { name: persisted.name, exact: true }).waitFor();
+        await picker.press("Enter");
+        const management = page.getByRole("form", { name: "Delivery progress" });
+        await management.getByRole("heading", { name: persisted.name, exact: true }).waitFor();
+        assert.equal(new URL(page.url()).pathname, "/workspace/project-management/" + persisted.id);
+        const slider = management.getByRole("slider", { name: "Project completion" });
+        await management.getByRole("button", { name: "50%", exact: true }).click();
+        await slider.press("ArrowRight");
+        assert.equal(await slider.inputValue(), "51");
+        await management.getByRole("button", { name: "100%", exact: true }).click();
+        const confirmCompletion = page.getByRole("dialog", { name: "Confirm Project Completion" });
+        await confirmCompletion.waitFor();
+        await confirmCompletion.getByRole("button", { name: "Cancel", exact: true }).click();
+        assert.equal(await slider.inputValue(), "51");
+        assert.equal(await management.getByRole("button", { name: "100%", exact: true }).evaluate(element => element === document.activeElement), true);
+        await management.getByRole("button", { name: "100%", exact: true }).click();
+        await confirmCompletion.getByRole("button", { name: /Completion date/ }).click();
+        const calendar = page.getByRole("dialog", { name: "Completion date" });
+        await calendar.getByRole("grid").waitFor();
+        await page.keyboard.press("ArrowLeft");
+        await page.keyboard.press("Enter");
+        await calendar.waitFor({ state: "hidden" });
+        await confirmCompletion.getByRole("button", { name: "Confirm", exact: true }).click();
+        assert.equal(await slider.inputValue(), "100");
+        await management.getByText("Add milestones", { exact: true }).click();
+        await management.getByLabel("Custom milestone title").fill("Confirm community delivery");
+        await management.getByLabel("Optional milestone note").fill("Review the approved delivery checklist.");
+        await management.getByRole("button", { name: "Add selected milestones (1)", exact: true }).click();
+        const addedMilestone = management.getByRole("listitem").filter({ has: management.getByRole("checkbox", { name: "Confirm community delivery" }) });
+        await addedMilestone.getByRole("button", { name: "Block", exact: true }).click();
+        const blockerDialog = page.getByRole("dialog", { name: "Report blocker" });
+        await blockerDialog.getByLabel("Client-facing explanation").fill("Waiting for scope confirmation.");
+        await blockerDialog.getByLabel("Private blocker details (optional)").fill("PRIVATE-MILESTONE-DETAIL");
+        await blockerDialog.getByRole("button", { name: "Confirm", exact: true }).click();
+        await addedMilestone.getByText("Blocked", { exact: true }).waitFor();
+        await management.getByLabel("Project Update").fill("The leadership review is ready.");
+        await management.getByRole("button", { name: "Save Draft", exact: true }).click();
+        await management.getByText("Draft saved.", { exact: true }).waitFor();
+        const latest = (await approvedProjectRef.get()).data()!;
+        assert.equal(latest.published, false);
+        assert.equal(latest.delivery.manualCompletion, 100);
+        assert.match(latest.delivery.completedOn, /^\d{4}-\d{2}-\d{2}$/);
+        assert.equal(latest.milestones.find((item: { title: string }) => item.title === "Confirm community delivery").status, "blocked");
+        const managementPatch = {
+          name: latest.name, status: latest.status, progress: latest.progress, description: latest.description,
+          internalNotes: latest.internalNotes, plan: latest.plan, milestones: latest.milestones, delivery: latest.delivery,
+          updates: latest.updates, workOrderReference: latest.workOrderReference,
+        };
+        assert.equal((await request(projectPath, "PATCH", { expectedRevision: await revision(), patch: managementPatch, publish: true }, client.idToken)).status, 403);
+        assert.equal((await request(projectPath, "PATCH", { expectedRevision: (await revision()) - 1, patch: managementPatch, publish: true })).status, 409);
+        await page.screenshot({ path: join(evidence, "project-management-blocker.png"), fullPage: true, animations: "disabled" });
+        const publishManagement = async () => {
+          await management.getByRole("button", { name: "Save & Publish", exact: true }).click();
+          await page.getByRole("dialog", { name: "Publish project changes?" }).getByRole("button", { name: "Publish", exact: true }).click();
+          await management.getByText("Project changes published.", { exact: true }).waitFor();
+        };
+        await publishManagement();
+        const readClientReport = async () => json(await request("report?month=2026-11", "GET", undefined, client.idToken));
+        const blockedReport = await readClientReport();
+        const clientMilestone = blockedReport.projects.find((item: { id: string }) => item.id === persisted.id)
+          .milestones.find((item: { title: string }) => item.title === "Confirm community delivery");
+        assert.equal(clientMilestone.blocker.message, "Waiting for scope confirmation.");
+        assert.doesNotMatch(JSON.stringify(blockedReport), /PRIVATE-MILESTONE-DETAIL/);
+        await addedMilestone.getByRole("button", { name: "Resolve blocker" }).click();
+        await addedMilestone.getByRole("checkbox", { name: "Confirm community delivery" }).click();
+        await page.getByRole("dialog", { name: "Complete milestone" }).getByRole("button", { name: "Confirm", exact: true }).click();
+        await management.getByRole("button", { name: "Save Draft", exact: true }).click();
+        await management.getByText("Draft saved.", { exact: true }).waitFor();
+        assert.deepEqual(await readClientReport(), blockedReport, "a published project retains its approved milestone until publishing");
+        await publishManagement();
+        const managedReport = await readClientReport();
+        const resolvedMilestone = managedReport.projects.find((item: { id: string }) => item.id === persisted.id)
+          .milestones.find((item: { title: string }) => item.title === "Confirm community delivery");
+        assert.equal(resolvedMilestone.completed, true);
+        assert.match(resolvedMilestone.completedAt, /^\d{4}-\d{2}-\d{2}$/);
+        assert.match(resolvedMilestone.blocker.resolvedOn, /^\d{4}-\d{2}-\d{2}$/);
+        assert.equal(managedReport.hierarchy[persisted.id].completion, 100);
+        assert.equal(managedReport.totalSeconds, blockedReport.totalSeconds);
+        const actions = (await root.collection("audits").where("entityId", "==", persisted.id).get()).docs.map(doc => doc.data().action);
+        for (const event of ["project-milestone-blocked", "project-milestone-blocker-resolved",
+          "project-milestone-completed", "project-edited-and-published"]) assert.ok(actions.includes(event), event);
+        await page.setViewportSize({ width: 320, height: 640 });
+        await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" });
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        await page.screenshot({ path: join(evidence, "project-management-mobile.png"), fullPage: true, animations: "disabled" });
+      } finally {
+        await managementBrowser.context.close();
+      }
       await hierarchyNavigation.getByRole("button", { name: "Projects", exact: true }).click();
       await bulkPage.getByRole("button", { name: "Create project", exact: true }).click();
       const wizard = bulkPage.getByRole("form", { name: "Create a project" });
-      await wizard.getByRole("radio", { name: "Service area", exact: true }).check();
-      await wizard.getByLabel("Project name", { exact: true }).fill("Community planning area fixture");
-      await wizard.getByRole("button", { name: "Next", exact: true }).click();
-      await wizard.getByRole("combobox", { name: "Parent engagement", exact: true }).selectOption(parent.id);
-      await wizard.getByLabel("Service area classification", { exact: true }).selectOption("cfw");
-      await wizard.getByRole("button", { name: "Create service area", exact: true }).click();
-      await bulkPage.getByRole("heading", { name: "Community planning area fixture", exact: true }).waitFor();
-      await bulkPage.getByRole("button", { name: "Create project", exact: true }).click();
-      await wizard.getByRole("radio", { name: "Delivery project", exact: true }).check();
+      await wizard.getByRole("radio", { name: "Delivery Project", exact: true }).check();
       await wizard.getByLabel("Project name", { exact: true }).fill("Community readiness fixture");
-      await wizard.getByRole("button", { name: "Next", exact: true }).click();
-      await wizard.getByRole("combobox", { name: "Parent engagement", exact: true }).selectOption(parent.id);
-      await wizard.getByLabel("Service area (optional)", { exact: true }).selectOption({ label: "Community planning area fixture" });
-      await wizard.getByRole("button", { name: "Next", exact: true }).click();
-      await wizard.getByLabel("Budget cap", { exact: true }).selectOption("both");
-      await wizard.getByLabel("Monthly cap (hours)", { exact: true }).fill("20");
-      await wizard.getByLabel("Lifetime cap (hours)", { exact: true }).fill("80");
-      await wizard.getByLabel("Count toward the parent engagement’s cap").selectOption("no");
-      await wizard.getByRole("button", { name: "Next", exact: true }).click();
-      await wizard.getByRole("button", { name: "Save team selection", exact: true }).click();
-      await wizard.getByLabel("Milestone template", { exact: true }).selectOption("CFW");
-      await wizard.getByLabel("Confirm community priorities", { exact: true }).check();
-      await wizard.getByRole("button", { name: "Next", exact: true }).click();
-      await wizard.getByRole("definition").filter({
-        hasText: /^Consulting engagement fixture \/ Community planning area fixture \/ Community readiness fixture$/,
-      }).waitFor();
+      const continueWizard = wizard.getByRole("button", { name: "Continue", exact: true });
+      await continueWizard.click();
+      await wizard.getByRole("combobox", { name: "Parent Project", exact: true }).fill("Consulting engagement");
+      await wizard.getByRole("option", { name: "Consulting engagement fixture", exact: true }).click();
+      await wizard.getByRole("combobox", { name: "Department", exact: true }).fill("CFW");
+      await wizard.getByRole("option", { name: "CFW", exact: true }).click();
+      await continueWizard.click();
+      await wizard.getByLabel("Client-facing description").fill("Approved community program preparation.");
+      await continueWizard.click();
+      await wizard.getByLabel("Monthly budgeted hours", { exact: true }).fill("20");
+      await wizard.getByLabel("Whole-project budgeted hours", { exact: true }).fill("80");
+      await wizard.getByRole("checkbox", { name: /count this project.*against the parent/i }).uncheck();
+      await continueWizard.click();
+      await wizard.getByRole("group", { name: /Project Managers/ }).getByRole("checkbox", { name: /Example delivery facilitator/ }).check();
+      await continueWizard.click();
+      await wizard.getByLabel("Project location").getByText("Community readiness fixture", { exact: true }).waitFor();
       await wizard.screenshot({ path: join(evidence, "project-creation-review.png"), animations: "disabled" });
-      await wizard.getByRole("button", { name: "Save draft", exact: true }).click();
+      await wizard.getByRole("button", { name: "Save Draft", exact: true }).click();
       await bulkPage.getByRole("heading", { name: "Community readiness fixture", exact: true }).waitFor();
       const createdDelivery = (await root.collection("projects").where("name", "==", "Community readiness fixture").get()).docs[0].data();
+      assert.equal(createdDelivery.delivery.structure, 3);
       assert.equal(createdDelivery.delivery.kind, "project");
+      assert.equal(createdDelivery.delivery.parentId, parent.id);
       assert.equal(createdDelivery.delivery.areaId, "cfw");
       assert.equal(createdDelivery.delivery.monthlyCap, 72_000);
       assert.equal(createdDelivery.delivery.lifetimeCap, 288_000);
       assert.equal(createdDelivery.delivery.countAgainstParentCap, false);
-      assert.equal(createdDelivery.milestones[0].date, "");
       assert.equal(createdDelivery.published, false);
+      const compactCreation = await session(390);
+      await compactCreation.page.getByRole("button", { name: "Create project", exact: true }).click();
+      const compactWizard = compactCreation.page.getByRole("form", { name: "Create a project" });
+      await compactWizard.getByRole("radio", { name: "Delivery Project", exact: true }).check();
+      await compactWizard.getByLabel("Project name", { exact: true }).fill("Miscellaneous planning fixture");
+      const compactNext = compactWizard.getByRole("button", { name: "Continue", exact: true });
+      await compactNext.click();
+      await compactWizard.getByRole("combobox", { name: "Parent Project", exact: true }).fill("Consulting engagement");
+      await compactWizard.getByRole("option", { name: "Consulting engagement fixture", exact: true }).click();
+      await compactWizard.getByRole("combobox", { name: "Department", exact: true }).fill("Misc");
+      await compactWizard.getByRole("option", { name: "Miscellaneous", exact: true }).click();
+      await compactNext.click();
+      assert.equal(await compactWizard.getByLabel("Arrangement", { exact: true }).count(), 0);
+      assert.equal(await compactWizard.getByLabel("Client-facing description").count(), 0);
+      await compactWizard.getByLabel("Monthly budgeted hours", { exact: true }).fill("10");
+      assert.ok(await compactCreation.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await compactWizard.screenshot({ path: join(evidence, "project-creation-mobile.png"), animations: "disabled" });
+      await compactNext.click();
+      assert.equal(await compactWizard.getByRole("group", { name: /Facilitators/ }).count(), 0);
+      await compactWizard.getByRole("group", { name: /Project Managers/ }).getByRole("checkbox", { name: /Example delivery facilitator/ }).check();
+      await compactNext.click();
+      compactCreation.page.once("dialog", dialog => void dialog.accept());
+      await compactWizard.getByRole("button", { name: "Create & Publish", exact: true }).click();
+      await compactCreation.page.getByText("Project created and published.", { exact: true }).waitFor();
+      await compactCreation.context.close();
       await hierarchyBrowser.context.close();
       assert.deepEqual(errors, []);
       await writeFile(

@@ -1,3 +1,4 @@
+import { readWorkOrderEffort } from "../server/time-totals";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { firebaseRuntime } from "../server/firebase";
@@ -268,6 +269,36 @@ test("verified customer discovery, registration, linking, daily reconciliation a
       observedAt: "2026-11-06T12:00:00.000Z",
     });
     const existingProject = "synthetic-planning";
+    const parentProject = root.collection("projects").doc(existingProject);
+    await parentProject.update({ delivery: { kind: "engagement", structure: 3, type: "hourly", managerIds: [], teamIds: [] } });
+    const scopedMapping = mappings.find(entry => entry.jobcodeId === "101")!;
+    assert.equal(status.verifiedCustomerId, parent);
+    assert.equal(scopedMapping.canReview, true);
+    const review = { targetKind: "engagement" as const, previousProjectId: scopedMapping.projectId,
+      recordedSeconds: 61, allocatedSeconds: 0 };
+    const source101 = root.collection("rawTime").doc(sourceRecordId("quickbooks-time", account, "701"));
+    const immutableSource = (await source101.get()).data();
+    const immutableCheckpoint = (await checkpoint("101").get()).data();
+    const immutableAllocation = (await root.collection("allocationHeads").doc(source101.id).get()).data();
+    await assert.rejects(sync.confirmMapping(tenant, identity("other-staff"), "101", existingProject, review), /Forbidden/);
+    await assert.rejects(sync.confirmMapping(tenant, who, "101", existingProject, { ...review, recordedSeconds: 60 }), /Time mapping conflict/);
+    await assert.rejects(sync.confirmMapping(tenant, who, "101", existingProject, { ...review, targetKind: "project" }), /Invalid Time mapping target/);
+    await assert.rejects(sync.confirmMapping(tenant, who, "102", existingProject, {
+      ...review, previousProjectId: mappings.find(entry => entry.jobcodeId === "102")!.projectId,
+    }), /Time mapping conflict/);
+    const confirmation = await Promise.all([
+      sync.confirmMapping(tenant, who, "101", existingProject, review),
+      sync.confirmMapping(tenant, who, "101", existingProject, review),
+    ]);
+    assert.equal(confirmation.filter(result => result.changed).length, 1);
+    assert.deepEqual((await source101.get()).data(), immutableSource);
+    assert.deepEqual((await checkpoint("101").get()).data(), immutableCheckpoint);
+    assert.deepEqual((await root.collection("allocationHeads").doc(source101.id).get()).data(), immutableAllocation);
+    const attribution = await runtime.db.runTransaction(tx => readWorkOrderEffort(tx, root, [existingProject, scopedMapping.projectId], "2026-11", [0, 0]));
+    assert.deepEqual(attribution.map(item => item.recordedSeconds), [61, 0]);
+    const reviewedAudit = (await root.collection("audits").where("action", "==", "time-work-order-mapping-reviewed").get()).docs;
+    assert.equal(reviewedAudit.length, 1);
+    assert.equal((await sync.status(tenant, who, "2026-11")).recordedSeconds, 244);
     await assert.rejects(
       sync.approve(tenant, identity("other-staff"), "105", existingProject),
       /Forbidden/,
@@ -292,7 +323,7 @@ test("verified customer discovery, registration, linking, daily reconciliation a
     assert.equal(
       (await sync.status(tenant, who, "2026-11", existingProject))
         .lifetimeRecordedSeconds,
-      61,
+      122,
     );
     assert.deepEqual((await source.get()).data(), imported);
     await root

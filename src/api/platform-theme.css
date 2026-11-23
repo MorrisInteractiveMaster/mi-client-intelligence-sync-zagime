@@ -1,0 +1,159 @@
+section.nordic.secure-shell[data-theme="light"] { color-scheme: light; }
+
+.nordic.secure-shell label.mi-theme-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .82rem;
+  font-weight: 650;
+  min-width: 0;
+}
+
+.secure-shell .mi-theme-selector select {
+  width: auto;
+  min-height: 44px;
+  padding: 4px 9px;
+  margin: 0;
+}
+
+.secure-shell .mi-masthead-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-inline-start: auto;
+}
+
+section.nordic.secure-shell[data-theme="dark"] {
+  color-scheme: dark;
+  --secure-ink: #edf4fc;
+  --secure-muted: #b2c4d7;
+  --secure-brand: #9fcaff;
+  --secure-line: #3b5570;
+  --secure-paper: #142537;
+  --mi-ink: var(--secure-ink);
+  --mi-muted: var(--secure-muted);
+  --mi-line: var(--secure-line);
+  --mi-background: #0b1826;
+  --mi-surface: #142537;
+  --mi-action: linear-gradient(112deg, #244966, #2e577d);
+  --mi-shadow: 0 10px 24px #040d1880;
+  --mi-dark-layer: #1c3249;
+  --mi-dark-link: #a9d1fc;
+  background: var(--mi-background);
+  color: var(--mi-ink);
+}
+
+section.nordic.secure-shell[data-theme="dark"] .mi-theme-selector { color: var(--mi-ink); }
+
+section.nordic.secure-shell[data-theme="dark"] :is(.secure-brandmarks img, .platform-home-wordmark) {
+  background: #f8fbfd;
+  border-radius: 6px;
+  padding: 2px 4px;
+}
+
+section.nordic.secure-shell[data-theme="dark"] :is(
+  .mi-account summary, .mi-account-menu, .secure-card, .secure-empty, .secure-form, .secure-metrics > div,
+  .secure-table, .secure-table :is(thead,tbody,tr,th,td), .secure-list, .secure-timeline li, .platform-control-card,
+  .platform-control-nav a, a.platform-card, .platform-report-directory li, .mi-workspace-tools, .mi-search-dialog,
+  .delivery-person, .delivery-project-card, .delivery-filter-bar, .mi-operation-metrics > div:not([data-featured="true"]),
+  .mi-operations-trend li button, .exec-panel, .exec-card, .exec-tile, .exec-drawer,
+  .exec-workspace-grid article, .mi-report-period-menu, .mi-action-menu, .mi-sign-in-panel, .mi-mapping-order,
+  .mi-theme-selector select, input:not([type="checkbox"],[type="radio"]), select, textarea
+) {
+  background: var(--mi-surface);
+  border-color: var(--mi-line);
+  color: var(--mi-ink);
+  box-shadow: none;
+}
+
+section.nordic.secure-shell[data-theme="dark"] :is(
+  .secure-hero, .delivery-label, .secure-badge, .secure-secondary, .secure-pill, .platform-card-icon, .platform-card-arrow,
+  .platform-control-shortcuts a, .secure-message:not(.secure-error), .secure-table thead
+) {
+  background: var(--mi-dark-layer);
+  border-color: var(--mi-line);
+  color: var(--mi-ink);
+}
+
+section.nordic.secure-shell[data-theme="dark"] :is(
+  .secure-identity h1, .mi-sign-in-panel h2, .platform-card strong, .mi-page-heading h2, .exec-text-button,
+  .intel-report-link, a:not(.platform-card, .mi-home-primary)
+) {
+  color: var(--mi-dark-link);
+}
+
+section.nordic.secure-shell[data-theme="dark"] :is(
+  .mi-sign-in-panel p, .mi-page-heading .mi-kicker, .platform-card > span:last-of-type, .mi-sign-in-panel label
+) {
+  color: var(--mi-muted);
+}
+
+section.nordic.secure-shell[data-theme="dark"] :is(.secure-error, .secure-badge[data-status="blocked"]) {
+  color: #ffd2cb;
+  border-color: #9c5558;
+  background: #4b2932;
+}
+
+section.nordic.secure-shell[data-theme="dark"] :is(button:not([class]), .platform-primary-action) {
+  background: var(--mi-action);
+  color: #f5f9ff;
+  border-color: var(--mi-line);
+}
+
+section.nordic.secure-shell[data-theme="dark"] :is(a,button,input,select,textarea,summary):focus-visible {
+  outline-color: #fae398;
+}
+.mi-mapping { display: grid; gap: 16px; }
+.mi-mapping > p { max-width: 70ch; }
+.mi-mapping > label { width: min(100%, 28rem); }
+.mi-mapping-list { display: grid; gap: 12px; }
+.nordic.secure-shell .mi-mapping-order { min-width: 0; margin: 0; }
+.mi-mapping-order h3 { margin-block: 5px 6px; }
+.mi-mapping-order .mi-kicker { margin: 0; font-size: .8rem; font-weight: 700; }
+.mi-mapping-detail { border-top: 1px solid var(--secure-line); padding-top: 12px; }
+.mi-mapping-review { max-width: 60rem; }
+.mi-mapping-preview { border-inline-start: 3px solid #6087a8; padding-inline: 12px; }
+.mi-directory-group { display: grid; gap: 8px; margin-block: 16px; }
+.mi-directory-group h4 { margin: 0; }
+
+section.nordic.secure-shell[data-theme="dark"] :is(
+  .intel-chart, .intel-analytics-dialog, .intel-dialog-pane, .mi-exec-panel, .mi-engagement-card,
+  .mi-delivery-signal, .mi-management-panel, .mi-project-wizard, .mi-wizard-panel,
+  .mi-project-index, .mi-department-card, .mi-project-detail, .mi-report-chart, .mi-chart-detail,
+  .time-allocation-panel dialog, .delivery-branch, .mi-publication-dialog
+) {
+  background: var(--mi-surface);
+  border-color: var(--mi-line);
+  color: var(--mi-ink);
+}
+
+section.nordic.secure-shell[data-theme="dark"] :is(
+  .intel-chart-head p, .intel-chart-insight span, .intel-detail-links, .intel-legend, .intel-chart-table,
+  .intel-related, .intel-empty, .intel-freshness, .mi-exec-heading p, .mi-mapping .secure-muted
+) {
+  color: var(--mi-muted);
+}
+
+section.nordic.secure-shell[data-theme="dark"] :is(.mi-scale-track, .mi-bar-track, .intel-icon, .intel-report-link, .mi-budget-cap) {
+  background: var(--mi-dark-layer);
+  border-color: var(--mi-line);
+  color: var(--mi-dark-link);
+}
+section.nordic.secure-shell[data-theme="dark"] :is(.mi-scale-track, .mi-bar-track) > i { background: #83b6e2; }
+section.nordic.secure-shell[data-theme="dark"] .intel-dot-series button { color: var(--mi-ink); }
+section.nordic.secure-shell[data-theme="dark"] .intel-dot-series button:is(:hover,[aria-pressed="true"]) {
+  background: var(--mi-dark-layer);
+  border-color: var(--mi-line);
+}
+
+.nordic.secure-shell.platform-shell .platform-control .platform-hero-compact {
+  min-height: clamp(140px, 22vh, 240px);
+  align-content: center;
+  padding: clamp(18px, 3vw, 42px);
+}
+.nordic.secure-shell.platform-shell .platform-control .platform-hero-compact h2 {
+  font-size: clamp(1.65rem, 4vw, 3.4rem);
+}
+.nordic.secure-shell.platform-shell .platform-control .platform-hero-compact p { margin-block: 6px 0; }
+body:has(section.nordic.secure-shell[data-theme="dark"]) { background: #0b1826; }

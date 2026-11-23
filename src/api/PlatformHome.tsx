@@ -18,7 +18,7 @@ export function PlatformLink({ href, beforeNavigate, onClick, ...props }: Anchor
 export function PlatformHome({ workspace, month }: { workspace: ProjectWorkspace; month: string }) {
   const cards = [
     { title: "Open Morris Workspace", label: "Plan delivery, organize projects and assign recorded time.", href: "/workspace", icon: LayoutGrid },
-    { title: "View Zagimē Dashboard", label: "See what an approved client access profile can view.", href: clientBase, icon: Building2 },
+    { title: "View " + workspace.tenant.name + " Dashboard", label: "See what an approved client access profile can view.", href: clientBase, icon: Building2 },
     { title: "Preview unpublished changes", label: "Review drafts in a private staff preview before publishing.", href: clientBase, query: { previewMode: "draft" }, icon: Eye },
     ...(workspace.platformAdmin ? [{ title: "Open Control Panel", label: "Manage access, reporting preferences and integration health.", href: "/control", icon: ShieldCheck }] : []),
   ];

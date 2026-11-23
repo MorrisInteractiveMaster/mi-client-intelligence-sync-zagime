@@ -1,3 +1,5 @@
+import { TimeClient } from "../server/time-client";
+import { TimeSync } from "../server/time-sync";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -60,14 +62,15 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     stdin: {
       contents: `import React, {useState} from "react"; import {createRoot} from "react-dom/client";
         import {PlatformApplication} from "./src/api/PlatformApplication"; import {SecuredApiClient} from "./src/api/client";
+        import {ThemeSelector,usePlatformTheme} from "./src/api/PlatformTheme"; import "./src/api/platform-theme.css";
         import {useReportingMonth} from "./src/api/portal-location";
         import "./src/reporting/nordic.css"; import "./src/api/secure.css"; import "./src/api/executive.css";
         import "./src/api/intelligence.css"; import "./src/api/delivery-operations.css"; import "./src/api/platform.css";
         const client=new SecuredApiClient(true, location.origin, async()=>window.__localPortalToken, undefined, undefined, "projects");
         const denied=()=>{document.getElementById("auth-status").textContent="Workspace unavailable."};
         function Portal({workspace}) {
-          const month=useReportingMonth("${month}"), [dirty,setDirty]=useState(false);
-          return <section className="nordic secure-shell platform-shell"><div id="auth-status" role="status"></div>
+          const {theme,change,appearance}=usePlatformTheme(); const month=useReportingMonth("${month}"), [dirty,setDirty]=useState(false);
+          return <section className="nordic secure-shell platform-shell" data-theme={appearance}><ThemeSelector theme={theme} onChange={change}/><div id="auth-status" role="status"></div>
             <PlatformApplication client={client} workspace={workspace} month={month} unsaved={dirty} onUnsavedChange={setDirty} onDenied={denied}/>
           </section>;
         }
@@ -82,7 +85,14 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
   await writeFile(join(directory, "index.html"), '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Client Intelligence</title><link rel="stylesheet" href="/platform.css"><body><div id="root"></div><script src="/platform.js" defer></script></body></html>');
   await cp(resolve("public/branding"), join(directory, "branding"), { recursive: true });
 
+  const timeStore = new ProjectStore(runtime.db, "owner");
+  const account = "97", customerParentId = "71", mappedJob = "109";
+  const time = new TimeSync(timeStore, {
+    tenant, account, customerParentId, admin: "owner", userId: "42",
+    clientUrl: "mi-fixture.tsheets.com", from: "2026-01-01",
+  }, new TimeClient(async () => { throw Error("Fixture makes no provider requests"); }));
   const options = {
+    time,
     frontend: directory,
     allowedOrigin: "",
     limit: new RequestLimit(10000),
@@ -122,6 +132,17 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await admin.page.getByRole("heading", { name: "Morris Interactive", exact: true }).waitFor();
     await admin.page.getByRole("link", { name: /Open Morris Workspace/ }).waitFor();
     await admin.page.screenshot({ path: join(evidence, "morris-home.png"), animations: "disabled" });
+    const appearance = admin.page.getByRole("combobox", { name: "Appearance" });
+    const themed = admin.page.locator(".platform-shell");
+    assert.equal(await appearance.inputValue(), "system");
+    await admin.page.emulateMedia({ colorScheme: "dark" });
+    await themed.locator(':scope[data-theme="dark"]').waitFor();
+    await admin.page.screenshot({ path: join(evidence, "morris-home-dark.png"), animations: "disabled" });
+    await appearance.selectOption("light");
+    await themed.locator(':scope[data-theme="light"]').waitFor();
+    await admin.page.reload();
+    await appearance.waitFor();
+    assert.equal(await appearance.inputValue(), "light");
     await admin.page.getByRole("link", { name: /Open Control Panel/ }).click();
     await admin.page.waitForURL(route("/control"));
     await admin.page.getByRole("heading", { name: /Administration for/ }).waitFor();
@@ -151,7 +172,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await admin.page.setViewportSize({ width: 1440, height: 1000 });
     await admin.page.getByRole("link", { name: "Back to Morris Workspace" }).click();
     await admin.page.waitForURL(route("/workspace"));
-    await admin.page.getByRole("link", { name: "View Zagimē Dashboard", exact: true }).first().waitFor();
+    await admin.page.getByRole("link", { name: /View .* Dashboard/, exact: false }).first().waitFor();
     await admin.page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
     await admin.page.getByText("20.75 h", { exact: true }).first().waitFor();
     const createProject = admin.page.getByRole("button", { name: "Create Project", exact: true });
@@ -178,12 +199,15 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await menu.click();
     await drawer.getByRole("button", { name: "Project Management", exact: true }).click();
     await admin.page.waitForURL(route("/workspace/project-management"));
-    await admin.page.getByRole("combobox", { name: "Selected project" }).selectOption(projectId);
+    const projectPicker = admin.page.getByRole("combobox", { name: "Find a project" });
+    await projectPicker.fill(projectName);
+    await admin.page.getByRole("option", { name: projectName, exact: true }).waitFor();
+    await projectPicker.press("Enter");
     await admin.page.waitForURL(route("/workspace/project-management/" + projectId));
     const progress = admin.page.getByRole("form", { name: "Delivery progress" });
     await progress.getByRole("combobox", { name: "Delivery status" }).selectOption("paused");
-    await progress.getByRole("button", { name: "Save Progress" }).click();
-    await progress.getByText(/Progress saved to the draft/).waitFor();
+    await progress.getByRole("button", { name: "Save Draft" }).click();
+    await progress.getByText("Draft saved.", { exact: true }).waitFor();
     await admin.page.screenshot({ path: join(evidence, "project-management-mobile.png"), fullPage: true, animations: "disabled" });
     await admin.page.reload();
     await progress.getByRole("combobox", { name: "Delivery status" }).waitFor();
@@ -197,7 +221,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await admin.page.keyboard.press("Escape");
     await admin.page.screenshot({ path: join(evidence, "project-management.png"), fullPage: true, animations: "disabled" });
     await admin.page.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Projects", exact: true }).click();
-    await admin.page.getByRole("button", { name: "By Parent Engagement" }).click();
+    await admin.page.getByRole("button", { name: "By Parent Project" }).click();
     await admin.page.getByRole("button", { name: "Open Regular Consulting fixture" }).click();
     const engagement = admin.page.getByRole("region", { name: "Engagement overview" });
     await engagement.getByText("20.75 h", { exact: true }).first().waitFor();
@@ -338,6 +362,39 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     assert.equal(await printable.getByText(/Private staff status|Synthetic planning project/).count(), 0);
     await client.page.emulateMedia({ media: "screen" });
     await client.context.close();
+
+    const mappingAnchor = "time-" + key(account, mappedJob);
+    const timeCatalog = key("quickbooks-time-customer", account, customerParentId);
+    const setup = runtime.db.batch();
+    setup.set(root.collection("timeRuns").doc(timeCatalog), { customerBound: true, lastSuccess: new Date(now).toISOString() });
+    setup.set(root.collection("timeMappings").doc(key(account, mappedJob)), {
+      account, catalog: timeCatalog, jobcodeId: mappedJob, projectId: mappingAnchor, scopeProjectId: mappingAnchor,
+      sourceJob: { id: mappedJob, name: "Internal reporting and facilitation", parentId: customerParentId, active: true, missing: false },
+    });
+    setup.set(root.collection("timeProjectTotals").doc(mappingAnchor).collection("periods").doc(month), { recorded: 18900, allocated: 3600 });
+    setup.set(root.collection("timeProjectTotals").doc(mappingAnchor).collection("periods").doc("lifetime"), { recorded: 18900, allocated: 3600 });
+    setup.update(parentRef, { delivery: { kind: "engagement", structure: 3, type: "hourly", managerIds: [], teamIds: [] } });
+    await setup.commit();
+    const timeOwner = await session(mainBrowser, "owner");
+    await timeOwner.page.goto(route("/workspace/time/mapping"));
+    const mappingArea = timeOwner.page.getByRole("region", { name: "QuickBooks Time Mapping" });
+    await mappingArea.getByRole("button", { name: "Review mapping" }).click();
+    await mappingArea.getByRole("combobox", { name: "Work-order type" }).selectOption("engagement");
+    const target = mappingArea.getByRole("combobox", { name: "Reporting project" });
+    await target.fill("Regular Consulting");
+    await target.press("Enter");
+    await mappingArea.getByText(/4.25 h of source time/).waitFor();
+    assert.equal(await mappingArea.getByRole("button", { name: "Confirm mapping" }).isDisabled(), true);
+    await timeOwner.page.screenshot({ path: join(evidence, "quickbooks-time-mapping.png"), fullPage: true, animations: "disabled" });
+    await timeOwner.page.getByRole("combobox", { name: "Appearance" }).selectOption("dark");
+    await timeOwner.page.setViewportSize({ width: 390, height: 844 });
+    assert.ok(await timeOwner.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await timeOwner.page.screenshot({ path: join(evidence, "quickbooks-time-mapping-dark-390.png"), fullPage: true, animations: "disabled" });
+    await mappingArea.getByRole("checkbox", { name: "I reviewed the project and affected hours." }).check();
+    await mappingArea.getByRole("button", { name: "Confirm mapping" }).click();
+    await mappingArea.getByText(/Mapping saved/).waitFor();
+    assert.equal((await root.collection("timeMappings").doc(key(account, mappedJob)).get()).get("scopeProjectId"), mappingAnchor);
+    await timeOwner.context.close();
 
     if (process.env.MI_SECURE_CROSS_BROWSER === "true") {
       for (const engine of [firefox, webkit]) {
