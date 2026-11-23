@@ -1128,9 +1128,9 @@ function ClientFixture() {
         await page.getByText("No published projects match.").waitFor();
         await search.fill("BROWSER SAVED");
         const visibleCard = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Browser saved project", exact: true }) });
-        await visibleCard.getByText("100% progress", { exact: true }).waitFor();
+        await visibleCard.getByText("100% work completion", { exact: true }).waitFor();
         await visibleCard.locator("dd").first().filter({ hasText: /^0\.5 h$/ }).waitFor();
-        await visibleCard.getByText("Updates and milestones").click();
+        await visibleCard.getByText("Project details", { exact: true }).click();
         await visibleCard.getByText("Approved delivery update").waitFor();
         await visibleCard.getByText("Approved milestone").waitFor();
         assert.ok(!(await page.locator("body").innerText()).match(/PRIVATE-UPDATE|Browser synthetic private note|QuickBooks Time|Allocate recorded hours/));

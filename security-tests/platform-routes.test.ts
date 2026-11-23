@@ -415,7 +415,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
           const scene = mobile.page.getByRole("dialog");
           await scene.getByRole("heading", { name: "Historical Hours and Effort" }).waitFor();
           await scene.getByRole("img", { name: "Approved reported hours by month" }).waitFor();
-          await scene.getByRole("button", { name: /November 2026.*22.75 h/ }).waitFor();
+          await scene.getByRole("button", { name: /November 2026.*27 h/ }).waitFor();
           assert.equal(await mobile.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
           await mobile.page.screenshot({ path: join(evidence, "client-presentation-" + engine.name() + "-390.png"), animations: "disabled" });
           await scene.getByRole("button", { name: "Close presentation" }).click();

@@ -107,7 +107,7 @@ section.nordic.secure-shell[data-theme="dark"] :is(a,button,input,select,textare
   outline-color: #fae398;
 }
 .mi-mapping { display: grid; gap: 16px; }
-.mi-mapping > p { max-width: 70ch; }
+.mi-mapping > p { max-width: 70ch; margin: 0; }
 .mi-mapping > label { width: min(100%, 28rem); }
 .mi-mapping-list { display: grid; gap: 12px; }
 .nordic.secure-shell .mi-mapping-order { min-width: 0; margin: 0; }
@@ -161,3 +161,11 @@ section.nordic.secure-shell[data-theme="dark"] .intel-dot-series button:is(:hove
 body:has(section.nordic.secure-shell[data-theme="dark"]) { background: #0b1826; }
 
 .nordic.secure-shell.platform-shell .mi-home-primary { white-space: nowrap; }
+
+.nordic.secure-shell .mi-mapping-order > header { padding: 0; margin: 0 0 12px; border: 0; }
+.nordic.secure-shell .mi-mapping-review > a { width: fit-content; margin-block: 8px; }
+section.nordic.secure-shell[data-theme="dark"] .secure-actions a {
+  color: var(--mi-dark-link);
+  background: var(--mi-dark-layer);
+  border-color: var(--mi-line);
+}
