@@ -8,6 +8,7 @@ import { chartRows } from "./DotAnalytics";
 import { Sparkline } from "./ReportingPlots";
 import { portalNavigate, usePortalLocation } from "./portal-location";
 import { PresentationContent, publishedChapters } from "./PresentationChapters";
+import { clientDelivery } from "./client-delivery";
 
 export default function ExecutivePresentation({ report, onClose, scope = "overview", scopeTitle, onLink, draft, linked }: {
   report: ProjectReport; onClose: () => void; scope?: string; scopeTitle?: string;
@@ -25,10 +26,10 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
   closeRef.current = onClose;
   const period = reportMonth(report.month);
   const projects = report.projects;
-  const archived = new Set(report.portfolio?.placements.filter(p => p.archived).map(p => p.id));
-  const active = projects.filter(p => p.status === "active" && !archived.has(p.id));
-  const completed = projects.filter(p => p.status === "completed");
-  const upcoming = projects.filter(p => p.status === "planned" && !archived.has(p.id));
+  const items = clientDelivery(report).projects;
+  const active = items.filter(item => item.active).map(item => item.project);
+  const completed = items.filter(item => item.completed).map(item => item.project);
+  const upcoming = items.filter(item => item.upcoming).map(item => item.project);
   const milestones = [...active, ...upcoming].flatMap(p => p.milestones ?? [])
     .filter(m => !m.completed && m.date >= report.month + "-01").sort((a, b) => a.date.localeCompare(b.date));
   const lines = (p: typeof projects) => p.length ? p.slice(0, 4).map(x => x.name) : ["No published projects in this category."];

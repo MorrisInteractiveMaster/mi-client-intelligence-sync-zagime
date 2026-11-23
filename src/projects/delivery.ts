@@ -23,6 +23,7 @@ export interface Delivery {
   start?: string;
   deadline?: string;
   publishSummary?: boolean;
+  publishStartStatus?: boolean;
   blocker?: { active: boolean; message: string; internal: string; resolvedOn?: string };
   managerIds: string[];
   teamIds: string[];
@@ -52,7 +53,7 @@ export function calendarDate(value: unknown): value is string {
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 }
 export function parseDelivery(input: unknown): Delivery {
-  const v = object(input, ["parentId", "areaId", "groupId", "structure", "kind", "type", "monthlyCap", "lifetimeCap", "manualCompletion", "completedOn", "start", "deadline", "publishSummary", "managerIds", "teamIds", "training", "workOrderIds", "countAgainstParentCap", "allowDirectAllocation", "blocker"]);
+  const v = object(input, ["parentId", "areaId", "groupId", "structure", "kind", "type", "monthlyCap", "lifetimeCap", "manualCompletion", "completedOn", "start", "deadline", "publishSummary", "publishStartStatus", "managerIds", "teamIds", "training", "workOrderIds", "countAgainstParentCap", "allowDirectAllocation", "blocker"]);
   let blocker: Delivery["blocker"];
   if (v.blocker !== undefined) {
     const state = object(v.blocker, ["active", "message", "internal", "resolvedOn"]);
@@ -75,6 +76,7 @@ export function parseDelivery(input: unknown): Delivery {
   const date = (value: unknown) => value === undefined || calendarDate(value) ? value : invalid();
   let start = date(v.start), deadline = date(v.deadline);
   if (v.publishSummary !== undefined && typeof v.publishSummary !== "boolean") return invalid();
+  if (v.publishStartStatus !== undefined && typeof v.publishStartStatus !== "boolean") return invalid();
   const workOrderIds = v.workOrderIds === undefined ? undefined : uniqueIds(v.workOrderIds);
   if (workOrderIds && (workOrderIds.length > 10 || workOrderIds.some(id => !/^\d{1,32}$/.test(id)))) return invalid();
   const compact = <K extends string, T>(key: K, value?: T) => value === undefined ? {} : { [key]: value } as Record<K, T>;
@@ -108,7 +110,8 @@ export function parseDelivery(input: unknown): Delivery {
     ...compact("monthlyCap", number(v.monthlyCap, 3_600_000_000)), ...compact("lifetimeCap", number(v.lifetimeCap, 3_600_000_000)),
     ...compact("manualCompletion", number(v.manualCompletion, 100)), ...compact("completedOn", date(v.completedOn)),
     ...compact("start", start), ...compact("deadline", deadline),
-    ...compact("publishSummary", v.publishSummary), ...compact("training", training), ...compact("blocker", blocker),
+    ...compact("publishSummary", v.publishSummary), ...compact("publishStartStatus", v.publishStartStatus),
+    ...compact("training", training), ...compact("blocker", blocker),
     ...compact("countAgainstParentCap", v.countAgainstParentCap), ...compact("allowDirectAllocation", v.allowDirectAllocation) };
 }
 

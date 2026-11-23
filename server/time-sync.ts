@@ -417,7 +417,10 @@ export class TimeSync {
           throw Error("Forbidden");
         if (review) {
           const anchor = "time-" + key(m.account, job);
-          if (m.reviewedAttribution === true && m.projectId === project) return { changed: false };
+          if (m.reviewedAttribution === true) {
+            if (m.projectId === project) return { changed: false };
+            throw Error("Time mapping conflict");
+          }
           if (m.projectId !== review.previousProjectId || m.projectId !== anchor ||
               m.scopeProjectId !== anchor || !m.sourceJob?.active) throw Error("Time mapping conflict");
           if (!p.delivery || p.delivery.kind !== review.targetKind ||

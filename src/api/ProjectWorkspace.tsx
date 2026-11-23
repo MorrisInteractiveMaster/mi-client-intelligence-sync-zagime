@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { ApiError, type SecuredApiClient } from "./client";
 import type {
-  Project,
   ProjectPage,
   ProjectDraftMetadata,
   StaffProjectDetail,
@@ -110,8 +109,7 @@ export function ProjectStaffWorkspace({
   const [catalogError, setCatalogError] = useState("");
   const [audits, setAudits] = useState<ProjectPage["audits"]>();
   const [auditCursor, setAuditCursor] = useState<string>();
-  const [editing, setEditing] = useState<Project | "new">();
-  const [editingDraft, setEditingDraft] = useState<ProjectDraftMetadata>();
+  const [editorSnapshot, setEditorSnapshot] = useState<StaffProjectDetail | "new">();
   const location = usePortalLocation();
   const overviewPeriod = location.get("period") || "month";
   const rangeStart = location.get("overview-start") || "";
@@ -122,6 +120,9 @@ export function ProjectStaffWorkspace({
   const staffRoute = location.get("staff");
   const area: Area = staffRoute === "time" ? "integrations" : staffRoute && Object.hasOwn(sections, staffRoute) ? staffRoute as Area : "projects";
   const editorRoute = location.get("editor");
+  const editingDetail = editorSnapshot && editorSnapshot !== "new" && editorSnapshot.project.id === editorRoute ? editorSnapshot : undefined;
+  const editing = editorSnapshot === "new" && editorRoute === "new" ? "new" : editingDetail?.project;
+  const editingDraft = editingDetail?.draft;
   const tableView = location.get("staff-layout") === "table";
   const treeView = location.get("staff-layout") === "tree";
   const statusFilter = location.get("project-filter") || "all";
@@ -183,7 +184,7 @@ export function ProjectStaffWorkspace({
   const changeArea = (next: Area) => {
     if (area === next && !(next === "management" && managed)) return;
     if (!permit()) return;
-    if (editorDirty) { setEditing(undefined); setEditorDirty(false); }
+    if (editorDirty) { setEditorSnapshot(undefined); setEditorDirty(false); }
     setNotice("");
     if (next !== "projects" && next !== "hours") {
       setSearch("");
@@ -261,8 +262,7 @@ export function ProjectStaffWorkspace({
     setListError(false);
     setPage({ revision: 0, projects: [] });
     setAudits(undefined);
-    setEditing(undefined);
-    setEditingDraft(undefined);
+    setEditorSnapshot(undefined);
     setAuditCursor(undefined);
     client
       .call<ProjectPage>(tenant, "projects?" + projectQuery(), {
@@ -296,11 +296,11 @@ export function ProjectStaffWorkspace({
     return () => abort.abort();
   }, [client, tenant, month, epoch]);
   useEffect(() => {
-    if (area !== "projects" || !editorRoute) { setEditing(undefined); return; }
+    if (area !== "projects" || !editorRoute) { setEditorSnapshot(undefined); return; }
     if (!page.revision) return;
     if (editorRoute === "new") {
       creation.current ??= `${Date.now()}-${crypto.randomUUID()}`;
-      setEditingDraft(undefined); setEditing("new");
+      setEditorSnapshot("new");
       return;
     }
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(editorRoute)) { setError("This editor link is unavailable."); return; }
@@ -309,8 +309,7 @@ export function ProjectStaffWorkspace({
       .then(detail => {
         if (abort.signal.aborted || latestScope.current !== scope) return;
         if (detail.revision !== page.revision) throw Error("Refresh the workspace before editing.");
-        setEditingDraft(detail.draft);
-        setEditing(detail.project);
+        setEditorSnapshot(detail);
       }).catch(error => { if (!abort.signal.aborted) failed(error); });
     return () => abort.abort();
   }, [client, tenant, scope, page.revision, area, editorRoute]);
@@ -354,14 +353,14 @@ export function ProjectStaffWorkspace({
       refresh();
     });
   }
-  function resolveDraft(projectId: string, action: "publish" | "discard") {
+  function resolveDraft(detail: StaffProjectDetail, action: "publish" | "discard") {
     const confirmation = action === "publish"
       ? "Publish the saved changes to authorized clients?"
       : "Discard the saved draft? Clients will continue seeing the last approved version.";
     if (!window.confirm(confirmation)) return;
     void perform(async () => {
-      await client.call(tenant, "projects/" + projectId + "/draft", {
-        method: "PATCH", body: { expectedRevision: page.revision, action },
+      await client.call(tenant, "projects/" + detail.project.id + "/draft", {
+        method: "PATCH", body: { expectedRevision: detail.revision, action },
       });
       setEpoch(value => value + 1);
       setNotice(action === "publish" ? "Project changes published." : "Draft discarded. The approved version is unchanged.");
@@ -530,7 +529,7 @@ export function ProjectStaffWorkspace({
           <p role="alert">Project setup could not load the departments and team directory.</p>
           <button type="button" className="secure-secondary" onClick={() => setEpoch(value => value + 1)}>Retry project setup</button>
         </div>}
-        <ProjectCreation key={editing === "new" ? "new" : editing.id + ":" + (editingDraft?.revision ?? 0)}
+        <ProjectCreation key={editing === "new" ? "new" : editing.id + ":" + editingDetail?.revision}
           project={editing === "new" ? undefined : editing} projects={allProjects} portfolio={portfolio}
           busy={busy || !page.revision || !portfolio} canPublish={workspace.canPublish === true}
           onDirty={() => setEditorDirty(true)} onCancel={() => {
@@ -550,13 +549,15 @@ export function ProjectStaffWorkspace({
               setNotice(publish ? "Project created and published." : "Project saved as a private draft.");
               return;
             }
-            const result = await client.call<{ draft?: ProjectDraftMetadata; changed: boolean }>(tenant, "projects/" + editing.id, {
-              method: "PATCH", body: { expectedRevision: page.revision, patch: project },
+            if (!editingDetail) return;
+            const result = await client.call<{ draft?: ProjectDraftMetadata; changed: boolean }>(tenant, "projects/" + editingDetail.project.id, {
+              method: "PATCH", body: { expectedRevision: editingDetail.revision, patch: project, ...(publish && { publish: true }) },
             });
             setEditorDirty(false);
             setEpoch(value => value + 1);
             if (editing.published) {
-              setNotice(result.draft ? "Draft saved. Clients still see the last approved version." : "No project changes to save.");
+              setNotice(result.changed && publish ? "Project changes published." :
+                result.draft ? "Draft saved. Clients still see the last approved version." : "No project changes to save.");
             } else {
               portalNavigate(nativeWorkspace ? { staff: "management", managed: editing.id, editor: null } : { editor: null }, true);
               setNotice(result.changed ? "Project changes saved." : "No project changes to save.");
@@ -565,13 +566,13 @@ export function ProjectStaffWorkspace({
         {editing !== "new" && <div className="secure-actions creation-related" aria-label="Project actions">
           <button type="button" className="secure-secondary" disabled={busy}
             onClick={() => { if (permit()) portalNavigate({ staff: "management", managed: editing.id, editor: null }); }}>Manage delivery progress</button>
-          {editing.published && editingDraft && <>
+          {editing.published && editingDetail && editingDraft && <>
             <button type="button" className="secure-secondary" disabled={busy || editorDirty}
               onClick={() => previewChanges(editing.id)}>Preview Changes</button>
             {workspace.canPublish && <button type="button" disabled={busy || editorDirty}
-              onClick={() => resolveDraft(editing.id, "publish")}>Publish Changes</button>}
+              onClick={() => resolveDraft(editingDetail, "publish")}>Publish Changes</button>}
             <button type="button" className="secure-secondary" disabled={busy || editorDirty}
-              onClick={() => resolveDraft(editing.id, "discard")}>Discard Draft</button>
+              onClick={() => resolveDraft(editingDetail, "discard")}>Discard Draft</button>
           </>}
         </div>}
       </> : !error && <p role="status">Loading project editor&hellip;</p>)}

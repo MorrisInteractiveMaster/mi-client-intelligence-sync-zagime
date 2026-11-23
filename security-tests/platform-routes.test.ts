@@ -7,7 +7,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { build } from "esbuild";
-import { chromium, firefox, webkit, type Browser } from "playwright";
+import { chromium, firefox, webkit, type Browser, type Page } from "playwright";
 import type { ReportingBackend } from "../server/backend";
 import { firebaseRuntime } from "../server/firebase";
 import { key } from "../server/firestore-store";
@@ -24,12 +24,13 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
   const projectId = "synthetic-delivery";
   const projectName = "Board reporting pilot";
   const month = "2026-11", previousMonth = "2026-10";
-  const now = Date.parse("2026-11-20T16:00:00Z");
+  let now = Date.parse("2026-11-20T16:00:00Z");
   await seedProjectSynthetic(runtime.db, tenant, true);
   const projectRef = root.collection("projects").doc(projectId);
   const backendProject: Project = {
     ...(await projectRef.get()).data() as Project, name: projectName, status: "active", published: true,
     description: "The approved November delivery summary.", internalNotes: "Private staff status discussion",
+    delivery: { kind: "project", type: "hourly", managerIds: [], teamIds: [], start: "2026-10-21", deadline: "2026-12-14", publishSummary: true },
   };
   const batch = runtime.db.batch();
   const parentId = "synthetic-planning";
@@ -122,6 +123,18 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     return { page, context };
   }
   const route = (path: string, extra = "") => origin + path + "?month=" + month + extra;
+  const editPath = "/workspace/projects/" + projectId;
+  async function reviewProjectEdit(page: Page, description: string) {
+    await page.goto(route(editPath));
+    const wizard = page.getByRole("form", { name: "Edit a project" });
+    const next = wizard.getByRole("button", { name: "Continue", exact: true });
+    await next.click();
+    await next.click();
+    await wizard.getByRole("textbox", { name: "Client-facing description" }).fill(description);
+    for (let step = 0; step < 3; step++) await next.click();
+    await wizard.getByRole("button", { name: "Save Draft", exact: true }).waitFor();
+    return wizard;
+  }
   try {
     mainBrowser = await chromium.launch({ headless: true,
       ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32"
@@ -237,6 +250,32 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     assert.equal(await staff.page.getByRole("link", { name: /Open Control Panel/ }).count(), 0);
     await staff.page.goto(route("/control/publication"));
     await staff.page.getByRole("heading", { name: "Access unavailable" }).waitFor();
+    const staffDraft = "Draft prepared by staff for publication review.";
+    const draftWizard = await reviewProjectEdit(staff.page, staffDraft);
+    assert.equal(await draftWizard.getByRole("button", { name: "Save & Publish", exact: true }).count(), 0);
+    await draftWizard.getByRole("button", { name: "Save Draft", exact: true }).click();
+    await staff.page.getByText("Draft saved. Clients still see the last approved version.", { exact: true }).waitFor();
+    assert.equal((await projectRef.get()).data()?.description, backendProject.description);
+    const pendingRef = root.collection("projectDrafts").doc(projectId);
+    const pending = (await pendingRef.get()).data()!;
+    assert.equal(pending.content.description, staffDraft);
+    const pendingRevision = (await root.get()).get("revision");
+    const projectApi = origin + "/api/v2/tenants/" + tenant + "/projects/" + projectId;
+    const patch = { name: projectName, description: staffDraft, internalNotes: backendProject.internalNotes,
+      status: "paused", progress: backendProject.progress, plan: backendProject.plan, delivery: backendProject.delivery };
+    const attemptPublication = (token: "owner" | "staff" | "client", expectedRevision: number) =>
+      staff.context.request.patch(projectApi, { headers: { authorization: "Bearer " + token },
+        data: { expectedRevision, patch, publish: true } });
+    const staffPublication = await attemptPublication("staff", pendingRevision);
+    assert.equal(staffPublication.status(), 403);
+    assert.deepEqual(await staffPublication.json(), { error: "publication_approval_required" });
+    assert.equal((await attemptPublication("client", pendingRevision)).status(), 403);
+    assert.equal((await attemptPublication("owner", pendingRevision - 1)).status(), 409);
+    await projectRef.update({ description: "Approved content changed independently." });
+    assert.equal((await attemptPublication("owner", pendingRevision)).status(), 409);
+    await projectRef.update({ description: backendProject.description });
+    assert.equal((await root.get()).get("revision"), pendingRevision);
+    assert.deepEqual((await pendingRef.get()).data(), pending);
     await staff.context.close();
 
     const client = await session(mainBrowser, "client");
@@ -406,6 +445,59 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     assert.equal((await root.collection("timeMappings").doc(key(account, mappedJob)).get()).get("scopeProjectId"), mappingAnchor);
     await timeOwner.context.close();
 
+    const publisher = await session(mainBrowser, "owner");
+    const staleEdit = await reviewProjectEdit(publisher.page, "This outdated edit should stay private.");
+    const openedRevision = (await root.get()).get("revision");
+    const concurrentSave = await publisher.context.request.patch(projectApi, {
+      headers: { authorization: "Bearer owner" },
+      data: { expectedRevision: openedRevision, patch: { ...patch, description: "A newer draft saved while the wizard was open." } },
+    });
+    assert.equal(concurrentSave.status(), 200);
+    const newerDraft = (await pendingRef.get()).data();
+    const submittedEdit = publisher.page.waitForRequest(request => request.method() === "PATCH" && request.url() === projectApi);
+    publisher.page.once("dialog", confirmation => confirmation.accept());
+    await staleEdit.getByRole("button", { name: "Save & Publish", exact: true }).click();
+    assert.equal((await submittedEdit).postDataJSON().expectedRevision, openedRevision);
+    await publisher.page.getByText("This record changed. Refresh before saving again.", { exact: true }).waitFor();
+    assert.deepEqual((await pendingRef.get()).data(), newerDraft);
+    assert.equal((await projectRef.get()).data()?.description, backendProject.description);
+    publisher.page.once("dialog", confirmation => confirmation.accept());
+    await staleEdit.getByRole("button", { name: "Cancel", exact: true }).click();
+    await publisher.page.waitForURL(route("/workspace/project-management/" + projectId));
+
+    const approvedDescription = "Published directly from the project setup wizard.";
+    const publishWizard = await reviewProjectEdit(publisher.page, approvedDescription);
+    const publishEdit = publishWizard.getByRole("button", { name: "Save & Publish", exact: true });
+    await publishEdit.waitFor();
+    const beforeWizardPublish = (await root.get()).get("revision");
+    await publishWizard.screenshot({ path: join(evidence, "edit-project-save-and-publish.png"), animations: "disabled" });
+    publisher.page.once("dialog", confirmation => confirmation.accept());
+    await publishEdit.click();
+    await publisher.page.getByText("Project changes published.", { exact: true }).waitFor();
+    const approvedEdit = (await projectRef.get()).data()!;
+    assert.equal(approvedEdit.description, approvedDescription);
+    assert.equal(approvedEdit.status, "paused", "unmodified fields from the draft are retained");
+    for (const field of ["start", "deadline", "publishSummary"] as const)
+      assert.equal(approvedEdit.delivery[field], backendProject.delivery![field], "the approved schedule stays intact");
+    const publishedDraft = (await pendingRef.get()).data()!;
+    assert.equal(publishedDraft.state, "published");
+    assert.equal("content" in publishedDraft, false);
+    assert.equal((await root.get()).get("revision"), beforeWizardPublish + 1);
+    const approvals = await root.collection("audits").where("entityId", "==", projectId).get();
+    const publishEvents = approvals.docs.map(event => event.data()).filter(event => event.action === "project-edited-and-published");
+    assert.equal(publishEvents.length, 1);
+    assert.equal(publishEvents[0].actor, "owner");
+    assert.equal(publishEvents[0].revision, beforeWizardPublish + 1);
+    const clientReport = await publisher.context.request.get(origin + "/api/v2/tenants/" + tenant + "/report?month=" + month, {
+      headers: { authorization: "Bearer client" },
+    });
+    assert.equal(clientReport.status(), 200);
+    const report = await clientReport.json();
+    assert.equal(report.projects.find((project: { id: string }) => project.id === projectId).description, approvedDescription);
+    assert.equal(report.hierarchy[projectId].start, backendProject.delivery!.start);
+    assert.doesNotMatch(JSON.stringify(report), /Private staff status discussion/);
+    await publisher.context.close();
+
     if (process.env.MI_SECURE_CROSS_BROWSER === "true") {
       for (const engine of [firefox, webkit]) {
         const mobileBrowser = await engine.launch({ headless: true });
@@ -423,6 +515,37 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
           await mobile.context.close();
         } finally { await mobileBrowser.close(); }
       }
+    }
+    const scheduled: Project = {
+      ...backendProject, id: "schedule-boundary-fixture", name: "Scheduled client delivery",
+      status: "planned",
+      delivery: { kind: "project", structure: 3, parentId, areaId: "hr", type: "hourly",
+        managerIds: [], teamIds: [], start: "2026-11-24", deadline: "2026-12-19", publishStartStatus: true },
+    };
+    const scheduleFixture = runtime.db.batch();
+    scheduleFixture.set(root.collection("projects").doc(scheduled.id), scheduled);
+    scheduleFixture.set(root.collection("projectViews").doc(scheduled.id), projectView(scheduled, 0));
+    scheduleFixture.update(root.collection("memberships").doc(key("client")), { projectIds: [projectId, parentId, scheduled.id] });
+    await scheduleFixture.commit();
+    const scheduledClient = await session(mainBrowser, "client");
+    try {
+      now = Date.parse("2026-11-24T05:59:59Z");
+      await scheduledClient.page.clock.setFixedTime(new Date(now));
+      await scheduledClient.page.goto(route("/clients/zagime/projects"));
+      const card = scheduledClient.page.getByRole("article").filter({
+        has: scheduledClient.page.getByRole("heading", { name: scheduled.name, exact: true }),
+      });
+      await card.getByText("Upcoming", { exact: true }).waitFor();
+      assert.doesNotMatch(await card.innerText(), /Start Nov|Expected completion Dec/);
+      await card.screenshot({ path: join(evidence, "project-before-regina-start.png"), animations: "disabled" });
+      now = Date.parse("2026-11-24T06:00:00Z");
+      await scheduledClient.page.clock.setFixedTime(new Date(now));
+      await scheduledClient.page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await card.getByText("In progress", { exact: true }).waitFor();
+      assert.doesNotMatch(await card.innerText(), /Start Nov|Expected completion Dec/);
+      await card.screenshot({ path: join(evidence, "project-at-regina-start.png"), animations: "disabled" });
+    } finally {
+      await scheduledClient.context.close();
     }
     assert.deepEqual(errors, []);
   } finally {

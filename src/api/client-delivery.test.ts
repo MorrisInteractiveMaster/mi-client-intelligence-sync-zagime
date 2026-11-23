@@ -59,11 +59,38 @@ test("upcoming changes at the start of the Regina date without mutating lifecycl
   assert.equal(pending.active, false);
   assert.equal(forProjectFilter(pending, "upcoming", 0), true);
   assert.equal(projectMeasures(project("Policy"), date, undefined, boundary).active, true);
+  const planned = project("Scheduled", 0, "planned");
+  assert.equal(projectMeasures(planned, date, undefined, before).upcoming, true);
+  const current = projectMeasures(planned, date, undefined, boundary);
+  assert.equal(forProjectFilter(current, "active", 0), true);
+  assert.equal(forProjectFilter(current, "planned", 0), false);
+  assert.equal(forProjectFilter(projectMeasures(planned, {}, undefined, boundary), "planned", 0), true);
+  assert.equal(projectMeasures(project("Paused", 0, "paused"), date, undefined, before).upcoming, false);
   assert.equal(projectMeasures(project("Paused", 0, "paused"), date, undefined, boundary).active, false);
   for (const terminal of ["completed", "closed", "cancelled"] as const) {
     assert.equal(projectMeasures(project(terminal, 0, terminal), date, undefined, before).upcoming, false);
   }
   assert.equal(projectMeasures(project("Archived"), date, { ...placement("Archived"), archived: true }, before).upcoming, false);
+});
+
+test("status-only schedule transitions keep dates private and update parent and department counts", () => {
+  const scheduled = project("Scheduled delivery", 0, "planned");
+  for (const phase of ["upcoming", "current"] as const) {
+    const fixture = report([project("parent"), scheduled], {
+      parent: { kind: "engagement" },
+      [scheduled.id]: { kind: "project", parentId: "parent", schedulePhase: phase },
+    }, [placement(scheduled.id)]);
+    const overview = clientDelivery(fixture, "2026-11-24");
+    const [item] = overview.projects;
+    assert.equal(item.start, undefined);
+    assert.equal(item.upcoming, phase === "upcoming");
+    assert.equal(item.active, phase === "current");
+    assert.equal(forProjectFilter(item, "planned", 0), false);
+    const counts = { all: 1, upcoming: Number(phase === "upcoming"), active: Number(phase === "current"), completed: 0, blocked: 0, near: 0 };
+    assert.deepEqual(overview.parentRows[0].counts, counts);
+    assert.deepEqual(overview.departmentRows.find(row => row.id === "hr")!.counts, counts);
+    assert.equal(item.project.status, "planned");
+  }
 });
 
 test("near-completion bounds and risk rankings use only approved progress, blockers and due dates", () => {

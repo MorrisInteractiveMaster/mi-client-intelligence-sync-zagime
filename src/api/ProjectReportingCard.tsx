@@ -35,14 +35,14 @@ export function ProjectReportPreview({ project, period }: { project: StaffProjec
 }
 
 export function ProjectReportingCard({ project, period, placement, team, onLink, detail, delivery, history, parent, department, descendantTotals }: Props) {
-  const { start, deadline, completion, upcoming, blocked, near, dueSoon, overdue, risk } = projectMeasures(project, delivery, placement, today());
+  const { start, deadline, completion, active, upcoming, blocked, near, dueSoon, overdue, risk } = projectMeasures(project, delivery, placement, today());
   const isManager = (id: string) => placement?.managerIds?.includes(id) || placement?.leadId === id;
   const managers = team.filter(member => isManager(member.id));
   const hours = project.workOrderEffort;
   const tone = blocked || overdue ? "risk" : project.status === "completed" ? "complete" : near ? "near" : dueSoon ? "warning" : undefined;
   return <article className="secure-card secure-published-project mi-project-card" data-progress-tone={tone}>
-    <p className="secure-badge" data-status={project.status}>
-      {placement?.archived ? "Archived" : upcoming ? "Upcoming" : projectStatus[project.status]}
+    <p className="secure-badge" data-status={active ? "active" : project.status}>
+      {placement?.archived ? "Archived" : upcoming ? "Upcoming" : projectStatus[active ? "active" : project.status]}
     </p>
     <h3>{project.name}</h3>
     {(parent || department) && <div className="mi-project-lineage">

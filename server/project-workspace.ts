@@ -42,7 +42,7 @@ import {
 import { sourceExportPageSize, type AllocationAnnotations, type PageQuery } from "../src/api/types";
 import type { Allocation } from "../src/reporting/model";
 import { portalSettings, type PlatformControl, type PortalSettings } from "../src/projects/control";
-import { capRollup, checkDeliveryStructure, deliveryDate, MAX_DELIVERY_PROJECTS, measureDelivery, type Delivery } from "../src/projects/delivery";
+import { calendarDate, capRollup, checkDeliveryStructure, deliveryDate, MAX_DELIVERY_PROJECTS, measureDelivery, type Delivery } from "../src/projects/delivery";
 
 /** Project operations require a verified named database and its tenant binding. */
 export class ProjectStore {
@@ -423,6 +423,7 @@ export class ProjectStore {
   ): Promise<ProjectReport> {
     checkMonth(month);
     const reportingThroughMonth = reportingTimeMonth(new Date(now));
+    const reginaDate = deliveryDate(new Date(now));
     return this.db.runTransaction(async (tx) => {
       const a = await this.access(tx, tenant, who);
       if (a.staff !== Boolean(preview)) throw Error("Forbidden");
@@ -544,6 +545,8 @@ export class ProjectStore {
       for (const project of projectDetails) {
         if (project?.delivery) delivery.set(project.id, project.delivery);
       }
+      const portfolio = publishedPortfolio(config, projects, month, history, delivery);
+      const placements = new Map(portfolio.placements.map(placement => [placement.id, placement]));
       const caps = capRollup(projects.map(project => ({ ...project, delivery: delivery.get(project.id) })));
       const hierarchy: NonNullable<ProjectReport["hierarchy"]> = Object.create(null);
       for (const project of projectDetails) {
@@ -551,14 +554,21 @@ export class ProjectStore {
         const publishedView = byId.get(project.id)!;
         if (!project.delivery) continue;
         const settings = project.delivery;
+        const placement = placements.get(project.id);
+        const schedulePhase = settings.publishStartStatus === true && !settings.publishSummary &&
+          !placement?.start && !placement?.archived && calendarDate(settings.start) &&
+          (publishedView.status === "planned" || publishedView.status === "active")
+          ? (settings.start > reginaDate ? "upcoming" : "current") : undefined;
         const cap = caps.get(project.id)!;
         const summary = measureDelivery({ ...publishedView, milestones: project.milestones?.filter(m => m.visible), delivery: settings },
-          cap, deliveryDate());
+          cap, reginaDate);
         hierarchy[project.id] = {
           ...(settings.blocker?.message ? { blocker: { active: settings.blocker.active, message: settings.blocker.message,
             ...(settings.blocker.resolvedOn && { resolvedOn: settings.blocker.resolvedOn }) } } : {}),
-          ...(settings.structure ? { kind: settings.kind } : {}),
+          // Unversioned engagement roots can still be parents of new delivery projects.
+          ...(settings.structure || (settings.kind === "engagement" && !settings.parentId) ? { kind: settings.kind } : {}),
           ...(settings.parentId && visibleIds.has(settings.parentId) ? { parentId: settings.parentId } : {}),
+          ...(schedulePhase && { schedulePhase }),
           ...(summary.completion !== undefined ? { completion: summary.completion } : {}),
           ...(settings.completedOn && { completedOn: settings.completedOn }),
           ...(settings.publishSummary ? {
@@ -570,7 +580,6 @@ export class ProjectStore {
           } : {}),
         };
       }
-      const portfolio = publishedPortfolio(config, projects, month, history, delivery);
       const totalSeconds = projects.reduce((n, p) => n + p.seconds, 0);
       const settings = portalSettings(a.meta.portalSettings);
       if (!Number.isSafeInteger(totalSeconds))

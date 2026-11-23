@@ -46,6 +46,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
 }) {
   const saved = project?.delivery;
   const legacy = Boolean(project && saved?.structure !== 3);
+  const canPublishNow = canPublish && (!project || project.published);
   const [step, setStep] = useState<Step>("identity");
   const [kind, setKind] = useState<Delivery["kind"]>(saved?.kind ?? (project ? "project" : "engagement"));
   const [name, setName] = useState(project?.name ?? "");
@@ -66,6 +67,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
   const [team, setTeam] = useState(saved?.teamIds ?? []);
   const [facilitators, setFacilitators] = useState(saved?.training?.facilitatorIds ?? []);
   const [publishSummary, setPublishSummary] = useState(saved?.publishSummary ?? false);
+  const [publishStartStatus, setPublishStartStatus] = useState(saved?.publishStartStatus ?? !project);
   const [error, setError] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
 
@@ -137,8 +139,9 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         checking = part;
         validate(part);
       }
-      const publish = !project && canPublish && (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "publish";
-      if (publish && !window.confirm("Create this project and publish its client-facing information to authorized clients?")) return;
+      const publish = canPublishNow && (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "publish";
+      if (publish && !window.confirm(project ? "Save these changes and publish them to authorized clients?" :
+        "Create this project and publish its client-facing information to authorized clients?")) return;
       const {
         start: _start, deadline: _deadline,
         monthlyCap: _monthly, lifetimeCap: _lifetime, training: sourceProgram, ...unchanged
@@ -158,6 +161,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         kind, type, managerIds: managers, teamIds: team,
         ...(!miscellaneous && kind === "project" && type === "hourly" ? { countAgainstParentCap: countForParent } : {}),
         ...(!miscellaneous && (publishSummary || saved?.publishSummary !== undefined) ? { publishSummary } : {}),
+        ...(publishStartStatus || saved?.publishStartStatus !== undefined ? { publishStartStatus } : {}),
         monthlyCap, lifetimeCap, training, ...schedule,
       };
       onSave({
@@ -180,7 +184,8 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
     <header className="creation-head">
       <div><p className="secure-eyebrow">{project?.published ? "Published project" : "Project setup"}</p>
         <h3>{project ? "Edit project" : "Create a project"}</h3></div>
-      {project?.published && <p>Changes are saved as a private draft for review.</p>}
+      {project?.published && <p>{canPublishNow ? "Save a private draft or publish these changes to authorized clients." :
+        "Changes are saved as a private draft for review."}</p>}
     </header>
     <ol className="creation-steps" aria-label="Project setup steps">{steps.map((item, index) =>
       <li key={item} aria-current={step === item ? "step" : undefined} data-completed={position > index || undefined}>
@@ -267,6 +272,10 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
           {!miscellaneous && reference.trim() && <div><dt>Work-order reference</dt><dd>{reference}</dd></div>}
           {!miscellaneous && description.trim() && <div><dt>Client description</dt><dd>{description}</dd></div>}
         </dl>
+        <label className="creation-checkbox">
+          <input type="checkbox" checked={publishStartStatus} onChange={event => change(setPublishStartStatus, event.target.checked)} />
+          Show Upcoming or In progress when the start date is private</label>
+        {!publishSummary && <p className="secure-muted">Clients see the status after publication. Date and hour cap access is controlled separately.</p>}
         {!miscellaneous && <label className="creation-checkbox">
           <input type="checkbox" checked={publishSummary} onChange={event => change(setPublishSummary, event.target.checked)} />
           Share schedule and hours caps with clients when published</label>}
@@ -280,8 +289,8 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         {position > 0 && <button type="button" className="secure-secondary" disabled={busy}
           onClick={() => { setStep(steps[position - 1]); setError(""); }}>Back</button>}
         {step === "review" ? <>
-          <button type="submit" className={!project && canPublish ? "secure-secondary" : undefined} disabled={busy}>{!project || project.published ? "Save Draft" : "Save Changes"}</button>
-          {!project && canPublish && <button type="submit" value="publish" disabled={busy}>Create &amp; Publish</button>}
+          <button type="submit" className={canPublishNow ? "secure-secondary" : undefined} disabled={busy}>{!project || project.published ? "Save Draft" : "Save Changes"}</button>
+          {canPublishNow && <button type="submit" value="publish" disabled={busy}>{project ? "Save & Publish" : "Create & Publish"}</button>}
         </> : <button type="submit" disabled={busy}>Continue</button>}
       </div>
     </div>

@@ -10,14 +10,16 @@ export type ClientProject = ReturnType<typeof projectMeasures>;
 export function projectMeasures(project: PublishedProject, delivery: PublishedDelivery | undefined,
   placement: PublishedPlacement | undefined, date: string) {
   const { status } = project;
-  const start = delivery?.start ?? placement?.start;
-  const deadline = delivery?.deadline ?? placement?.target;
+  const start = delivery?.start || placement?.start || undefined;
+  const deadline = delivery?.deadline || placement?.target || undefined;
   const completion = delivery?.completion ?? (!delivery && project.progress > 0 ? project.progress : undefined);
   const archived = Boolean(placement?.archived);
   const current = !archived && status !== "completed" && status !== "cancelled" && status !== "closed";
-  const upcoming = Boolean(current && start && start > date);
+  const schedulePhase = start ? (start > date ? "upcoming" : "current") : delivery?.schedulePhase;
+  const schedulable = current && (status === "planned" || status === "active");
+  const upcoming = schedulable && schedulePhase === "upcoming";
   const completed = status === "completed";
-  const active = current && !upcoming && status === "active";
+  const active = schedulable && !upcoming && (status === "active" || schedulePhase === "current");
   const blockedMilestone = project.milestones?.find(item => item.status === "blocked" && !item.blocker?.resolvedOn);
   const blocked = current && Boolean(delivery?.blocker?.active || blockedMilestone);
   const near = current && completion !== undefined && completion >= 70 && completion < 100;
@@ -46,7 +48,8 @@ export function forProjectFilter(project: ClientProject, filter: string, seconds
   if (filter === "all") return true;
   if (filter === "stalled") return Boolean(project.risk);
   if (filter === "hours") return seconds > 0;
-  if (filter === "planned" || filter === "paused") return !project.archived && !project.upcoming && project.project.status === filter;
+  if (filter === "planned" || filter === "paused")
+    return !project.archived && !project.upcoming && !project.active && project.project.status === filter;
   if (filter === "active" || filter === "upcoming" || filter === "completed" ||
     filter === "archived" || filter === "near" || filter === "blocked") return project[filter];
   return true;

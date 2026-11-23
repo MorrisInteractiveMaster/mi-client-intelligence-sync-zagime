@@ -129,6 +129,7 @@ export interface ProjectReport {
   historyByProject?: Record<string, PublishedPortfolio["history"]>;
   hierarchy?: Record<string, {
     parentId?: string; kind?: Delivery["kind"]; type?: Delivery["type"]; completion?: number; start?: string; deadline?: string;
+    schedulePhase?: "upcoming" | "current";
     monthlyCap?: number; lifetimeCap?: number; monthlyCapUsed?: number; lifetimeCapUsed?: number; managerIds?: string[];
     blocker?: { active: boolean; message: string; resolvedOn?: string };
     completedOn?: string;

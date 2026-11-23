@@ -19,7 +19,7 @@ import { readReportingRange } from "./reporting-period";
 import { reportingTimeMonth } from "../projects/time-history";
 import { CsvExport } from "./CsvExport";
 import { milestoneCsv, publishedProjectCsv, type CsvData } from "./report-csv";
-import { deliveryDefaults, rollup } from "../projects/delivery";
+import { deliveryDate, deliveryDefaults, rollup } from "../projects/delivery";
 import { isBoardRole } from "../projects/directory-role";
 import { clientDelivery, clientProjectFilters, forProjectFilter, type ProjectFilter } from "./client-delivery";
 import { DeliveryMetrics, ParentEngagementCard } from "./ClientDeliverySummary";
@@ -110,6 +110,21 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   const reportRequest = (preview ? "client-preview?" : "report?") + new URLSearchParams({
     month, ...(preview && { mode: preview.mode, ...(preview.scope && { scope: preview.scope }) }),
   });
+  useEffect(() => {
+    let reportDay = deliveryDate();
+    const refreshAfterMidnight = () => {
+      const day = deliveryDate();
+      if (day === reportDay) return;
+      reportDay = day;
+      setEpoch(value => value + 1);
+    };
+    const timer = window.setInterval(refreshAfterMidnight, 60_000);
+    document.addEventListener("visibilitychange", refreshAfterMidnight);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshAfterMidnight);
+    };
+  }, []);
   useEffect(() => {
     const abort = new AbortController();
     client
