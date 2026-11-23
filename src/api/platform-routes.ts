@@ -2,7 +2,7 @@ export const clientBase = "/clients/zagime";
 export const staffSegments = {
   overview: "", clients: "clients", projects: "projects", management: "project-management", hours: "time", directory: "team",
   milestones: "milestones", health: "delivery-health", preview: "preview", integrations: "integrations",
-  time: "integrations/time", portfolio: "portfolio", activity: "audit",
+  time: "integrations/time", mapping: "time/mapping", portfolio: "portfolio", activity: "audit",
 } as const;
 export type StaffSection = keyof typeof staffSegments;
 
@@ -17,13 +17,15 @@ type Destination = { kind: "home" } | { kind: "staff"; section: StaffSection; id
   { kind: "control"; section?: ControlSection } | { kind: "client"; slug: string; view?: string; presenting?: true };
 const id = (value: string | undefined): value is string => Boolean(value && /^[a-zA-Z0-9_-]{1,128}$/.test(value));
 const clientSections: Record<string, string> = {
-  overview: "", engagements: "engagements", areas: "service-areas", projects: "projects",
+  overview: "", engagements: "engagements", areas: "departments", projects: "projects",
   milestones: "milestones", directory: "team", history: "reports", notes: "updates",
 };
 const staffSections = new Map<string, StaffSection>(Object.entries(staffSegments).map(([section, segment]) => [segment, section as StaffSection]));
 const reportSections = new Map<string, string>(Object.entries(clientSections).map(([view, segment]) => [segment, view]));
-const detailSections = new Map([["project", "projects"], ["area", "service-areas"], ["contact", "team"], ["group", "engagements"]]);
+reportSections.set("service-areas", "areas");
+const detailSections = new Map([["project", "projects"], ["area", "departments"], ["contact", "team"], ["group", "engagements"]]);
 const detailKinds = new Map([...detailSections].map(([kind, section]) => [section, kind]));
+detailKinds.set("service-areas", "area");
 
 export function parsePlatformPath(path: string): Destination | undefined {
   if (!path.startsWith("/") || path.includes("//") || path.includes("\\")) return undefined;

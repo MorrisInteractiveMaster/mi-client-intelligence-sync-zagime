@@ -19,6 +19,7 @@ export type TimeMappingRecord = {
   projectId: string;
   scopeProjectId?: string;
   catalog?: string;
+  reviewedAttribution?: true;
   sourceJob?: TimeJobcode & { missing: boolean };
   sourceProject?: TimeProjectMetadata;
   verifiedSourceProjectId?: string;

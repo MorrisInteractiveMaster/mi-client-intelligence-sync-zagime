@@ -77,6 +77,22 @@ test("approved project CSV uses an allowlist and the latest approved projections
   assert.doesNotMatch(csv, /PRIVATE|internal-source-key|Unapproved edit|Unpublished project/);
 });
 
+test("approved CSV shows opted-in schedule status without exporting private dates", () => {
+  const project: ProjectReport["projects"][number] = {
+    id: "scheduled", name: "Approved delivery", schemaVersion: 2, status: "planned", progress: 0,
+    description: "", seconds: 0, lifetimeSeconds: 0, plan: { basis: "fixed", targetSeconds: 0 },
+  };
+  const report: ProjectReport = {
+    month: "2026-11", tenant: { id: "synthetic", name: "Fixture" }, totalSeconds: 0, projects: [project],
+  };
+  assert.equal(publishedProjectCsv(report, [project]).rows[0][4], "Planned");
+  for (const [schedulePhase, status] of [["upcoming", "Upcoming"], ["current", "In progress"]] as const) {
+    const [row] = publishedProjectCsv({ ...report, hierarchy: { scheduled: { schedulePhase } } }, [project]).rows;
+    assert.equal(row[4], status);
+    assert.deepEqual(row.slice(8), Array(6).fill(undefined));
+  }
+});
+
 test("a search can span empty scanned project pages without dropping later matches", async () => {
   const fixture = { id: "matching", name: "Matching project" } as NonNullable<import("../projects/model").ProjectPage["projects"]>[number];
   let calls = 0;

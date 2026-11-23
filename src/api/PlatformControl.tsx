@@ -1,3 +1,4 @@
+import { isZagimeClient } from "../config/client-identity";
 import { ArrowLeft, ArrowUpRight, ShieldCheck } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import type { ProjectPage, ProjectWorkspace, StaffProjectSummary } from "../projects/model";
@@ -83,7 +84,7 @@ export function PlatformControl({ client, workspace, section, month, onDenied, o
     const form = new FormData(event.currentTarget);
     const settings = {
       ...control.settings,
-      ...(section === "branding" ? { clientLabel: String(form.get("clientLabel")) } : {}),
+      ...(section === "branding" && !isZagimeClient(tenant) ? { clientLabel: String(form.get("clientLabel")) } : {}),
       ...(section === "presentation" ? { presentationTitle: String(form.get("presentationTitle")) } : {}),
       ...(section === "publication" ? { ownerPublishes: form.has("ownerPublishes") } : {}),
     };
@@ -145,8 +146,8 @@ export function PlatformControl({ client, workspace, section, month, onDenied, o
             onViewTime={userId => navigatePlatform(periodHref("/workspace/time", month, { consultant: userId, period: "all" }))} />}
           {["branding", "publication", "presentation"].includes(section) && <form key={section + "-" + control.revision} className="secure-form" onSubmit={save} onChange={() => setDirty(true)}>
             <h3>{title} settings</h3>
-            {section === "branding" && <label title="The label does not change the underlying source customer or project permissions.">Client dashboard display label
-              <input maxLength={95} name="clientLabel" defaultValue={control.settings.clientLabel} placeholder={workspace.tenant.name} /></label>}
+            {section === "branding" && (isZagimeClient(tenant) ? <p>Client display name: {workspace.tenant.name}</p> : <label title="The label does not change the underlying source customer or project permissions.">Client dashboard display label
+              <input maxLength={95} name="clientLabel" defaultValue={control.settings.clientLabel} placeholder={workspace.tenant.name} /></label>)}
             {section === "presentation" && <label>Title on the opening presentation chapter
               <input maxLength={100} name="presentationTitle" defaultValue={control.settings.presentationTitle} placeholder={workspace.tenant.name} /></label>}
             {section === "publication" && <label className="secure-check"><input type="checkbox" name="ownerPublishes" defaultChecked={control.settings.ownerPublishes} /> Require a platform administrator to publish or unpublish</label>}

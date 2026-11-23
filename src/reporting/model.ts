@@ -1,3 +1,4 @@
+import { ZAGIME_CLIENT_DISPLAY_NAME } from "../config/client-identity";
 export interface Tenant {
   id: string;
   name: string;
@@ -489,7 +490,7 @@ export function persist(
 export function demo(): ReportingState {
   return {
     version: 2,
-    tenant: { id: "synthetic-zagime", name: "Zagimē Anishinabēk" },
+    tenant: { id: "synthetic-zagime", name: ZAGIME_CLIENT_DISPLAY_NAME },
     agreements: [
       {
         id: "agreement-demo",

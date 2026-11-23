@@ -1,3 +1,4 @@
+import { isZagimeClient, ZAGIME_CLIENT_DISPLAY_NAME } from "../config/client-identity";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ProjectPage, StaffProjectSummary } from "../projects/model";
 import type { Portfolio } from "../projects/portfolio";
@@ -154,18 +155,23 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       heading.current?.focus();
     }
   }, [editor?.id]);
+  const clientName = isZagimeClient(tenant) ? ZAGIME_CLIENT_DISPLAY_NAME : tenant;
   const draftAnnotations = { reportingDescription: annotations.reportingDescription, internalNote: annotations.internalNote,
     ...(parent ? { parentId: parent } : {}), ...(classification ? { areaId: classification } : {}) };
-  const defaultParent = (source: StaffSource) => source.sourceProjectId &&
-    projects.some(project => project.id === source.sourceProjectId && project.delivery?.structure === 2 && project.delivery.kind === "engagement")
-    ? source.sourceProjectId : "";
+  const defaultParent = (source: StaffSource) => {
+    const target = projects.find(project => project.id === (source.reportingProjectId ?? source.sourceProjectId));
+    if (target?.delivery?.kind === "engagement") return target.id;
+    return target?.delivery?.parentId ?? "";
+  };
+  const defaultDepartment = (source: StaffSource) =>
+    projects.find(project => project.id === source.reportingProjectId)?.delivery?.areaId ?? "";
   const priorAnnotations = editor?.annotations ?? blank;
   const dirty = Boolean(editor && (JSON.stringify(portions) !== JSON.stringify(editor.portions) ||
     draftAnnotations.reportingDescription !== priorAnnotations.reportingDescription ||
     draftAnnotations.internalNote !== priorAnnotations.internalNote || parent !== (priorAnnotations.parentId ?? defaultParent(editor)) ||
-    classification !== (priorAnnotations.areaId ?? "")));
+    classification !== (priorAnnotations.areaId ?? defaultDepartment(editor))));
   const notesOnly = Boolean(editor && !editor.needsReview && JSON.stringify(portions) === JSON.stringify(editor.portions) &&
-    parent === (priorAnnotations.parentId ?? defaultParent(editor)) && classification === (priorAnnotations.areaId ?? ""));
+    parent === (priorAnnotations.parentId ?? defaultParent(editor)) && classification === (priorAnnotations.areaId ?? (editor ? defaultDepartment(editor) : "")));
   useEffect(() => { onUnsavedChange?.(dirty); return () => { onUnsavedChange?.(false); }; }, [dirty, onUnsavedChange]);
   function edit(source: StaffSource) {
     editButton.current = document.activeElement as HTMLElement;
@@ -177,7 +183,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     setProjectSearch("");
     setParentSearch("");
     setParent(source.annotations?.parentId ?? defaultParent(source));
-    setClassification(source.annotations?.areaId ?? "");
+    setClassification(source.annotations?.areaId ?? defaultDepartment(source));
   }
   function close(force = false) {
     if (!force && dirty && !window.confirm("Discard unsaved allocation changes?")) return false;
@@ -360,7 +366,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     {summary && !linkedId && <>
       <p role="status">Scope · {scope.length ? scope.join(" · ") : summary.period.kind === "month" ? "Entire month" : periodLabel} · {summary.matched} {summary.matched === 1 ? "match" : "matches"} out of {summary.monthTotal} {summary.period.kind === "month" ? "month" : "period"} entries</p>
       <CsvExport label="Export time entries CSV"
-        filename={["Morris", tenant, "Time", applied.workOrder, applied.consultant,
+        filename={["Morris", clientName, "Time", applied.workOrder, applied.consultant,
           summary.period.kind === "month" ? appliedMonth : summary.period.start ?? "All_History",
           summary.period.kind === "month" ? undefined : summary.period.end].filter(Boolean).join("_")}
         scope={JSON.stringify([applied, appliedMonth, revision])} disabled={busy || !summary.matched} onDenied={onDenied}
@@ -369,7 +375,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
           for (const [name, value] of Object.entries(applied)) if (value) query.set(name, value);
           return sourceCsv(await allAuthorizedRows("sources", query, signal, authorizedPages(client, tenant)));
         }} />
-      <TimeHistorySummary summary={summary} filenamePrefix={["Morris", tenant, summary.period.start ?? "All_History", summary.period.end].filter(Boolean).join("_")} grouping={applied.group ?? "month"} busy={busy} onConsultant={id => {
+      <TimeHistorySummary summary={summary} filenamePrefix={["Morris", clientName, summary.period.start ?? "All_History", summary.period.end].filter(Boolean).join("_")} grouping={applied.group ?? "month"} busy={busy} onConsultant={id => {
         setConsultant(id); void load(undefined, { ...applied, consultant: id });
       }} onWorkOrder={id => {
         setWorkOrder(id); void load(undefined, { ...applied, workOrder: id });

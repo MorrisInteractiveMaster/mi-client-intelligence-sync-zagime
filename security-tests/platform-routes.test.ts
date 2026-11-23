@@ -1,3 +1,5 @@
+import { TimeClient } from "../server/time-client";
+import { TimeSync } from "../server/time-sync";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -5,7 +7,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { build } from "esbuild";
-import { chromium, firefox, webkit, type Browser } from "playwright";
+import { chromium, firefox, webkit, type Browser, type Page } from "playwright";
 import type { ReportingBackend } from "../server/backend";
 import { firebaseRuntime } from "../server/firebase";
 import { key } from "../server/firestore-store";
@@ -22,12 +24,13 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
   const projectId = "synthetic-delivery";
   const projectName = "Board reporting pilot";
   const month = "2026-11", previousMonth = "2026-10";
-  const now = Date.parse("2026-11-20T16:00:00Z");
+  let now = Date.parse("2026-11-20T16:00:00Z");
   await seedProjectSynthetic(runtime.db, tenant, true);
   const projectRef = root.collection("projects").doc(projectId);
   const backendProject: Project = {
     ...(await projectRef.get()).data() as Project, name: projectName, status: "active", published: true,
     description: "The approved November delivery summary.", internalNotes: "Private staff status discussion",
+    delivery: { kind: "project", type: "hourly", managerIds: [], teamIds: [], start: "2026-10-21", deadline: "2026-12-14", publishSummary: true },
   };
   const batch = runtime.db.batch();
   const parentId = "synthetic-planning";
@@ -60,14 +63,15 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     stdin: {
       contents: `import React, {useState} from "react"; import {createRoot} from "react-dom/client";
         import {PlatformApplication} from "./src/api/PlatformApplication"; import {SecuredApiClient} from "./src/api/client";
+        import {ThemeSelector,usePlatformTheme} from "./src/api/PlatformTheme"; import "./src/api/platform-theme.css";
         import {useReportingMonth} from "./src/api/portal-location";
         import "./src/reporting/nordic.css"; import "./src/api/secure.css"; import "./src/api/executive.css";
         import "./src/api/intelligence.css"; import "./src/api/delivery-operations.css"; import "./src/api/platform.css";
         const client=new SecuredApiClient(true, location.origin, async()=>window.__localPortalToken, undefined, undefined, "projects");
         const denied=()=>{document.getElementById("auth-status").textContent="Workspace unavailable."};
         function Portal({workspace}) {
-          const month=useReportingMonth("${month}"), [dirty,setDirty]=useState(false);
-          return <section className="nordic secure-shell platform-shell"><div id="auth-status" role="status"></div>
+          const {theme,change,appearance}=usePlatformTheme(); const month=useReportingMonth("${month}"), [dirty,setDirty]=useState(false);
+          return <section className="nordic secure-shell platform-shell" data-theme={appearance}><ThemeSelector theme={theme} onChange={change}/><div id="auth-status" role="status"></div>
             <PlatformApplication client={client} workspace={workspace} month={month} unsaved={dirty} onUnsavedChange={setDirty} onDenied={denied}/>
           </section>;
         }
@@ -82,7 +86,14 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
   await writeFile(join(directory, "index.html"), '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Client Intelligence</title><link rel="stylesheet" href="/platform.css"><body><div id="root"></div><script src="/platform.js" defer></script></body></html>');
   await cp(resolve("public/branding"), join(directory, "branding"), { recursive: true });
 
+  const timeStore = new ProjectStore(runtime.db, "owner");
+  const account = "97", customerParentId = "71", mappedJob = "109";
+  const time = new TimeSync(timeStore, {
+    tenant, account, customerParentId, admin: "owner", userId: "42",
+    clientUrl: "mi-fixture.tsheets.com", from: "2026-01-01",
+  }, new TimeClient(async () => { throw Error("Fixture makes no provider requests"); }));
   const options = {
+    time,
     frontend: directory,
     allowedOrigin: "",
     limit: new RequestLimit(10000),
@@ -112,6 +123,18 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     return { page, context };
   }
   const route = (path: string, extra = "") => origin + path + "?month=" + month + extra;
+  const editPath = "/workspace/projects/" + projectId;
+  async function reviewProjectEdit(page: Page, description: string) {
+    await page.goto(route(editPath));
+    const wizard = page.getByRole("form", { name: "Edit a project" });
+    const next = wizard.getByRole("button", { name: "Continue", exact: true });
+    await next.click();
+    await next.click();
+    await wizard.getByRole("textbox", { name: "Client-facing description" }).fill(description);
+    for (let step = 0; step < 3; step++) await next.click();
+    await wizard.getByRole("button", { name: "Save Draft", exact: true }).waitFor();
+    return wizard;
+  }
   try {
     mainBrowser = await chromium.launch({ headless: true,
       ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32"
@@ -122,6 +145,17 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await admin.page.getByRole("heading", { name: "Morris Interactive", exact: true }).waitFor();
     await admin.page.getByRole("link", { name: /Open Morris Workspace/ }).waitFor();
     await admin.page.screenshot({ path: join(evidence, "morris-home.png"), animations: "disabled" });
+    const appearance = admin.page.getByRole("combobox", { name: "Appearance" });
+    const themed = admin.page.locator(".platform-shell");
+    assert.equal(await appearance.inputValue(), "system");
+    await admin.page.emulateMedia({ colorScheme: "dark" });
+    await themed.locator(':scope[data-theme="dark"]').waitFor();
+    await admin.page.screenshot({ path: join(evidence, "morris-home-dark.png"), animations: "disabled" });
+    await appearance.selectOption("light");
+    await themed.locator(':scope[data-theme="light"]').waitFor();
+    await admin.page.reload();
+    await appearance.waitFor();
+    assert.equal(await appearance.inputValue(), "light");
     await admin.page.getByRole("link", { name: /Open Control Panel/ }).click();
     await admin.page.waitForURL(route("/control"));
     await admin.page.getByRole("heading", { name: /Administration for/ }).waitFor();
@@ -151,10 +185,11 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await admin.page.setViewportSize({ width: 1440, height: 1000 });
     await admin.page.getByRole("link", { name: "Back to Morris Workspace" }).click();
     await admin.page.waitForURL(route("/workspace"));
-    await admin.page.getByRole("link", { name: "View Zagimē Dashboard", exact: true }).first().waitFor();
+    await admin.page.getByRole("link", { name: /View .* Dashboard/, exact: false }).first().waitFor();
     await admin.page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
     await admin.page.getByText("20.75 h", { exact: true }).first().waitFor();
-    const createProject = admin.page.getByRole("button", { name: "Create Project", exact: true });
+    const createProject = admin.page.getByRole("region", { name: "Morris operating overview" })
+      .getByRole("button", { name: "Create Project", exact: true });
     await createProject.waitFor();
     assert.match(await createProject.evaluate(button => getComputedStyle(button).backgroundImage), /linear-gradient/);
     assert.ok((await createProject.boundingBox())!.height >= 44);
@@ -178,12 +213,17 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await menu.click();
     await drawer.getByRole("button", { name: "Project Management", exact: true }).click();
     await admin.page.waitForURL(route("/workspace/project-management"));
-    await admin.page.getByRole("combobox", { name: "Selected project" }).selectOption(projectId);
+    const projectPicker = admin.page.getByRole("combobox", { name: "Find a project" });
+    await projectPicker.fill(projectName);
+    await admin.page.getByRole("option", { name: projectName, exact: true }).waitFor();
+    await projectPicker.press("Enter");
     await admin.page.waitForURL(route("/workspace/project-management/" + projectId));
     const progress = admin.page.getByRole("form", { name: "Delivery progress" });
     await progress.getByRole("combobox", { name: "Delivery status" }).selectOption("paused");
-    await progress.getByRole("button", { name: "Save Progress" }).click();
-    await progress.getByText(/Progress saved to the draft/).waitFor();
+    await progress.getByRole("button", { name: "Save Draft" }).click();
+    await progress.getByText("Draft saved.", { exact: true }).waitFor();
+    assert.ok(await admin.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Project Management fits mobile");
+    assert.ok((await projectPicker.boundingBox())!.width >= 180, "the mobile project field stays readable");
     await admin.page.screenshot({ path: join(evidence, "project-management-mobile.png"), fullPage: true, animations: "disabled" });
     await admin.page.reload();
     await progress.getByRole("combobox", { name: "Delivery status" }).waitFor();
@@ -196,10 +236,10 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await search.getByRole("button", { name: /Regular Consulting fixture/ }).waitFor();
     await admin.page.keyboard.press("Escape");
     await admin.page.screenshot({ path: join(evidence, "project-management.png"), fullPage: true, animations: "disabled" });
-    await admin.page.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Projects", exact: true }).click();
-    await admin.page.getByRole("button", { name: "By Parent Engagement" }).click();
+    await admin.page.getByRole("link", { name: "Browse all projects", exact: true }).click();
+    await admin.page.getByRole("button", { name: "By Parent Project" }).click();
     await admin.page.getByRole("button", { name: "Open Regular Consulting fixture" }).click();
-    const engagement = admin.page.getByRole("region", { name: "Engagement overview" });
+    const engagement = admin.page.getByRole("region", { name: "Parent Project overview" });
     await engagement.getByText("20.75 h", { exact: true }).first().waitFor();
     await engagement.screenshot({ path: join(evidence, "parent-recorded-effort.png"), animations: "disabled" });
     await admin.context.close();
@@ -210,6 +250,32 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     assert.equal(await staff.page.getByRole("link", { name: /Open Control Panel/ }).count(), 0);
     await staff.page.goto(route("/control/publication"));
     await staff.page.getByRole("heading", { name: "Access unavailable" }).waitFor();
+    const staffDraft = "Draft prepared by staff for publication review.";
+    const draftWizard = await reviewProjectEdit(staff.page, staffDraft);
+    assert.equal(await draftWizard.getByRole("button", { name: "Save & Publish", exact: true }).count(), 0);
+    await draftWizard.getByRole("button", { name: "Save Draft", exact: true }).click();
+    await staff.page.getByText("Draft saved. Clients still see the last approved version.", { exact: true }).waitFor();
+    assert.equal((await projectRef.get()).data()?.description, backendProject.description);
+    const pendingRef = root.collection("projectDrafts").doc(projectId);
+    const pending = (await pendingRef.get()).data()!;
+    assert.equal(pending.content.description, staffDraft);
+    const pendingRevision = (await root.get()).get("revision");
+    const projectApi = origin + "/api/v2/tenants/" + tenant + "/projects/" + projectId;
+    const patch = { name: projectName, description: staffDraft, internalNotes: backendProject.internalNotes,
+      status: "paused", progress: backendProject.progress, plan: backendProject.plan, delivery: backendProject.delivery };
+    const attemptPublication = (token: "owner" | "staff" | "client", expectedRevision: number) =>
+      staff.context.request.patch(projectApi, { headers: { authorization: "Bearer " + token },
+        data: { expectedRevision, patch, publish: true } });
+    const staffPublication = await attemptPublication("staff", pendingRevision);
+    assert.equal(staffPublication.status(), 403);
+    assert.deepEqual(await staffPublication.json(), { error: "publication_approval_required" });
+    assert.equal((await attemptPublication("client", pendingRevision)).status(), 403);
+    assert.equal((await attemptPublication("owner", pendingRevision - 1)).status(), 409);
+    await projectRef.update({ description: "Approved content changed independently." });
+    assert.equal((await attemptPublication("owner", pendingRevision)).status(), 409);
+    await projectRef.update({ description: backendProject.description });
+    assert.equal((await root.get()).get("revision"), pendingRevision);
+    assert.deepEqual((await pendingRef.get()).data(), pending);
     await staff.context.close();
 
     const client = await session(mainBrowser, "client");
@@ -223,6 +289,10 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     assert.deepEqual(octoberReport.portfolio.history.filter((row: { month: string }) => row.month === "2026-11"),
       [{ month: "2026-11", seconds: 81900 }]);
     assert.equal(octoberReport.portfolio.history.some((row: { month: string }) => row.month === "2025-05"), false);
+    assert.deepEqual(octoberReport.historyByProject[projectId].find((row: { month: string }) => row.month === "2026-10"),
+      { month: "2026-10", seconds: 3600 });
+    assert.ok(Object.keys(octoberReport.historyByProject).every(id => octoberReport.projects.some((project: { id: string }) => project.id === id)));
+    assert.equal(Object.hasOwn(octoberReport.historyByProject, "private-history-fixture"), false);
     await client.page.goto(origin + reportRoute + "?month=2026-10");
     const monthControl = client.page.getByRole("combobox", { name: "Reporting month" });
     await monthControl.waitFor();
@@ -268,15 +338,18 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.waitForURL(route("/clients/zagime"));
     await client.page.getByRole("navigation", { name: "Client workspace" }).waitFor();
     await client.page.getByRole("heading", { name: /Leadership\s*summary/i }).waitFor();
-    const metricBorder = await client.page.locator(".mi-leadership-metric").evaluate(el => getComputedStyle(el).borderTopWidth);
-    assert.equal(metricBorder, "0px");
+    await client.page.getByLabel("All-time delivery projects", { exact: true }).getByText("All-time approved portfolio").waitFor();
     await client.page.screenshot({ path: join(evidence, "client-dashboard-native-overview.png"), fullPage: true, animations: "disabled" });
     await client.page.setViewportSize({ width: 768, height: 1024 });
     assert.ok(await client.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await client.page.screenshot({ path: join(evidence, "client-dashboard-tablet.png"), fullPage: true, animations: "disabled" });
+    await client.page.getByRole("navigation", { name: "Client workspace" }).getByRole("button", { name: "Projects", exact: true }).click();
+    await client.page.getByRole("heading", { name: "Published projects", exact: true }).waitFor();
+    await client.page.locator(".secure-published-project .secure-project-hours > div").first().waitFor();
     const narrowestTile = await client.page.locator(".secure-published-project .secure-project-hours > div")
       .evaluateAll(tiles => Math.min(...tiles.map(tile => tile.getBoundingClientRect().width)));
     assert.ok(Number.isFinite(narrowestTile) && narrowestTile >= 96, "tablet project metrics have readable columns");
-    await client.page.screenshot({ path: join(evidence, "client-dashboard-tablet.png"), fullPage: true, animations: "disabled" });
+    await client.page.screenshot({ path: join(evidence, "client-projects-tablet.png"), fullPage: true, animations: "disabled" });
     await client.page.setViewportSize({ width: 1440, height: 1000 });
     assert.equal(await client.page.getByRole("link", { name: /Morris Workspace|Control Panel/ }).count(), 0);
     for (const path of ["/workspace", "/control", "/clients/another-client", "/clients/another-client/present"]) {
@@ -339,6 +412,92 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.emulateMedia({ media: "screen" });
     await client.context.close();
 
+    const mappingAnchor = "time-" + key(account, mappedJob);
+    const timeCatalog = key("quickbooks-time-customer", account, customerParentId);
+    const setup = runtime.db.batch();
+    setup.set(root.collection("timeRuns").doc(timeCatalog), { customerBound: true, lastSuccess: new Date(now).toISOString() });
+    setup.set(root.collection("timeMappings").doc(key(account, mappedJob)), {
+      account, catalog: timeCatalog, jobcodeId: mappedJob, projectId: mappingAnchor, scopeProjectId: mappingAnchor,
+      sourceJob: { id: mappedJob, name: "Internal reporting and facilitation", parentId: customerParentId, active: true, missing: false },
+    });
+    setup.set(root.collection("timeProjectTotals").doc(mappingAnchor).collection("periods").doc(month), { recorded: 18900, allocated: 3600 });
+    setup.set(root.collection("timeProjectTotals").doc(mappingAnchor).collection("periods").doc("lifetime"), { recorded: 18900, allocated: 3600 });
+    setup.update(parentRef, { delivery: { kind: "engagement", structure: 3, type: "hourly", managerIds: [], teamIds: [] } });
+    await setup.commit();
+    const timeOwner = await session(mainBrowser, "owner");
+    await timeOwner.page.goto(route("/workspace/time/mapping"));
+    const mappingArea = timeOwner.page.getByRole("region", { name: "QuickBooks Time Mapping" });
+    await mappingArea.getByRole("button", { name: "Review mapping" }).click();
+    await mappingArea.getByRole("combobox", { name: "Work-order type" }).selectOption("engagement");
+    const target = mappingArea.getByRole("combobox", { name: "Reporting project" });
+    await target.fill("Regular Consulting");
+    await target.press("Enter");
+    await mappingArea.getByText(/4.25 h of source time/).waitFor();
+    assert.equal(await mappingArea.getByRole("button", { name: "Confirm mapping" }).isDisabled(), true);
+    await timeOwner.page.screenshot({ path: join(evidence, "quickbooks-time-mapping.png"), fullPage: true, animations: "disabled" });
+    await timeOwner.page.getByRole("combobox", { name: "Appearance" }).selectOption("dark");
+    await timeOwner.page.setViewportSize({ width: 390, height: 844 });
+    assert.ok(await timeOwner.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await timeOwner.page.screenshot({ path: join(evidence, "quickbooks-time-mapping-dark-390.png"), fullPage: true, animations: "disabled" });
+    await mappingArea.getByRole("checkbox", { name: "I reviewed the project and affected hours." }).check();
+    await mappingArea.getByRole("button", { name: "Confirm mapping" }).click();
+    await mappingArea.getByText(/Mapping saved/).waitFor();
+    assert.equal((await root.collection("timeMappings").doc(key(account, mappedJob)).get()).get("scopeProjectId"), mappingAnchor);
+    await timeOwner.context.close();
+
+    const publisher = await session(mainBrowser, "owner");
+    const staleEdit = await reviewProjectEdit(publisher.page, "This outdated edit should stay private.");
+    const openedRevision = (await root.get()).get("revision");
+    const concurrentSave = await publisher.context.request.patch(projectApi, {
+      headers: { authorization: "Bearer owner" },
+      data: { expectedRevision: openedRevision, patch: { ...patch, description: "A newer draft saved while the wizard was open." } },
+    });
+    assert.equal(concurrentSave.status(), 200);
+    const newerDraft = (await pendingRef.get()).data();
+    const submittedEdit = publisher.page.waitForRequest(request => request.method() === "PATCH" && request.url() === projectApi);
+    publisher.page.once("dialog", confirmation => confirmation.accept());
+    await staleEdit.getByRole("button", { name: "Save & Publish", exact: true }).click();
+    assert.equal((await submittedEdit).postDataJSON().expectedRevision, openedRevision);
+    await publisher.page.getByText("This record changed. Refresh before saving again.", { exact: true }).waitFor();
+    assert.deepEqual((await pendingRef.get()).data(), newerDraft);
+    assert.equal((await projectRef.get()).data()?.description, backendProject.description);
+    publisher.page.once("dialog", confirmation => confirmation.accept());
+    await staleEdit.getByRole("button", { name: "Cancel", exact: true }).click();
+    await publisher.page.waitForURL(route("/workspace/project-management/" + projectId));
+
+    const approvedDescription = "Published directly from the project setup wizard.";
+    const publishWizard = await reviewProjectEdit(publisher.page, approvedDescription);
+    const publishEdit = publishWizard.getByRole("button", { name: "Save & Publish", exact: true });
+    await publishEdit.waitFor();
+    const beforeWizardPublish = (await root.get()).get("revision");
+    await publishWizard.screenshot({ path: join(evidence, "edit-project-save-and-publish.png"), animations: "disabled" });
+    publisher.page.once("dialog", confirmation => confirmation.accept());
+    await publishEdit.click();
+    await publisher.page.getByText("Project changes published.", { exact: true }).waitFor();
+    const approvedEdit = (await projectRef.get()).data()!;
+    assert.equal(approvedEdit.description, approvedDescription);
+    assert.equal(approvedEdit.status, "paused", "unmodified fields from the draft are retained");
+    for (const field of ["start", "deadline", "publishSummary"] as const)
+      assert.equal(approvedEdit.delivery[field], backendProject.delivery![field], "the approved schedule stays intact");
+    const publishedDraft = (await pendingRef.get()).data()!;
+    assert.equal(publishedDraft.state, "published");
+    assert.equal("content" in publishedDraft, false);
+    assert.equal((await root.get()).get("revision"), beforeWizardPublish + 1);
+    const approvals = await root.collection("audits").where("entityId", "==", projectId).get();
+    const publishEvents = approvals.docs.map(event => event.data()).filter(event => event.action === "project-edited-and-published");
+    assert.equal(publishEvents.length, 1);
+    assert.equal(publishEvents[0].actor, "owner");
+    assert.equal(publishEvents[0].revision, beforeWizardPublish + 1);
+    const clientReport = await publisher.context.request.get(origin + "/api/v2/tenants/" + tenant + "/report?month=" + month, {
+      headers: { authorization: "Bearer client" },
+    });
+    assert.equal(clientReport.status(), 200);
+    const report = await clientReport.json();
+    assert.equal(report.projects.find((project: { id: string }) => project.id === projectId).description, approvedDescription);
+    assert.equal(report.hierarchy[projectId].start, backendProject.delivery!.start);
+    assert.doesNotMatch(JSON.stringify(report), /Private staff status discussion/);
+    await publisher.context.close();
+
     if (process.env.MI_SECURE_CROSS_BROWSER === "true") {
       for (const engine of [firefox, webkit]) {
         const mobileBrowser = await engine.launch({ headless: true });
@@ -348,7 +507,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
           const scene = mobile.page.getByRole("dialog");
           await scene.getByRole("heading", { name: "Historical Hours and Effort" }).waitFor();
           await scene.getByRole("img", { name: "Approved reported hours by month" }).waitFor();
-          await scene.getByRole("button", { name: /November 2026.*22.75 h/ }).waitFor();
+          await scene.getByRole("button", { name: /November 2026.*27 h/ }).waitFor();
           assert.equal(await mobile.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
           await mobile.page.screenshot({ path: join(evidence, "client-presentation-" + engine.name() + "-390.png"), animations: "disabled" });
           await scene.getByRole("button", { name: "Close presentation" }).click();
@@ -356,6 +515,37 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
           await mobile.context.close();
         } finally { await mobileBrowser.close(); }
       }
+    }
+    const scheduled: Project = {
+      ...backendProject, id: "schedule-boundary-fixture", name: "Scheduled client delivery",
+      status: "planned",
+      delivery: { kind: "project", structure: 3, parentId, areaId: "hr", type: "hourly",
+        managerIds: [], teamIds: [], start: "2026-11-24", deadline: "2026-12-19", publishStartStatus: true },
+    };
+    const scheduleFixture = runtime.db.batch();
+    scheduleFixture.set(root.collection("projects").doc(scheduled.id), scheduled);
+    scheduleFixture.set(root.collection("projectViews").doc(scheduled.id), projectView(scheduled, 0));
+    scheduleFixture.update(root.collection("memberships").doc(key("client")), { projectIds: [projectId, parentId, scheduled.id] });
+    await scheduleFixture.commit();
+    const scheduledClient = await session(mainBrowser, "client");
+    try {
+      now = Date.parse("2026-11-24T05:59:59Z");
+      await scheduledClient.page.clock.setFixedTime(new Date(now));
+      await scheduledClient.page.goto(route("/clients/zagime/projects"));
+      const card = scheduledClient.page.getByRole("article").filter({
+        has: scheduledClient.page.getByRole("heading", { name: scheduled.name, exact: true }),
+      });
+      await card.getByText("Upcoming", { exact: true }).waitFor();
+      assert.doesNotMatch(await card.innerText(), /Start Nov|Expected completion Dec/);
+      await card.screenshot({ path: join(evidence, "project-before-regina-start.png"), animations: "disabled" });
+      now = Date.parse("2026-11-24T06:00:00Z");
+      await scheduledClient.page.clock.setFixedTime(new Date(now));
+      await scheduledClient.page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await card.getByText("In progress", { exact: true }).waitFor();
+      assert.doesNotMatch(await card.innerText(), /Start Nov|Expected completion Dec/);
+      await card.screenshot({ path: join(evidence, "project-at-regina-start.png"), animations: "disabled" });
+    } finally {
+      await scheduledClient.context.close();
     }
     assert.deepEqual(errors, []);
   } finally {
