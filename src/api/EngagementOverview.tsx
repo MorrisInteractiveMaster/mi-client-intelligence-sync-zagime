@@ -2,8 +2,10 @@ import type { StaffProjectSummary } from "../projects/model";
 import { capRollup, measureDelivery, rollup } from "../projects/delivery";
 import { projectStatus, reportDay, reportHours, today } from "./dashboard-format";
 import { portalNavigate, usePortalLocation } from "./portal-location";
+import { CsvExport } from "./CsvExport";
+import { csvHours } from "./report-csv";
 
-export function EngagementOverview({ projects, onOpen }: { projects: StaffProjectSummary[]; onOpen: (id: string) => void }) {
+export function EngagementOverview({ projects, month, onOpen }: { projects: StaffProjectSummary[]; month?: string; onOpen: (id: string) => void }) {
   const location = usePortalLocation();
   const parent = projects.find(p => p.id === location.get("engagement"));
   const service = projects.find(p => p.id === location.get("service-area") && p.delivery?.parentId === parent?.id);
@@ -15,7 +17,12 @@ export function EngagementOverview({ projects, onOpen }: { projects: StaffProjec
   const roots = projects.filter(p => !p.delivery?.parentId &&
     (p.delivery?.kind === "engagement" || p.workOrderEffort || projects.some(child => child.delivery?.parentId === p.id)));
   if (!parent) return <section aria-label="Parent engagements">
-    <h3>Parent engagements</h3>
+    <div className="secure-section-heading"><h3>Parent engagements</h3>
+      <CsvExport filename={["Morris_Parent_Engagements", month].filter(Boolean).join("_")} label="Export engagements CSV"
+        data={{ headers: ["Engagement", "Work-order recorded hours", "Monthly reported hours", "Lifetime reported hours"],
+          rows: roots.map(p => [p.name, csvHours(p.workOrderEffort?.recordedSeconds), csvHours(effort.get(p.id)?.monthly),
+            csvHours(effort.get(p.id)?.lifetime)]) }} />
+    </div>
     {!roots.length && <p>No parent engagements or standalone work orders yet.</p>}
     <div className="secure-project-grid">{roots.map(p => <article className="secure-card" key={p.id}>
       <h4>{p.name}</h4><p>{reportHours(effort.get(p.id)?.monthly ?? 0)} h reported this month</p>
@@ -38,7 +45,18 @@ export function EngagementOverview({ projects, onOpen }: { projects: StaffProjec
       <button type="button" className="secure-secondary" onClick={() => portalNavigate({ engagement: null, "service-area": null })}>All engagements</button>
       {service && <button type="button" className="secure-secondary" onClick={() => portalNavigate({ "service-area": null })}>Back to {parent.name}</button>}
     </nav>
-    <h3>{service?.name ?? parent.name}</h3>
+    <div className="secure-section-heading"><h3>{service?.name ?? parent.name}</h3>
+      <CsvExport filename={["Morris", branch.name, month].filter(Boolean).join("_")}
+        label={service ? "Export service area CSV" : "Export engagement CSV"}
+        data={{ headers: ["Project", "Row type", "Reported hours", "Monthly cap hours", "Monthly cap used hours",
+          "Lifetime cap hours", "Lifetime cap used hours", "Delivery status", "Deadline"],
+          rows: [[branch.name, "Branch total", csvHours(effort.get(branch.id)?.monthly), csvHours(branch.delivery?.monthlyCap),
+            csvHours(cap.monthly), csvHours(branch.delivery?.lifetimeCap), csvHours(cap.lifetime),
+            projectStatus[branch.status], branch.delivery?.deadline],
+            ...branchProjects.map(p => [p.name, "Project", csvHours(p.seconds), csvHours(p.delivery?.monthlyCap),
+              csvHours(consumption.get(p.id)?.monthly), csvHours(p.delivery?.lifetimeCap), csvHours(consumption.get(p.id)?.lifetime),
+              projectStatus[p.status], p.delivery?.deadline])] }} />
+    </div>
     <dl className="secure-metrics">
       <div><dt>Work-order recorded</dt><dd>{reportHours(parent.workOrderEffort?.recordedSeconds ?? 0)} h</dd></div>
       <div><dt>Reported effort for branch</dt><dd>{reportHours(effort.get(branch.id)?.monthly ?? 0)} h</dd></div>

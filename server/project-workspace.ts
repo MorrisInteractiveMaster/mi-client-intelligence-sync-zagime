@@ -1,3 +1,4 @@
+import { reportingTimeMonth } from "../src/projects/time-history";
 import { readSourcePage } from "./source-page";
 import { readWorkOrderEffort, timeProjectTotal, type TimeTotals } from "./time-totals";
 import { portfolioLimits, previousReportingMonth, type PortfolioSection, type PortfolioTotals, type WordPressProfile } from "../src/projects/portfolio";
@@ -36,7 +37,7 @@ import {
   type ProjectView,
   type StaffProjectDetail,
 } from "../src/projects/model";
-import type { AllocationAnnotations, PageQuery } from "../src/api/types";
+import { sourceExportPageSize, type AllocationAnnotations, type PageQuery } from "../src/api/types";
 import type { Allocation } from "../src/reporting/model";
 import { portalSettings, type PlatformControl, type PortalSettings } from "../src/projects/control";
 import { capRollup, checkDeliveryStructure, deliveryDate, MAX_DELIVERY_PROJECTS, measureDelivery, type Delivery } from "../src/projects/delivery";
@@ -369,8 +370,10 @@ export class ProjectStore {
     who: VerifiedIdentity,
     month: string,
     preview?: { mode: "published" | "draft"; scope?: string },
+    now = Date.now(),
   ): Promise<ProjectReport> {
     checkMonth(month);
+    const reportingThroughMonth = reportingTimeMonth(new Date(now));
     return this.db.runTransaction(async (tx) => {
       const a = await this.access(tx, tenant, who);
       if (a.staff !== Boolean(preview)) throw Error("Forbidden");
@@ -443,28 +446,37 @@ export class ProjectStore {
           ...(hours.lifetimeRecordedSeconds || hours.recordedSeconds ? { workOrderEffort: hours } : {}),
         };
       });
-      const historicalMonths: string[] = [];
-      for (let prior = previousReportingMonth(month); prior && historicalMonths.length < 5; prior = previousReportingMonth(prior))
-        historicalMonths.unshift(prior);
-      const historyFloor = String(Math.max(1000, Number(month.slice(0, 4)) - 10)) + month.slice(4);
+      // The trend uses a rolling reporting window independent of the selected detail month.
+      // Tenant-wide month documents locate potential buckets only. Returned amounts come
+      // exclusively from the already authorized projects.
+      const recent = new Set<string>([reportingThroughMonth]);
+      for (let prior = previousReportingMonth(reportingThroughMonth); prior && recent.size < 6; prior = previousReportingMonth(prior))
+        recent.add(prior);
+      const historyFloor = String(Math.max(1000, Number(reportingThroughMonth.slice(0, 4)) - 10)) + reportingThroughMonth.slice(4);
       const timeMonths = visible.length ? await tx.get(a.root.collection("timeMonthlyTotals")
-        .where(FieldPath.documentId(), ">=", historyFloor).where(FieldPath.documentId(), "<", month)
+        .where(FieldPath.documentId(), ">", historyFloor).where(FieldPath.documentId(), "<=", reportingThroughMonth)
         .orderBy(FieldPath.documentId()).limit(120)) : undefined;
-      const recent = new Set(historicalMonths);
-      const months = [...new Set([...historicalMonths, ...(timeMonths?.docs.map(doc => doc.id) ?? [])])].sort();
+      const months = [...new Set([...recent, ...(timeMonths?.docs.map(doc => doc.id) ?? [])])].sort()
+        .filter(candidate => candidate !== month);
       const history: { month: string; seconds: number }[] = [];
-      for (const prior of months) {
-        const documents = visible.length ? await tx.getAll(...visible.flatMap(v => [
-          a.root.collection("projectPeriods").doc(key(prior, v.id)), timeProjectTotal(a.root, v.id, prior),
-        ])) : [];
-        const seconds = visible.reduce((total, view, index) => {
-          const fact = (documents[index * 2 + 1].data() as TimeTotals | undefined) ?? { recorded: 0, allocated: 0 };
-          const remainder = fact.recorded - fact.allocated;
-          if (!Number.isSafeInteger(remainder) || remainder < 0) throw Error("Invalid reporting summary");
-          return total + periodSeconds(documents[index * 2], view.id, prior) + remainder;
-        }, 0);
-        if (!Number.isSafeInteger(seconds)) throw Error("Invalid reporting summary");
-        if (seconds || recent.has(prior)) history.push({ month: prior, seconds });
+      const refsPerMonth = visible.length * 2;
+      const pageSize = Math.max(1, Math.floor(500 / Math.max(1, refsPerMonth)));
+      for (let offset = 0; offset < months.length; offset += pageSize) {
+        const page = months.slice(offset, offset + pageSize);
+        const documents = visible.length ? await tx.getAll(...page.flatMap(period => visible.flatMap(v => [
+          a.root.collection("projectPeriods").doc(key(period, v.id)), timeProjectTotal(a.root, v.id, period),
+        ]))) : [];
+        page.forEach((period, pageIndex) => {
+          const seconds = visible.reduce((total, view, index) => {
+            const position = pageIndex * refsPerMonth + index * 2;
+            const fact = (documents[position + 1].data() as TimeTotals | undefined) ?? { recorded: 0, allocated: 0 };
+            const remainder = fact.recorded - fact.allocated;
+            if (!Number.isSafeInteger(remainder) || remainder < 0) throw Error("Invalid reporting summary");
+            return total + periodSeconds(documents[position], view.id, period) + remainder;
+          }, 0);
+          if (!Number.isSafeInteger(seconds)) throw Error("Invalid reporting summary");
+          if (seconds || recent.has(period)) history.push({ month: period, seconds });
+        });
       }
       const config = await readPortfolio(tx, a.root);
       const delivery: Map<string, Delivery> = new Map();
@@ -505,6 +517,7 @@ export class ProjectStore {
       return {
         tenant: { id: tenant, name: settings.clientLabel || a.meta.name },
         month,
+        reportingThroughMonth,
         totalSeconds,
         ...(settings.presentationTitle ? { presentationTitle: settings.presentationTitle } : {}),
         projects,
@@ -561,7 +574,8 @@ export class ProjectStore {
     )
       throw Error("Invalid project search");
     const search = query.search?.trim().normalize("NFKC").toLowerCase() ?? "";
-    if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > 25)
+    const pageLimit = resource === "sources" && query.sourceExport ? sourceExportPageSize : 25;
+    if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > pageLimit)
       throw Error("Invalid page limit");
     return this.db.runTransaction(async (tx) => {
       const a = await this.access(tx, tenant, who);
@@ -769,7 +783,7 @@ export class ProjectBackend {
     return this.store.control(tenant, await this.identity(token), update, this.policy.now());
   }
   async report(token: string, tenant: string, month: string, preview?: { mode: "published" | "draft"; scope?: string }) {
-    return this.store.report(tenant, await this.identity(token), month, preview);
+    return this.store.report(tenant, await this.identity(token), month, preview, this.policy.now());
   }
   async previewScopes(token: string, tenant: string) {
     return this.store.previewScopes(tenant, await this.identity(token));

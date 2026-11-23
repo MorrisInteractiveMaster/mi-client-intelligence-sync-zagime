@@ -8,6 +8,7 @@ test("addressable client and staff routes decode only declared resources and saf
   assert.deepEqual(parsePlatformPath("/"), { kind: "home" });
   assert.deepEqual(parsePlatformPath("/workspace"), { kind: "staff", section: "overview" });
   assert.deepEqual(parsePlatformPath("/workspace/projects/stable_project-1"), { kind: "staff", section: "projects", id: "stable_project-1" });
+  assert.deepEqual(parsePlatformPath("/workspace/project-management/stable_project-1"), { kind: "staff", section: "management", id: "stable_project-1" });
   assert.deepEqual(parsePlatformPath("/workspace/time/time-1"), { kind: "staff", section: "hours", id: "time-1" });
   assert.deepEqual(parsePlatformPath("/workspace/milestones/project-1/ms-01"), { kind: "staff", section: "milestones", id: "project-1", item: "ms-01" });
   assert.deepEqual(parsePlatformPath("/clients/zagime/projects/stable_project-1/milestones/ms-01"),
@@ -31,4 +32,5 @@ test("native routes keep selection, scope and period while legacy URLs stay vali
   assert.equal(routeHref(slide, { present: null }), "/clients/zagime/projects/p?month=2026-11&previewMode=draft");
   assert.equal(routeHref(visit("/workspace/milestones?month=2026-11"), { milestone: "p:ms" }), "/workspace/milestones/p/ms?month=2026-11");
   assert.equal(routeParameters(visit("/workspace/milestones/p/ms?milestone=forged")).get("milestone"), "p:ms");
+  assert.equal(routeHref(visit("/workspace/project-management?month=2026-10"), { managed: "id-1" }), "/workspace/project-management/id-1?month=2026-10");
 });

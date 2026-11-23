@@ -114,6 +114,7 @@ export interface ProjectWorkspace {
 }
 export interface ProjectReport {
   month: string;
+  reportingThroughMonth?: string;
   tenant: { id: string; name: string };
   totalSeconds: number;
   sourceUpdatedAt?: string;

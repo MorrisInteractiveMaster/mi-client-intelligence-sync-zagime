@@ -1,0 +1,214 @@
+/* Native Morris and Zagimē application surfaces. Legacy hash routes keep their layout. */
+.nordic.secure-shell.platform-shell {
+  --mi-ink: #112537;
+  --mi-muted: #4c5f71;
+  --mi-line: #dce4e9;
+  --mi-background: #f3f5f4;
+  --mi-surface: #fff;
+  --mi-navy: #0d243a;
+  --mi-accent: #ecce63;
+  --mi-action: linear-gradient(112deg,#102c49,#245983 67%,#20486d);
+  --mi-shadow: 0 10px 24px #142b4510;
+  --mi-radius: 16px;
+  --mi-space: 8px;
+  max-width: 1600px;
+  color: var(--mi-ink);
+  background: var(--mi-background);
+  font-family: "DM Sans Variable", "DM Sans", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  padding-inline: clamp(12px, 3vw, 46px);
+}
+.platform-shell :is(button, input, select, textarea) { font: inherit; }
+.platform-shell :is(h1, h2, h3, h4, dt, dd, td, th, label) { overflow-wrap: anywhere; }
+.nordic.secure-shell.platform-shell :is(a,button,input,select,textarea,summary):focus-visible {
+  outline: 3px solid #276a9c;
+  outline-offset: 3px;
+}
+.nordic.secure-shell.platform-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog,.platform-hero,.platform-sign-in,.exec-dialog-pane)
+  :is(a,button,input,select,textarea,summary):focus-visible { outline-color: #efdb85; }
+.nordic.secure-shell.platform-shell .secure-masthead { min-height: 70px; margin: 0; padding: 10px 0; gap: 12px; }
+.platform-shell .secure-masthead .secure-brandmarks { align-items: center; }
+.platform-shell .secure-identity h1 { font-size: clamp(1rem,2vw,1.25rem); line-height: 1.2; }
+.platform-shell .platform-context { border: 0; border-top: 1px solid var(--mi-line); padding-block: 4px; gap: 4px 16px; }
+.platform-shell .platform-context a { text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.platform-shell .mi-account { margin-inline-start: auto; position: relative; z-index: 7; }
+.platform-shell .mi-account summary { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 700; padding: 6px 12px; border-radius: 10px; background: white; }
+.mi-account-menu { position: absolute; inset-inline-end: 0; top: calc(100% + 6px); padding: 12px; min-width: 12rem; border: 1px solid #dce4e9; background: white; border-radius: 12px; box-shadow: 0 8px 24px #11253724; }
+.mi-account-menu p { margin: 0 0 8px; }
+.platform-shell .mi-page-heading { min-width: 0; margin: 0 0 19px; }
+.platform-shell .mi-page-heading h2 { margin: 4px 0; color: var(--mi-ink); font-size: clamp(1.75rem, 3.25vw, 3rem); line-height: 1.06; letter-spacing: -.046em; }
+.mi-page-heading p { margin: 0; color: var(--mi-muted); }
+.mi-page-heading .mi-kicker { color: #365777; font-size: .76rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.mi-workspace-frame { display: grid; grid-template-columns: 216px minmax(0,1fr); align-items: start; gap: clamp(14px,2vw,27px); transition: grid-template-columns .2s ease; margin-top: 12px; }
+.mi-workspace-frame[data-collapsed="true"] { grid-template-columns: 64px minmax(0,1fr); }
+.mi-workspace-body { min-width: 0; }
+.mi-workspace-sidebar, .mi-navigation-dialog {
+  background: linear-gradient(155deg,#112e49,#091c30 85%);
+  color: #f2f7fe;
+  border-radius: var(--mi-radius,16px);
+}
+.mi-workspace-sidebar { position: sticky; inset-block-start: 10px; max-height: calc(100dvh - 24px); overflow: auto; scrollbar-width: thin; padding: 10px; }
+.mi-sidebar-heading { display: flex; justify-content: space-between; align-items: center; padding: 3px 0 5px 7px; font-size: .86rem; font-weight: 750; }
+.mi-nav-group + .mi-nav-group { margin-top: 10px; border-top: 1px solid #53738b5e; padding-top: 8px; }
+.mi-nav-group p { margin: 5px 8px; font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .095em; color: #adc2d9; }
+.nordic.secure-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog) button {
+  display: flex; width: 100%; justify-content: flex-start; align-items: center; gap: 9px; padding: 8px 9px; min-height: 44px; border: 1px solid transparent;
+  background: transparent; color: #e8f2fb; border-radius: 9px; box-shadow: none; font-size: .86rem; text-align: start; transition: background-color .16s ease;
+}
+.nordic.secure-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog) button:is(:hover,[aria-current="page"]) { background: #254b6e; }
+.nordic.secure-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog) button[aria-current="page"] {
+  background: linear-gradient(100deg,#ecd064,#f8e497); color: #172533; font-weight: 800;
+}
+.nordic.secure-shell .mi-workspace-sidebar button.mi-collapse { min-height: 40px; width: auto; }
+.mi-nav-jump { margin-inline-start: auto; width: 13px; opacity: .7; }
+.mi-workspace-frame[data-collapsed="true"] :is(.mi-sidebar-heading span,.mi-workspace-sidebar .mi-nav-group span,.mi-workspace-sidebar .mi-nav-group p,.mi-workspace-sidebar .mi-nav-jump) { display: none; }
+.mi-workspace-frame[data-collapsed="true"] .mi-sidebar-heading { padding-inline-start: 0; justify-content: center; }
+.nordic.secure-shell .mi-workspace-frame[data-collapsed="true"] .mi-workspace-sidebar button { justify-content: center; }
+.mi-workspace-tools { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 0 0 12px; }
+.nordic.secure-shell .mi-workspace-tools button { min-height: 44px; display: inline-flex; align-items: center; gap: 7px; }
+.mi-workspace-tools svg,.mi-dialog-heading svg { width: 18px; height: 18px; }
+.mi-workspace-tools kbd { font: inherit; font-size: .74rem; padding: 0 4px; border: 1px solid var(--mi-line,#dce4e9); border-radius: 4px; }
+.nordic.secure-shell button.mi-mobile-navigation { display: none; }
+.mi-navigation-dialog,.mi-search-dialog { max-width: min(94vw, 36rem); width: 100%; max-height: 90dvh; overflow: auto; padding: 16px; border: 0; }
+.mi-search-dialog { border-radius: 16px; color: #112537; box-shadow: 0 15px 40px #091c3055; }
+.mi-search-dialog label { display: grid; gap: 6px; font-weight: 700; }
+.mi-search-dialog input { width: 100%; }
+.mi-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.nordic.secure-shell .mi-dialog-heading button { width: 44px; min-height: 44px; justify-content: center; flex: 0 0 44px; }
+.mi-dialog-heading h2 { font-size: 1.27rem; margin: 0; color: inherit; }
+.mi-search-dialog ul { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 5px; }
+.nordic.secure-shell .mi-search-dialog li button { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: start; }
+.mi-navigation-dialog::backdrop,.mi-search-dialog::backdrop { background: #10253ba3; }
+.nordic.secure-shell .mi-operation-metrics { grid-template-columns: repeat(auto-fit,minmax(min(100%,139px),1fr)); gap: 8px; margin: 14px 0; }
+.nordic.secure-shell .mi-operation-metrics > div { padding: 11px 12px; border-radius: 12px; background: white; border: 0; box-shadow: inset 0 0 0 1px #e7edf0; }
+.nordic.secure-shell .mi-operation-metrics > div[data-featured="true"] { background: linear-gradient(115deg,#102c49,#28557c); color: #fff; box-shadow: none; }
+.nordic.secure-shell .mi-operation-metrics > div[data-featured="true"] :is(dt,dd) { color: inherit; }
+.nordic.secure-shell .mi-operation-metrics dt { font-size: .77rem; font-weight: 650; }
+.nordic.secure-shell .mi-operation-metrics dd { font-size: clamp(1rem,1.6vw,1.55rem); line-height: 1.18; }
+.mi-operations-trend { min-width: 0; padding: clamp(12px,2vw,21px); margin: 15px 0; background: white; border-radius: 16px; box-shadow: var(--mi-shadow,0 10px 24px #142b4510); }
+.mi-operations-trend header { display: flex; gap: 10px; align-items: center; }
+.mi-chart-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: #e7f0f7; color: #2a5a84; flex: 0 0 40px; }
+.mi-operations-trend h3,.mi-operations-trend header p { margin: 0; }
+.mi-operations-trend p { color: #4c5f71; }
+.mi-operations-trend ol { display: grid; grid-auto-columns: minmax(56px,1fr); grid-auto-flow: column; align-items: end; gap: 5px; margin: 15px 0 10px; padding: 3px 4px; overflow-x: auto; list-style: none; border-bottom: 1px solid #dce4e9; }
+.nordic.secure-shell .mi-operations-trend li button { display: grid; grid-template-rows: 1.1rem 78px 1.1rem; align-items: end; justify-items: center; border: 0; width: 100%; background: #f3f6f8; color: #1b3851; border-radius: 8px 8px 0 0; padding: 6px 2px; font-size: .74rem; }
+.nordic.secure-shell .mi-operations-trend li button:hover { background: #e4edf5; }
+.mi-operations-trend li i { display: block; width: min(65%,54px); min-height: 1px; background: linear-gradient(180deg,#5b89ad,#245478); border-radius: 5px 5px 0 0; }
+:is(.mi-operations-trend summary,.mi-operations-trend > p) { font-size: .82rem; }
+.mi-operations-trend :is(summary, > p) svg { vertical-align: text-bottom; }
+.mi-operations-trend td:last-child { text-align: end; }
+.platform-shell .platform-overview-figures li { gap: 10px; }
+.platform-shell .platform-overview-figures li span { text-align: end; }
+.nordic.secure-shell .platform-shell :is(input,select,textarea), .platform-shell :is(input,select,textarea) { min-width: 0; max-width: 100%; }
+.nordic.secure-shell.platform-shell .secure-card.secure-published-project { display: flex; flex-direction: column; align-items: stretch; min-width: 0; border-color: #e1e9ee; }
+.platform-shell .secure-published-project .secure-badge { align-self: flex-start; }
+.platform-shell .secure-published-project .intel-open-project { align-self: flex-start; margin-top: auto; }
+.nordic.secure-shell.platform-shell .delivery-watermark { position: sticky; top: 4px; z-index: 4; width: max-content; max-width: 100%; margin: 7px auto; border-radius: 8px; padding: 4px 10px; font-size: .69rem; letter-spacing: .05em; background: #faf1cc; border-color: #c0a54d; color: #352c1b; box-shadow: var(--mi-shadow); }
+@media (max-width: 860px) {
+  .mi-workspace-frame,.mi-workspace-frame[data-collapsed="true"] { display: block; }
+  .mi-workspace-sidebar { display: none; }
+  .mi-workspace-tools { justify-content: space-between; }
+  .nordic.secure-shell button.mi-mobile-navigation { display: inline-flex; }
+  .mi-workspace-tools kbd { display: none; }
+  .mi-navigation-dialog { margin: 0; height: 100dvh; max-height: 100dvh; border-radius: 0 16px 16px 0; width: min(90vw,290px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mi-workspace-frame,.mi-workspace-frame * { transition-duration: 0s !important; }
+}
+.nordic.secure-shell.platform-shell .mi-home-stage {
+  min-height: clamp(245px,36vh,420px); align-content: center;
+  background: linear-gradient(90deg,#0c233ae6 22%,#15324d9a 58%,#102b4910),
+    url("/branding/intelligence/delivery-background.webp") 65% center / cover no-repeat #0c233a;
+  padding: clamp(23px,5vw,67px); border-radius: 22px;
+}
+.mi-home-stage-content > span { color: #f3da79; font-size: .77rem; font-weight: 800; letter-spacing: .085em; text-transform: uppercase; }
+.nordic.secure-shell .mi-home-stage h2 { font-size: clamp(2.3rem,6vw,5rem); margin-block: 8px; }
+.mi-home-stage-content > p { color: #e6f0f8; margin: 0 0 18px; }
+.nordic.secure-shell .mi-home-primary {
+  min-height: 44px; display: inline-flex; align-items: center; gap: 12px;
+  padding: 8px 15px; border-radius: 10px; background: linear-gradient(100deg,#eacf69,#f6e49c);
+  color: #162837; font-weight: 800; text-decoration: none; transition: filter .18s ease;
+}
+.nordic.secure-shell .mi-home-primary:hover { filter: brightness(1.07); }
+.platform-shell .platform-destinations { margin: 14px 0; gap: 10px; }
+.nordic.secure-shell.platform-shell a.platform-card { min-height: 145px; border: 1px solid #e5ecef; border-radius: 14px; box-shadow: var(--mi-shadow); padding: 15px; }
+.nordic.secure-shell.platform-shell .platform-sign-in {
+  display: grid; grid-template-columns: 1.1fr 1fr; align-items: center; align-content: center; gap: clamp(20px,4vw,54px); min-height: min(68dvh,660px);
+  padding: clamp(17px,4vw,56px);
+  background: linear-gradient(115deg,#0b233ae8,#1439558c 72%),url("/branding/intelligence/delivery-background.webp") 65% center / cover no-repeat #0c233a;
+}
+.mi-sign-in-story { display: grid; gap: 12px; }
+.mi-sign-in-story p { color: #f5df8e; font-size: .84rem; font-weight: 750; display: flex; align-items: center; gap: 8px; margin: 0; }
+.mi-sign-in-story strong { font-size: clamp(1.65rem,4.8vw,4.4rem); line-height: 1.02; letter-spacing: -.045em; max-width: 11ch; }
+.mi-sign-in-story span { color: #dce8f2; }
+.mi-sign-in-panel { min-width: 0; width: 100%; align-self: center; padding: clamp(15px,3vw,35px); background: #fff; color: #102539; border-radius: 17px; box-shadow: 0 15px 40px #081a2c49; }
+.mi-sign-in-panel > svg { color: #285877; }
+.nordic.secure-shell.platform-shell .platform-sign-in .mi-sign-in-panel h2 { font-size: clamp(1.35rem,3vw,2.22rem); color: #102539; line-height: 1.08; margin-block: 8px; }
+.mi-sign-in-panel p { color: #43566a; font-size: .94rem; margin: 8px 0; }
+.nordic.secure-shell.platform-shell .mi-sign-in-panel .secure-actions button { min-height: 44px; background: var(--mi-action); color: #fff; border-color: #214e73; box-shadow: none; }
+.nordic.secure-shell.platform-shell .mi-sign-in-panel .secure-actions button + button { background: #edf2f7; color: #133450; border-color: #dae4eb; }
+.nordic.secure-shell.platform-shell .mi-sign-in-panel :is(a,button,input):focus-visible { outline-color: #276a9c; }
+.mi-management-picker,.mi-progress-fields { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,240px),1fr)); gap: 10px; margin: 12px 0; }
+.mi-management-picker label,.mi-progress-fields label { display: grid; gap: 5px; font-weight: 650; }
+.mi-management-picker :is(input,select),.mi-progress-fields :is(input,select,textarea) { width: 100%; }
+.mi-management-empty,.mi-progress-editor { margin-top: 14px; padding: clamp(12px,2vw,23px); border-radius: 14px; background: white; box-shadow: var(--mi-shadow); }
+.mi-management-empty svg { color: #245983; }
+.mi-management-empty h3,.mi-management-empty p { margin: 5px 0; }
+.mi-progress-editor header > h3 { margin: 5px 0; font-size: clamp(1.25rem,2.8vw,2rem); }
+.mi-progress-editor .mi-kicker { color: #486279; margin: 2px 0; }
+.mi-progress-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 15px; margin: 12px 0; padding: 10px 12px; background: #e9f0f6; border-radius: 10px; }
+.mi-progress-summary progress { flex: 1 0 min(120px,100%); accent-color: #275679; }
+.mi-progress-fields { border: 0; padding: 0; min-width: 0; }
+.mi-progress-fields .mi-blocker-toggle { display: flex; align-items: center; align-self: end; min-height: 44px; justify-content: flex-start; gap: 7px; }
+.mi-blocker-toggle input { width: auto; }
+@media (max-width: 650px) {
+  .nordic.secure-shell.platform-shell .platform-sign-in { grid-template-columns: 1fr; min-height: 0; gap: 16px; }
+  .mi-sign-in-story { gap: 4px; }
+  .mi-sign-in-story strong { max-width: none; }
+}
+.intel-workspace .mi-client-nav-group { display: grid; gap: 2px; }
+.intel-workspace .mi-client-nav-group > p { display: none; }
+.nordic.secure-shell.platform-shell .intel-workspace[data-platform="true"] .exec-sidebar {
+  overflow: auto; max-height: calc(100dvh - 20px); background: linear-gradient(157deg,#162e47,#0e2338); border-color: transparent; scrollbar-width: thin;
+}
+.intel-workspace[data-platform="true"] .mi-client-nav-group + .mi-client-nav-group { border-top: 1px solid #59789463; padding-top: 7px; margin-top: 6px; }
+.intel-workspace[data-platform="true"] .mi-client-nav-group > p {
+  display: block; margin: 4px 8px; color: #b2c6d9; text-transform: uppercase; font-size: .65rem; letter-spacing: .08em; font-weight: 750;
+}
+.intel-workspace[data-platform="true"][data-collapsed="true"] .mi-client-nav-group > p { display: none; }
+.nordic.secure-shell.platform-shell .intel-workspace[data-platform="true"] .exec-sidebar nav button[aria-current="page"] {
+  background: linear-gradient(102deg,#f1d670,#fae7a1); color: #172b3b;
+}
+.platform-shell .mi-project-dates { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 3px 0 8px; color: #4c5f71; font-size: .84rem; }
+.platform-shell .secure-published-project h3 { font-size: clamp(1rem,1.75vw,1.36rem); line-height: 1.2; }
+.platform-shell .secure-published-project .secure-project-hours { border-top: 1px solid #e4eaf0; padding-top: 9px; margin-top: 9px; }
+@media (max-width: 760px) {
+  .nordic.secure-shell.platform-shell .intel-workspace[data-platform="true"] .exec-sidebar { max-height: min(72dvh,500px); }
+  .intel-workspace[data-platform="true"] .exec-sidebar nav { display: grid; }
+  .intel-workspace[data-platform="true"] .mi-client-nav-group { grid-template-columns: repeat(auto-fit,minmax(min(100%,138px),1fr)); }
+  .intel-workspace[data-platform="true"] .mi-client-nav-group > p { grid-column: 1/-1; }
+}
+/* Keep legacy Nordic SVG sizing from expanding control icons into text columns. */
+.nordic.secure-shell.platform-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog,.mi-workspace-tools,.mi-dialog-heading,.mi-sign-in-story,.mi-account,.report-export,.reporting-period,.mi-blocker-toggle) svg {
+  flex: 0 0 18px; width: 18px; height: 18px;
+}
+.nordic.secure-shell.platform-shell .mi-workspace-sidebar .mi-nav-jump,
+.nordic.secure-shell.platform-shell .mi-navigation-dialog .mi-nav-jump { flex: 0 0 13px; width: 13px; height: 13px; }
+.nordic.secure-shell.platform-shell .mi-workspace-tools button { white-space: nowrap; width: auto; }
+.nordic.secure-shell.platform-shell .mi-navigation-dialog .mi-dialog-heading h2 { color: #eef5fc; }
+.nordic.secure-shell.platform-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog) button span { min-width: 0; overflow-wrap: normal; text-wrap: pretty; }
+.nordic.secure-shell.platform-shell .mi-page-heading { display: block; padding: 0; border: 0; }
+.nordic.secure-shell.platform-shell .mi-operations-trend header { padding: 0 0 11px; }
+.nordic.secure-shell.platform-shell .mi-operations-trend :is(summary, p) svg { display: inline-block; width: 15px; height: 15px; }
+.nordic.secure-shell.platform-shell .mi-operations-trend summary { padding: 8px 0; }
+.nordic.secure-shell.platform-shell .mi-operation-metrics { grid-template-columns: repeat(auto-fit,minmax(min(100%,164px),1fr)); }
+.nordic.secure-shell.platform-shell .mi-operation-metrics dd { font-size: clamp(1rem,1.45vw,1.36rem); }
+.nordic.secure-shell.platform-shell .mi-progress-fields .mi-blocker-toggle { display: flex; grid-column: 1/-1; }
+.platform-shell .mi-progress-fields .mi-blocker-toggle input { width: auto; }
+.platform-shell .reporting-period__label { text-wrap: nowrap; }
+.mi-legacy-sign-in { display: contents; }
+.nordic.secure-shell.platform-shell :is(h1,h2,h3,h4) { font-family: inherit; }
+.nordic.secure-shell.platform-shell .platform-sign-in { max-width: 62rem; margin: clamp(12px,3vw,40px) auto 24px; }
+.nordic.secure-shell.platform-shell .platform-sign-in .mi-sign-in-panel p { color: #42556a; }
+.nordic.secure-shell.platform-shell .platform-sign-in .mi-sign-in-panel > svg { width: 28px; height: 28px; }
+.nordic.secure-shell.platform-shell .platform-sign-in .mi-sign-in-story p { color: #f5df8e; }

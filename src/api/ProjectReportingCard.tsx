@@ -28,6 +28,8 @@ export function ProjectReportPreview({ project, period }: { project: StaffProjec
 }
 
 export function ProjectReportingCard({ project, period, placement, team, onLink, detail, delivery, descendantTotals }: Props) {
+  const start = delivery?.start ?? placement?.start;
+  const due = delivery?.deadline ?? placement?.target;
   const completion = delivery?.completion ?? (!delivery && project.progress > 0 ? project.progress : undefined);
   return (
     <article
@@ -39,17 +41,16 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
       <h3>{project.name}</h3>
       {delivery?.blocker && <p className={delivery.blocker.active ? "secure-message secure-error" : "secure-message"}>
         <b>{delivery.blocker.active ? "Blocked" : "Resolved"}</b> · {delivery.blocker.message}</p>}
-      {placement?.start && <p className="secure-muted">Start {reportDay(placement.start)}</p>}
-      {placement?.target && <p className="secure-muted">Target {reportDay(placement.target)}</p>}
-      {delivery?.start && <p className="secure-muted">Start {reportDay(delivery.start)}</p>}
-      {delivery?.deadline && <p className="secure-muted">Deadline {reportDay(delivery.deadline)}</p>}
+      {(start || due) && <p className="mi-project-dates">
+        {start && <span>Start {reportDay(start)}</span>}{due && <span>Due {reportDay(due)}</span>}
+      </p>}
       {project.description && (
         <p className="secure-project-description">
           {project.description}
         </p>
       )}
       <div className="secure-progress">
-        <span>{completion === undefined ? "Delivery completion not configured" : completion + "% progress"}</span>
+        <span>{completion === undefined ? "Progress not recorded" : completion + "% progress"}</span>
         {completion !== undefined && <progress
           aria-label={project.name + " progress"}
           max={100}

@@ -1,0 +1,10 @@
+.report-export { display: inline-grid; justify-items: start; gap: .25rem; max-width: 100%; }
+.nordic.secure-shell .report-export-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: .5rem;
+  white-space: normal;
+}
+.report-export small { line-height: 1.4; max-width: 34ch; }
+.report-export-error { color: #a92531; }

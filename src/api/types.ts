@@ -9,7 +9,10 @@ export interface Workspace {
   agreements: { id: string; name: string }[];
   departments: { id: string; name: string; agreementId: string }[];
 }
+export const sourceExportPageSize = 500;
+
 export interface PageQuery {
+  sourceExport?: true;
   search?: string;
   month: string;
   limit: number;
