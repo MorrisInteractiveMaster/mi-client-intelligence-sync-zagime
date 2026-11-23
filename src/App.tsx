@@ -1,3 +1,4 @@
+import { ZAGIME_CLIENT_DISPLAY_NAME } from "./config/client-identity";
 import { SecureDashboard } from "./api/SecureDashboard";
 import { usePlatformRoute } from "./api/portal-location";
 import { ReportingProvider } from "./reporting/ReportingContext";
@@ -102,8 +103,7 @@ function Landing() {
           <em>Confidence for tomorrow.</em>
         </h1>
         <p>
-          Your shared view of the work, people and progress supporting Zagimē
-          Anishinabēk.
+          Your shared view of the work, people and progress supporting {ZAGIME_CLIENT_DISPLAY_NAME}.
         </p>
         <div className="landing-roles">
           <button onClick={() => enter("client")}>
@@ -186,7 +186,7 @@ function Shell() {
       </a>
       <aside className="sidebar">
         <Link className="client-brand" to="/welcome">
-          <strong>Zagimē</strong>
+          <strong>{ZAGIME_CLIENT_DISPLAY_NAME}</strong>
           <span>Anishinabēk</span>
           <small>CLIENT INTELLIGENCE</small>
         </Link>
@@ -254,7 +254,7 @@ function Shell() {
       <div className="main-shell">
         <header className="topbar">
           <div className="top-context">
-            <strong>Zagimē Anishinabēk</strong>
+            <strong>{ZAGIME_CLIENT_DISPLAY_NAME}</strong>
             <span>
               {role === "admin"
                 ? "Morris operations workspace"
@@ -276,7 +276,7 @@ function Shell() {
                 value={role}
                 onChange={(e) => setRole(e.target.value as Role)}
               >
-                <option value="client">Zagimē client view</option>
+                <option value="client">{ZAGIME_CLIENT_DISPLAY_NAME} client view</option>
                 <option value="admin">Morris internal</option>
               </select>
             </label>
@@ -399,7 +399,7 @@ function Shell() {
               Fictional people, contact details and project data · As of October
               23, 2026
             </span>
-            <span>Zagimē Anishinabēk × Morris Interactive</span>
+            <span>{ZAGIME_CLIENT_DISPLAY_NAME} × Morris Interactive</span>
             {role === "admin" && (
               <button
                 onClick={() => {

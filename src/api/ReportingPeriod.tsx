@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { precedingTimeMonth, reportingTimeMonth } from "../projects/time-history";
 import { reportMonth } from "./dashboard-format";
@@ -7,13 +7,14 @@ import { followingTimeMonth, historyRange, reportingMonthOptions, type Reporting
 import "./reporting-period.css";
 
 export function ReportingPeriod({ month, currentMonth = reportingTimeMonth(), availableMonths = [], latestMonth, empty,
-  onMonth, range, onRange, pending }: {
+  onMonth, range, onRange, pending, action }: {
   month: string;
   currentMonth?: string;
   availableMonths?: readonly string[];
   latestMonth?: string;
   empty?: boolean;
   pending?: boolean;
+  action?: ReactNode;
   onMonth: (month: string) => void;
   range?: ReportingMonthRange;
   onRange?: (range: ReportingMonthRange) => void;
@@ -76,6 +77,7 @@ export function ReportingPeriod({ month, currentMonth = reportingTimeMonth(), av
           </>}
         </div>}
       </div>
+      {action}
     </div>
     {range && <p className="reporting-period__hint">{range.from && range.through ?
       "Trend range: " + reportMonth(range.from) + " to " + reportMonth(range.through) : "Trend range: All available history"}</p>}

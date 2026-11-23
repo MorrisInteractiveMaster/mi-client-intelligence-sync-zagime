@@ -2259,3 +2259,8 @@ button:disabled {
   max-height: 46px;
   max-width: 46px;
 }
+
+@media (max-width: 650px) {
+  .top-actions .role-switch { min-inline-size: 0; }
+  .top-actions .role-switch select { min-inline-size: 0; max-inline-size: 100%; text-overflow: ellipsis; }
+}

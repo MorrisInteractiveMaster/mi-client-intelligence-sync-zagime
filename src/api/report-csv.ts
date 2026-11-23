@@ -1,6 +1,7 @@
 import type { ProjectPage, ProjectReport, StaffProjectSummary } from "../projects/model";
 import type { SecuredApiClient } from "./client";
-import { projectStatus } from "./dashboard-format";
+import { projectStatus, today } from "./dashboard-format";
+import { projectMeasures } from "./client-delivery";
 import { sourceExportPageSize, sourceStatus, type SourceHours, type SourceHoursGroup, type SourceSummary, type StaffSource } from "./types";
 
 type CsvCell = string | number | null | undefined;
@@ -114,6 +115,7 @@ export function publishedProjectCsv(report: ProjectReport, projects: ClientProje
   const published = new Map(report.projects.map(project => [project.id, project]));
   const placements = new Map(report.portfolio?.placements.map(item => [item.id, item]));
   const areas = new Map(report.portfolio?.areas.map(item => [item.id, item.name]));
+  const asOf = today();
   return {
     headers: ["Month", "Project", "Parent engagement", "Service area", "Delivery status", "Progress percent",
       "Reported hours", "Lifetime reported hours", "Monthly cap hours", "Monthly used hours", "Lifetime cap hours", "Lifetime used hours",
@@ -122,8 +124,11 @@ export function publishedProjectCsv(report: ProjectReport, projects: ClientProje
       const project = published.get(item.id);
       if (!project) return [];
       const hierarchy = report.hierarchy?.[project.id];
-      return [[report.month, project.name, published.get(hierarchy?.parentId ?? "")?.name, areas.get(placements.get(project.id)?.areaId ?? ""),
-        placements.get(project.id)?.archived ? "Archived" : projectStatus[project.status], hierarchy?.completion ?? project.progress,
+      const placement = placements.get(project.id);
+      const lifecycle = hierarchy?.schedulePhase ? projectMeasures(project, hierarchy, placement, asOf) : undefined;
+      const status = placement?.archived ? "Archived" : lifecycle?.upcoming ? "Upcoming" : projectStatus[lifecycle?.active ? "active" : project.status];
+      return [[report.month, project.name, published.get(hierarchy?.parentId ?? "")?.name, areas.get(placement?.areaId ?? ""),
+        status, hierarchy?.completion ?? project.progress,
         csvHours(project.seconds), csvHours(project.lifetimeSeconds),
         csvHours(hierarchy?.monthlyCap), csvHours(hierarchy?.monthlyCapUsed),
         csvHours(hierarchy?.lifetimeCap), csvHours(hierarchy?.lifetimeCapUsed), hierarchy?.start, hierarchy?.deadline]];

@@ -1,9 +1,9 @@
+import { isBoardRole } from "../projects/directory-role";
+import { ZAGIME_CLIENT_DISPLAY_NAME } from "../config/client-identity";
 import { useEffect, useState } from "react";
-import { capRollup, deliveryDefaults, deliveryKindNames, engagementTypes, MAX_DELIVERY_PROJECTS, measureDelivery, rollup, type Delivery } from "../projects/delivery";
-import { hoursToSeconds } from "../projects/duration";
+import { capRollup, deliveryKindNames, MAX_DELIVERY_PROJECTS, measureDelivery, rollup } from "../projects/delivery";
 import type { Project, ProjectPage, StaffProjectSummary } from "../projects/model";
-import type { DirectoryEntry, Portfolio, ProjectPlacement } from "../projects/portfolio";
-import type { TimeMapping } from "../projects/time";
+import type { DirectoryEntry, Portfolio } from "../projects/portfolio";
 import { ApiError, type SecuredApiClient } from "./client";
 import { projectStatus, reportDay, reportHours, today } from "./dashboard-format";
 import { portalNavigate, usePortalLocation } from "./portal-location";
@@ -47,128 +47,6 @@ export function PeoplePicker({ name, label, people, defaults, onSelectionChange 
   </fieldset>;
 }
 
-export function readDeliveryForm(form: FormData, original?: Project, placement?: ProjectPlacement): Delivery {
-  const get = (key: string) => String(form.get(key) ?? "").trim();
-  const optional = (key: string) => get(key) || undefined;
-  const cap = (key: "monthlyCap" | "lifetimeCap") => {
-    const value = get(key), old = original?.delivery?.[key];
-    if (!value) return;
-    return value === String(old === undefined ? "" : old / 3600) ? old : hoursToSeconds(value);
-  };
-  const type = get("deliveryType") as Delivery["type"];
-  const kind = get("deliveryKind") as Delivery["kind"];
-  const structured = form.get("structuredDelivery") === "on";
-  const days = Number(get("trainingDays"));
-  const trainingDates = get("trainingDates").split(/[\s,]+/).filter(Boolean);
-  const hasTraining = type === "training" && (days > 0 || trainingDates.length > 0 || get("trainingPreparation") || get("trainingFollowUp") || get("trainingCompletion") || form.has("facilitatorIds"));
-  return {
-    kind, type,
-    ...(form.has("blockerEdited") ? { blocker: { active: form.has("blocked"), message: get("blockerMessage"), internal: get("blockerInternal") } } :
-      original?.delivery?.blocker ? { blocker: original.delivery.blocker } : {}),
-    ...(structured && { structure: 2 as const }),
-    parentId: optional("parentId"), areaId: optional("deliveryArea"),
-    groupId: original?.delivery?.groupId ?? placement?.engagementId,
-    ...(kind === "project" && (structured || original?.delivery?.countAgainstParentCap !== undefined)
-      && { countAgainstParentCap: get("countAgainstParentCap") !== "no" }),
-    ...(kind === "engagement" && (structured || original?.delivery?.allowDirectAllocation !== undefined)
-      && { allowDirectAllocation: get("allowDirectAllocation") !== "no" }),
-    workOrderIds: form.has("workOrdersLoaded") ? form.getAll("deliveryWorkOrders").map(String) : original?.delivery?.workOrderIds,
-    monthlyCap: cap("monthlyCap"), lifetimeCap: cap("lifetimeCap"),
-    manualCompletion: get("progress") ? Number(get("progress")) : undefined,
-    start: optional("deliveryStart"), deadline: optional("deliveryDeadline"),
-    publishSummary: form.get("publishSummary") === "on",
-    managerIds: form.has("peopleLoaded") ? form.getAll("managerIds").map(String) : original?.delivery?.managerIds ?? (placement?.leadId ? [placement.leadId] : []),
-    teamIds: form.has("peopleLoaded") ? form.getAll("teamIds").map(String) : original?.delivery?.teamIds ?? placement?.teamIds ?? [],
-    ...(hasTraining ? { training: { days: days || trainingDates.length || 1, dates: trainingDates,
-      preparation: optional("trainingPreparation"), followUp: optional("trainingFollowUp"), completion: optional("trainingCompletion"),
-      facilitatorIds: form.has("peopleLoaded") ? form.getAll("facilitatorIds").map(String) : original?.delivery?.training?.facilitatorIds ?? [] } } : {}),
-  };
-}
-
-export function DeliveryFields({ project, projects, portfolio, mappings }: {
-  project?: Project; projects: StaffProjectSummary[]; portfolio?: Portfolio; mappings?: TimeMapping[];
-}) {
-  const oldPlacement = portfolio?.placements.find(item => item.id === project?.id);
-  const d = project?.delivery ?? { ...deliveryDefaults, areaId: oldPlacement?.areaId, groupId: oldPlacement?.engagementId,
-    start: oldPlacement?.start, deadline: oldPlacement?.target, managerIds: oldPlacement?.leadId ? [oldPlacement.leadId] : [], teamIds: oldPlacement?.teamIds ?? [] };
-  const [type, setType] = useState(d.type);
-  const [kind, setKind] = useState(d.kind);
-  const [structured, setStructured] = useState(d.structure === 2);
-  const [parent, setParent] = useState(d.parentId ?? "");
-  const validParent = (p: StaffProjectSummary) => !structured || (p.delivery?.kind === "engagement" && !p.delivery.parentId ||
-    kind === "project" && p.delivery?.kind === "service-area" && p.delivery.structure === 2);
-  const list = projects.filter(p => p.id !== project?.id && (p.id === parent || validParent(p)));
-  const assignedArea = projects.find(p => p.id === parent && p.delivery?.kind === "service-area")?.delivery?.areaId;
-  const hourText = (value?: number) => value === undefined ? "" : String(value / 3600);
-  return <div className="delivery-fields">
-    <fieldset className="secure-editor-grid"><legend>Client and project hierarchy</legend>
-      {d.structure === 2 ? <input name="structuredDelivery" type="hidden" value="on" /> :
-        <label className="secure-check secure-field-wide"><input name="structuredDelivery" type="checkbox" checked={structured} onChange={e => {
-          setStructured(e.target.checked);
-          if (!e.target.checked) {
-            setKind(d.kind);
-            setParent(d.parentId ?? "");
-          }
-        }} /> Use the three-level project structure</label>}
-      {!structured && <input name="parentId" type="hidden" value={d.parentId ?? ""} />}
-      <label>Project type<select name="deliveryKind" value={kind} onChange={e => {
-        setKind(e.target.value as Delivery["kind"]);
-        if (structured) setParent("");
-      }}>{Object.entries(deliveryKindNames).filter(([key]) => structured || key !== "service-area").map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
-      {structured && kind !== "engagement" && <>
-      <label>Parent project<select name="parentId" required value={parent} onChange={e => setParent(e.target.value)}><option value="">Choose a location</option>
-        {parent && !list.some(p => p.id === parent) && <option value={parent}>Current parent</option>}
-        {list.map(p => <option key={p.id} value={p.id}>{p.name}{p.delivery?.kind === "service-area" ? " · Service area" : ""}</option>)}</select></label></>}
-      {!structured && d.parentId && <p className="secure-field-wide">Current parent · {projects.find(p => p.id === d.parentId)?.name ?? "Existing relationship"}. Use the three-level structure to move this project.</p>}
-    </fieldset>
-    {kind === "project" && <details className="delivery-details"><summary>Blocker and resolution</summary>
-      <input type="hidden" name="blockerEdited" value="1" />
-      <label className="secure-check"><input type="checkbox" name="blocked" defaultChecked={d.blocker?.active} /> Work is blocked</label>
-      <label>Client-facing blocker or resolution<textarea name="blockerMessage" maxLength={500} defaultValue={d.blocker?.message} /></label>
-      <label>Private blocker details<textarea name="blockerInternal" maxLength={2000} defaultValue={d.blocker?.internal} /></label>
-    </details>}
-    <details className="delivery-details"><summary>Service area and work orders</summary><div className="secure-editor-grid">
-      {(!structured || kind === "service-area") && <label>Service area<select name="deliveryArea" required={structured} defaultValue={d.areaId ?? ""}><option value="">Unclassified</option>
-        {!portfolio && d.areaId && <option value={d.areaId}>Current department</option>}{portfolio?.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
-      {structured && kind === "project" && assignedArea && <input name="deliveryArea" value={assignedArea} type="hidden" />}
-      {mappings && <fieldset className="secure-field-wide"><legend>Verified QuickBooks Time work orders</legend><input type="hidden" name="workOrdersLoaded" value="1" />
-        <p>Linking a work order here leaves recorded time and historical allocations in place.</p>
-        {mappings.map(m => <label className="secure-check" key={m.jobcodeId}><input type="checkbox" name="deliveryWorkOrders" value={m.jobcodeId} defaultChecked={d.workOrderIds?.includes(m.jobcodeId)} /> {m.sourceName ?? m.jobcodeId}</label>)}
-        {d.workOrderIds?.filter(id => !mappings.some(m => m.jobcodeId === id)).map(id => <input key={id} type="hidden" name="deliveryWorkOrders" value={id} />)}
-      </fieldset>}
-    </div></details>
-    <details className="delivery-details"><summary>Caps, engagement and dates</summary><div className="secure-editor-grid">
-      <label>Engagement type<select name="deliveryType" value={type} onChange={e => setType(e.target.value as Delivery["type"])}>{engagementTypes.map(t => <option value={t} key={t}>{t === "fixed-fee" ? "Fixed fee" : t === "training" ? "Training or workshop" : "Hourly"}</option>)}</select></label>
-      <label>Monthly cap (hours)<input name="monthlyCap" inputMode="decimal" defaultValue={hourText(d.monthlyCap)} placeholder="No cap" /></label>
-      <label>Lifetime cap (hours)<input name="lifetimeCap" inputMode="decimal" defaultValue={hourText(d.lifetimeCap)} placeholder="No cap" /></label>
-      {kind === "project" && (structured || d.countAgainstParentCap !== undefined) && <label>
-        Count toward the parent engagement’s cap
-        <select name="countAgainstParentCap" defaultValue={d.countAgainstParentCap === false ? "no" : "yes"}><option value="yes">Yes</option><option value="no">No</option></select>
-        <small>Allocated effort stays visible either way.</small>
-      </label>}
-      {kind === "engagement" && (structured || d.allowDirectAllocation !== undefined) && <label>
-        Allow allocation directly to this engagement
-        <select name="allowDirectAllocation" defaultValue={d.allowDirectAllocation === false ? "no" : "yes"}><option value="yes">Yes</option><option value="no">No</option></select>
-      </label>}
-      <label>Start date<input name="deliveryStart" type="date" defaultValue={d.start} /></label>
-      <label>Deadline<input name="deliveryDeadline" type="date" defaultValue={d.deadline} /></label>
-      <label className="secure-check"><input name="publishSummary" type="checkbox" defaultChecked={d.publishSummary} /> Share caps, dates and delivery completion with authorized clients</label>
-      {type === "training" && <>
-        <label>Session days<input name="trainingDays" type="number" min={1} max={60} defaultValue={d.training?.days} /></label>
-        <label>Session dates<input name="trainingDates" placeholder="YYYY-MM-DD, YYYY-MM-DD" defaultValue={d.training?.dates.join(", ")} /></label>
-        <label>Preparation date<input name="trainingPreparation" type="date" defaultValue={d.training?.preparation} /></label>
-        <label>Follow-up date<input name="trainingFollowUp" type="date" defaultValue={d.training?.followUp} /></label>
-        <label>Session completion date<input name="trainingCompletion" type="date" defaultValue={d.training?.completion} /></label>
-        {portfolio && <PeoplePicker name="facilitatorIds" label="Facilitators" people={portfolio.directory} defaults={d.training?.facilitatorIds ?? []} />}
-      </>}
-    </div></details>
-    {portfolio && <details className="delivery-details"><summary>Project managers and team</summary><input type="hidden" name="peopleLoaded" value="1" />
-      <PeoplePicker name="managerIds" label="Project managers" people={portfolio.directory} defaults={d.managerIds} />
-      <PeoplePicker name="teamIds" label="Team members" people={portfolio.directory} defaults={d.teamIds} />
-    </details>}
-  </div>;
-}
-
 export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved, onDenied }: {
   client: SecuredApiClient; tenant: string; portfolio?: Portfolio; revision: number; onSaved: () => void; onDenied: () => void;
 }) {
@@ -179,6 +57,10 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const person = portfolio?.directory.find(p => p.id === selected);
+  const matching = (portfolio?.directory ?? []).filter(p =>
+    [p.name, p.profile?.title, p.role].some(value => value?.toLowerCase().includes(search.trim().toLowerCase())));
+  const board = matching.filter(p => isBoardRole(p.profile?.title || p.role));
+  const team = matching.filter(p => !isBoardRole(p.profile?.title || p.role));
   async function act(run: () => Promise<void>) {
     setBusy(true); setError(""); setNotice("");
     try { await run(); onSaved(); }
@@ -196,8 +78,18 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
     <label>Search people<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
     {!portfolio && <p className="secure-empty" role="status">Loading team profiles…</p>}
     {portfolio && !portfolio.directory.length && <p className="secure-empty">No team profiles yet. Sync the Morris team or add a manual profile in portfolio management.</p>}
-    <div className="delivery-directory">{portfolio?.directory.filter(p => p.name.toLowerCase().includes(search.trim().toLowerCase())).map(p => <button type="button" className="delivery-person" key={p.id} onClick={() => setSelected(p.id)} aria-pressed={selected === p.id}>
-      <PersonPhoto name={p.name} photo={p.profile?.photo} alt={p.profile?.alt} /><span><b>{p.name}</b><small>{p.profile?.title || p.role || "Title unavailable"}</small></span></button>)}</div>
+    {portfolio?.directory.length ? <>
+      {[{ name: "Board", people: board }, { name: "Team", people: team }].map(group => group.people.length > 0 && <section
+        key={group.name} aria-label={group.name} className="mi-directory-group">
+        <h4>{group.name}</h4>
+        <div className="delivery-directory">{group.people.map(p => <button type="button" className="delivery-person" key={p.id}
+          onClick={() => setSelected(p.id)} aria-pressed={selected === p.id}>
+          <PersonPhoto name={p.name} photo={p.profile?.photo} alt={p.profile?.alt} />
+          <span><b>{p.name}</b><small>{p.profile?.title || p.role || "Title unavailable"}</small></span>
+        </button>)}</div>
+      </section>)}
+      {!matching.length && <p className="secure-empty">No profiles match this search.</p>}
+    </> : null}
     {person && <form className="secure-form" key={person.id} onSubmit={e => {
       e.preventDefault();
       const data = new FormData(e.currentTarget);
@@ -241,7 +133,7 @@ export function DeliveryPreview({ client, tenant, month, standalone = false }: {
   }, [client, tenant]);
   const entitled = standalone || mode === "draft" || Boolean(scope);
   return <section aria-label="Preview as client">
-    <div className="delivery-section-heading"><div><h3>{standalone ? "Zagimē dashboard" : "Preview as client"}</h3><p>{standalone ? "The published view shows projects shared with all approved client profiles." : "Published preview follows the selected client access profile. Draft preview includes saved changes and private projects."}</p></div>
+    <div className="delivery-section-heading"><div><h3>{standalone ? ZAGIME_CLIENT_DISPLAY_NAME + " dashboard" : "Preview as client"}</h3><p>{standalone ? "The published view shows projects shared with all approved client profiles." : "Published preview follows the selected client access profile. Draft preview includes saved changes and private projects."}</p></div>
       {!standalone && <button type="button" className="secure-secondary" onClick={() => portalNavigate({
         staff: previewProject ? "projects" : "overview", editor: previewProject, previewProject: null, previewMode: null,
         view: null, q: null, status: null, present: null, chart: null,

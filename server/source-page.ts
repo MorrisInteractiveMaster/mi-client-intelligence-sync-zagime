@@ -86,7 +86,7 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
       filters.consultant && (filters.consultant === "unavailable" ? Boolean(person) : filters.consultant !== person) ||
       filters.from && row.date < filters.from || filters.through && row.date > filters.through ||
       filters.area && row.annotations?.areaId !== filters.area && !row.portions.some(p => projects.get(p.projectId)?.areaId === filters.area) ||
-      filters.project && row.sourceProjectId !== filters.project && !row.portions.some(p => p.projectId === filters.project)) continue;
+      filters.project && row.sourceProjectId !== filters.project && row.reportingProjectId !== filters.project && !row.portions.some(p => p.projectId === filters.project)) continue;
     const searchable = [workOrder, row.workOrderName, person, row.consultantName, row.description, row.annotations?.reportingDescription,
       row.annotations?.parentId && projects.get(row.annotations.parentId)?.title, ...row.portions.map(p => projects.get(p.projectId)?.title)];
     if (filters.search && !searchable.some(value => value && normalized(value).includes(filters.search))) continue;
@@ -194,9 +194,13 @@ export async function readSourcePage(tx: Transaction, root: DocumentReference, s
     const sourceDetails = detailRef ? readTimeDetails(details.get(detailRef.path), data.record.revision, data.modifiedAt) : undefined;
     const profile = sourceDetails?.personId && data.sourceCompanyId
       ? profiles.get(timeEmployeeKey(data.sourceCompanyId, sourceDetails.personId)) : undefined;
+    const mapping = mapRef && mappings.get(mapRef.path);
+    const reportingProjectId = mapping?.reviewedAttribution === true && mapping.scopeProjectId === data.scopeProjectId &&
+      mapping.account === data.sourceCompanyId && mapping.jobcodeId === data.record?.sourceWorkOrderId
+      ? safeId(mapping.projectId) : undefined;
     return projectSource(doc, heads.get(root.collection("allocationHeads").doc(doc.id).path), root.id,
       mapRef ? mappings.get(mapRef.path)?.sourceJob?.name : projects.get(scopedProject.path)?.workOrderReference,
-      sourceDetails, profile, projectNames);
+      sourceDetails, profile, projectNames, reportingProjectId);
   });
   const { matches, summary } = summarize(rows, filters, projectNames, window);
   // Include the matching row identities so a sidecar-only enrichment can
@@ -221,7 +225,7 @@ export async function readSourcePage(tx: Transaction, root: DocumentReference, s
 
 function projectSource(doc: DocumentSnapshot, head: DocumentData | undefined, tenant: string, workOrderName: unknown,
   sourceDetails: ReturnType<typeof readTimeDetails>, wordpressProfile: StaffSource["wordpressProfile"],
-  projects: Map<string, SourceNames>): StaffSource {
+  projects: Map<string, SourceNames>, reportingProjectId?: string): StaffSource {
   const data = doc.data()!;
   const row = data.record;
   if (row?.tenantId !== tenant || !calendarDate(row.date) || !Number.isSafeInteger(row.seconds) || row.seconds < 0)
@@ -237,6 +241,7 @@ function projectSource(doc: DocumentSnapshot, head: DocumentData | undefined, te
     ...(provider && { originalNotesState: sourceDetails?.notes ? "populated" : sourceDetails?.notesState ?? "not-retrieved" }),
     sourceWorkOrderId: row.sourceWorkOrderId,
     sourceProjectId: data.scopeProjectId,
+    ...(reportingProjectId ? { reportingProjectId } : {}),
     classifiedSeconds: applied.filter(part => {
       const kind = projects.get(part.projectId)?.kind;
       return kind !== "engagement" && kind !== "service-area";

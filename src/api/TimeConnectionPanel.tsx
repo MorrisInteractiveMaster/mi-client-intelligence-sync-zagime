@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { TimeStatus } from "../projects/time";
 import { ApiError, type SecuredApiClient } from "./client";
+import { PlatformLink } from "./PlatformHome";
+import { periodHref } from "./portal-location";
 import { reportHours, reportMonth, reportTimestamp } from "./dashboard-format";
 
 export function TimeConnectionPanel({
@@ -143,6 +145,7 @@ export function TimeConnectionPanel({
             across imported months.
           </p>
         )}
+      {status.customerScoped && <p><PlatformLink href={periodHref("/workspace/time/mapping", month)}>Open QuickBooks Time Mapping</PlatformLink></p>}
       {status.mappings.map((mapping) => (
         <article className="secure-card" key={mapping.jobcodeId}>
           <h4>
@@ -231,8 +234,7 @@ export function TimeConnectionPanel({
       {manage &&
         status.canManage &&
         !projectId &&
-        (!status.customerScoped ||
-          status.mappings.some((m) => m.canRelink)) && (
+        !status.customerScoped && (
           <form
             className="secure-form"
             onSubmit={(event) => {
@@ -251,28 +253,13 @@ export function TimeConnectionPanel({
             }}
           >
             <label>
-              {status.customerScoped
-                ? "Discovered work order"
-                : "Approved QuickBooks Time jobcode ID"}
-              {status.customerScoped ? (
-                <select name="jobcode" required defaultValue="">
-                  <option value="">Choose work order</option>
-                  {status.mappings
-                    .filter((mapping) => mapping.canRelink)
-                    .map((mapping) => (
-                      <option key={mapping.jobcodeId} value={mapping.jobcodeId}>
-                        {mapping.sourceName} ({mapping.jobcodeId})
-                      </option>
-                    ))}
-                </select>
-              ) : (
-                <input
+              Approved QuickBooks Time jobcode ID
+              <input
                   name="jobcode"
                   required
                   inputMode="numeric"
                   pattern="[1-9][0-9]{0,19}"
                 />
-              )}
             </label>
             <label htmlFor="time-mapping-project">Reporting project</label>
             <select
@@ -288,16 +275,8 @@ export function TimeConnectionPanel({
                 </option>
               ))}
             </select>
-            {status.customerScoped && (
-              <p>
-                Linking changes where recorded time is grouped. Saved
-                allocations and the original draft project are retained.
-              </p>
-            )}
             <button disabled={busy || projects.length === 0}>
-              {status.customerScoped
-                ? "Link to project"
-                : "Approve Time mapping"}
+              Approve Time mapping
             </button>
           </form>
         )}

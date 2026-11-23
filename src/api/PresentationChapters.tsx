@@ -1,3 +1,4 @@
+import { ZAGIME_CLIENT_DISPLAY_NAME } from "../config/client-identity";
 import { useState } from "react";
 import type { ProjectReport } from "../projects/model";
 import { chartRows } from "./DotAnalytics";
@@ -7,6 +8,7 @@ import { csvHours } from "./report-csv";
 import { deliveryDefaults, rollup } from "../projects/delivery";
 import { PersonPhoto } from "./PersonPhoto";
 import { reportDay, reportHours, reportMonth, today } from "./dashboard-format";
+import { clientDelivery } from "./client-delivery";
 
 type DataRow = PlotRow & { destination?: string };
 type Narrative = { label: string; detail?: string; destination?: string };
@@ -26,6 +28,7 @@ type OpenReport = (view: string, month?: string) => void;
 
 export function publishedChapters(report: ProjectReport): Chapter[] {
   const { projects, hierarchy = {}, portfolio } = report;
+  const { counts } = clientDelivery(report);
   const positive = projects.filter(p => p.seconds > 0).sort((a, b) => b.seconds - a.seconds);
   const portfolioProjects = projects.filter(p => hierarchy[p.id]?.kind === "engagement" || !hierarchy[p.id]?.parentId);
   const milestones = projects.flatMap(p => (p.milestones ?? []).map(item => ({ ...item, p })));
@@ -48,8 +51,8 @@ export function publishedChapters(report: ProjectReport): Chapter[] {
     { title: report.presentationTitle || "Executive Summary", text: report.tenant.name, link: "overview",
       notes: [
         { label: reportHours(report.totalSeconds) + " h reported", detail: reportMonth(report.month) },
-        { label: projects.filter(p => p.status === "active").length + " active projects", destination: "projects:active" },
-        { label: projects.filter(p => p.status === "completed").length + " completed projects", destination: "projects:completed" },
+        { label: counts.active + " active projects", destination: "projects:active" },
+        { label: counts.completed + " completed projects", destination: "projects:completed" },
       ] },
     { title: "Engagement Portfolio", link: "engagements", unit: "hours", measure: "Approved reported hours by parent or standalone work order",
       data: portfolioProjects.map(p => ({ id: p.id, label: p.name, value: branchEffort.get(p.id)?.monthly ?? 0,
@@ -111,7 +114,7 @@ export function PresentationContent({ chapter, onLink, month, draft }: { chapter
     </div>
     <div className="mi-chart-actions">
       <details><summary>Show data table</summary>{table}</details>
-      {!draft && month && <CsvExport filename={"Morris_Zagime_" + chapter.title.replace(/[^a-zA-Z0-9]+/g, "_") + "_" + month}
+      {!draft && month && <CsvExport filename={"Morris_" + ZAGIME_CLIENT_DISPLAY_NAME + "_" + chapter.title.replace(/[^a-zA-Z0-9]+/g, "_") + "_" + month}
         label="Export chart CSV" data={{ headers: [chapter.timeline ? "Month" : "Name", unit === "percent" ? "Percent" : "Reported hours"],
           rows: rows.map(row => [row.month ?? row.label, unit === "percent" ? row.value : csvHours(row.value)]) }} />}
     </div>

@@ -1,3 +1,4 @@
+import { ZAGIME_CLIENT_DISPLAY_NAME } from "../config/client-identity";
 import type {
   PortalData,
   Project,
@@ -467,7 +468,7 @@ export const seed: PortalData = {
   version: 1,
   client: {
     id: "zagime",
-    name: "Zagimē Anishinabēk",
+    name: ZAGIME_CLIENT_DISPLAY_NAME,
     partnerName: "Morris Interactive",
     synthetic: true,
   },

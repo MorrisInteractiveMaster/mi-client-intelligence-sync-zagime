@@ -2,6 +2,36 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { canAllocateToDelivery, capRollup, checkDeliveryStructure, checkHierarchy, deliveryDefaults, MAX_PROJECT_DEPTH, measureDelivery, parseDelivery, rollup, type Delivery } from "./delivery";
 
+test("direct delivery projects reuse one department under different parents without changing legacy nodes", () => {
+  const parent = parseDelivery({ ...deliveryDefaults, structure: 3, kind: "engagement", managerIds: ["manager-a"] });
+  const child = parseDelivery({ ...deliveryDefaults, structure: 3, parentId: "first", areaId: "finance", managerIds: ["manager-a"] });
+  const other = parseDelivery({ ...child, parentId: "second", managerIds: ["manager-b"] });
+  const legacy = parseDelivery({ ...deliveryDefaults, structure: 2, kind: "service-area", parentId: "first", areaId: "finance" });
+  const graph = new Map([["first", parent], ["second", parent], ["child", child], ["other", other], ["department", legacy]]);
+  assert.doesNotThrow(() => checkDeliveryStructure(graph));
+  assert.throws(() => checkDeliveryStructure(new Map(graph).set("child", { ...child, parentId: "department" })), /hierarchy/);
+  assert.throws(() => checkDeliveryStructure(new Map(graph).set("legacy-leaf", { ...deliveryDefaults, parentId: "child" })), /hierarchy/);
+  assert.throws(() => parseDelivery({ ...child, areaId: undefined }), /delivery settings/);
+  assert.throws(() => parseDelivery({ ...child, managerIds: [] }), /delivery settings/);
+  assert.throws(() => parseDelivery({ ...parent, areaId: "finance" }), /delivery settings/);
+});
+
+test("workshops use exactly their distinct program dates and keep historical training schedules readable", () => {
+  const base = { ...deliveryDefaults, kind: "engagement", structure: 3, type: "workshop", managerIds: ["lead"] };
+  const training = { days: 2, dates: ["2027-01-23", "2027-01-12"], facilitatorIds: ["facilitator"], venue: "Community Hall" };
+  const program = parseDelivery({ ...base, start: "2027-01-02", deadline: "2027-02-01", training });
+  assert.equal(program.start, "2027-01-12");
+  assert.equal(program.deadline, "2027-01-23");
+  assert.equal(program.training?.venue, "Community Hall");
+  assert.deepEqual(program.training?.dates, ["2027-01-12", "2027-01-23"]);
+  assert.throws(() => parseDelivery({ ...base, training: { ...training, dates: ["2027-01-23"] } }), /delivery settings/);
+  assert.throws(() => parseDelivery({ ...base, training: { ...training, dates: ["2027-01-23", "2027-01-23"] } }), /delivery settings/);
+  assert.throws(() => parseDelivery({ ...base, training: { ...training, facilitatorIds: [] } }), /delivery settings/);
+  assert.throws(() => parseDelivery({ ...base, type: "fixed-fee", monthlyCap: 3600 }), /delivery settings/);
+  assert.equal(parseDelivery({ ...base, structure: 2, type: "training",
+    training: { days: 2, dates: [], facilitatorIds: [] } }).training?.days, 2);
+});
+
 test("forty delivery projects roll up to their department and root exactly once", () => {
   const parent = (id: string, parentId?: string, seconds = 0) => ({ id, seconds, lifetimeSeconds: seconds * 3, delivery: { ...deliveryDefaults, parentId } });
   const projects = [parent("engagement", undefined, 1800), parent("hr", "engagement", 600),
@@ -25,7 +55,11 @@ test("milestone weights, cap consumption and schedule produce independent outcom
     { completed: false, weight: 10, date: "2026-11-01", status: "waived" as const },
   ] };
   const spent = measureDelivery(project, { monthly: 3600, lifetime: 7200 }, "2026-11-26");
-  assert.deepEqual(spent, { completion: 25, monthlyRemaining: 0, lifetimeRemaining: 0, upcoming: "2026-12-01", health: "Attention needed" });
+  assert.deepEqual(spent, { completion: 25, milestoneCompletion: 25, monthlyRemaining: 0, lifetimeRemaining: 0, upcoming: "2026-12-01", health: "Attention needed" });
+  const independent = measureDelivery({ ...project, delivery: { ...delivery, manualCompletion: 75 } },
+    { monthly: 3600, lifetime: 7200 }, "2026-11-26");
+  assert.equal(independent.completion, 75);
+  assert.equal(independent.milestoneCompletion, 25);
   assert.equal(measureDelivery(project, { monthly: 10, lifetime: 10 }, "2026-12-02").health, "Overdue");
   assert.equal(measureDelivery(project, { monthly: 3700, lifetime: 7200 }, "2026-11-02").health, "Over budget");
   assert.equal(measureDelivery({ ...project, milestones: [] }, { monthly: 0, lifetime: 0 }, "2026-11-01").completion, undefined);

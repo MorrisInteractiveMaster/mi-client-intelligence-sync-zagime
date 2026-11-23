@@ -29,3 +29,21 @@
   .time-alloc-drawer[open] { animation:time-drawer-in 185ms ease-out; }
   @keyframes time-drawer-in { from { transform:translateX(18px); opacity:.72; } to { transform:translateX(0); opacity:1; } }
 }
+
+.delivery-allocation :is(.time-history-toolbar, .delivery-filters) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 156px), 1fr));
+  align-items: end;
+  gap: 10px;
+}
+.nordic.secure-shell .delivery-allocation :is(.time-history-toolbar, .delivery-filters) :is(input,select,button) {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+}
+.nordic.secure-shell[data-theme="dark"] :is(.time-alloc-drawer, .time-alloc-drawer .secure-actions) {
+  color: var(--mi-ink);
+  background: var(--mi-surface);
+  border-color: var(--mi-line);
+}

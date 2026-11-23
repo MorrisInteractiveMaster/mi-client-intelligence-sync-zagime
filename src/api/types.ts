@@ -39,6 +39,7 @@ export interface StaffSource {
   sourceWorkOrderId: string;
   workOrderName?: string;
   sourceProjectId?: string;
+  reportingProjectId?: string;
   classifiedSeconds?: number;
   sourcePersonId?: string;
   consultantName?: string;
