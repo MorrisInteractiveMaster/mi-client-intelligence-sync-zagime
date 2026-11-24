@@ -129,7 +129,7 @@
 .mi-project-status-line, .mi-project-status-line .mi-project-lineage { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
 .nordic.secure-shell .mi-project-status-line :is(p,button), .nordic.secure-shell .mi-detailed-project :is(p,dl,ul) { margin: 0; }
 .mi-project-facts, .mi-project-progress {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); gap: 8px 16px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr)); gap: 8px 16px;
   padding-top: 8px; border-top: 1px solid var(--mi-insight-edge);
 }
 .mi-project-facts:empty { display: none; }
@@ -140,8 +140,13 @@
 .nordic.secure-shell .mi-project-effort .secure-project-hours { grid-template-columns: repeat(auto-fit,minmax(min(100%, 9rem),1fr)); gap: 8px; }
 .nordic.secure-shell .mi-project-effort .secure-project-hours > div { padding: 6px 8px; }
 .mi-project-document .secure-timeline li { padding: 6px 0; }
-.mi-project-document .exec-project-team li { padding-block: 4px; }
+.mi-project-document .exec-project-team { margin: 0; }
+.mi-project-document .exec-project-team ul { list-style: none; padding: 0; }
+.mi-project-document .exec-project-team li { display: flex; align-items: center; gap: 8px; padding-block: 4px; }
+.mi-project-document .exec-project-team li > div { min-width: 0; overflow-wrap: anywhere; }
+.nordic.secure-shell .mi-project-document .mi-project-history strong { font-size: 1rem; font-variant-numeric: tabular-nums; }
 .mi-project-document .secure-timeline button { min-height: 30px; text-align: start; }
+.nordic.secure-shell .mi-v4-project-detail .mi-chart-detail > div { color: var(--mi-ink); }
 .mi-project-empty-plan { margin-block: 8px 0; color: var(--mi-muted); font-size: .85rem; }
 @media (max-width: 960px) { .mi-project-summary-grid { grid-template-columns: minmax(0,1fr); } }
 

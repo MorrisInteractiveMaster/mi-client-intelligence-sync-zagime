@@ -139,8 +139,9 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
   </article>;
 
   function reportingTargets() {
-    return (Boolean(detail && descendantTotals) || project.plan.targetSeconds > 0) && <dl className="secure-project-hours">
-      {detail && descendantTotals && <div><dt>Approved effort on this project in {period}</dt><dd>{reportHours(project.seconds)} h</dd></div>}
+    const showDirect = detail && Boolean(descendantTotals?.descendants);
+    return (showDirect || project.plan.targetSeconds > 0) && <dl className="secure-project-hours">
+      {showDirect && <div><dt>Approved effort on this project in {period}</dt><dd>{reportHours(project.seconds)} h</dd></div>}
       {project.plan.targetSeconds > 0 && <div><dt>{project.plan.basis === "monthly" ? "Monthly" : "Lifetime"} reporting target</dt><dd>{reportHours(project.plan.targetSeconds)} h</dd></div>}
     </dl>;
   }
