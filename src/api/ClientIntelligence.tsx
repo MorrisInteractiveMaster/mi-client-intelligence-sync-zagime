@@ -5,6 +5,8 @@ import { reportingTimeMonth } from "../projects/time-history";
 import { clientDelivery, deadlineHorizons, deadlineWindow, forProjectFilter, type DeadlineHorizon, type ProjectFilter } from "./client-delivery";
 import { projectStatus, reportDay, reportHours, reportMonth, today } from "./dashboard-format";
 import { metricPercent, percentText } from "./insight-metrics";
+import { portfolioStatuses } from "./ClientProjectExplorer";
+import type { ExplorerScope } from "./project-explorer";
 import { TrendPlot } from "./ReportingPlots";
 import { monthlyEffort } from "./monthly-effort";
 import { portalNavigate, usePortalLocation } from "./portal-location";
@@ -12,7 +14,7 @@ import "./client-intelligence.css";
 
 type Delivery = ReturnType<typeof clientDelivery>;
 export type EffortUnit = "percentage" | "hours";
-export type OpenClientView = (view: string, month?: string, filter?: ProjectFilter) => void;
+export type OpenClientView = (view: string, month?: string, filter?: ProjectFilter, scope?: ExplorerScope) => void;
 
 export function EffortToggle({ unit, onChange }: { unit: EffortUnit; onChange: (unit: EffortUnit) => void }) {
   return <div className="mi-insight-segments" role="group" aria-label="Effort display">
@@ -21,48 +23,76 @@ export function EffortToggle({ unit, onChange }: { unit: EffortUnit; onChange: (
   </div>;
 }
 
-export function DepartmentAnalytics({ report, delivery, unit, onLink }: {
-  report: ProjectReport; delivery: Delivery; unit: EffortUnit; onLink: OpenClientView;
+export function DepartmentAnalytics({ report, delivery, unit, onLink, onUnit, showDirectoryLink = true }: {
+  report: ProjectReport; delivery: Delivery; unit: EffortUnit; onLink: OpenClientView; onUnit?: (unit: EffortUnit) => void; showDirectoryLink?: boolean;
 }) {
-  const [mode, setMode] = useState<"effort" | "projects">("effort");
+  const [mode, setMode] = useState<"effort" | "projects">("projects");
   const [status, setStatus] = useState<"all" | "active" | "completed" | "upcoming">("all");
+  const [inspected, inspect] = useState("");
   const effort = mode === "effort";
-  const eligible = (item: Delivery["projectRows"][number]) => forProjectFilter(item, status, item.project.seconds);
-  const measure = (projects: Delivery["projectRows"]) => projects.filter(eligible).reduce((total, item) => total + (effort ? item.project.seconds : 1), 0);
-  const unassigned = (effort ? delivery.projectRows : delivery.projects).filter(item => !item.department);
+  const scoped = effort ? delivery.projectRows : delivery.projects;
+  const measure = (projects: Delivery["projectRows"], filter: ProjectFilter) => projects.filter(item =>
+    forProjectFilter(item, filter, item.project.seconds)).reduce((total, item) => total + (effort ? item.project.seconds : 1), 0);
   const departments = [
-    ...delivery.departmentRows.map(item => ({ id: item.id, name: item.name, target: "area:" + item.id,
-      value: measure(effort ? item.effortProjects : item.projects) })),
-    { id: "unassigned", name: "No department", target: "projects", value: measure(unassigned) },
-  ].filter(item => item.value > 0).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, "en-CA"));
-  const total = departments.reduce((sum, item) => sum + item.value, 0);
+    ...[...delivery.departmentRows].sort((a, b) => a.order - b.order).map(row => ({
+      id: row.id, name: row.name, projects: effort ? row.effortProjects : row.projects,
+    })),
+    { id: "", name: "No department", projects: scoped.filter(item => !item.department) },
+  ].filter(department => department.id || department.projects.length);
+  const totals = departments.map(row => measure(row.projects, status));
+  const total = totals.reduce((sum, value) => sum + value, 0);
+  const max = Math.max(1, ...totals);
   const amount = (value: number) => effort ? reportHours(value) + " h" : String(value);
-  return <section className="mi-exec-panel mi-department-composition" aria-labelledby="department-effort-title">
+  const open = (id: string, filter: "all" | typeof portfolioStatuses[number][0]) => {
+    if (id) onLink("projects", undefined, filter, { department: id });
+    else onLink("projects", undefined, filter === "all" ? "unassigned" : ("unassigned-" + filter) as ProjectFilter);
+  };
+  return <section className="mi-exec-panel mi-department-composition mi-v4-department-chart" aria-labelledby="department-effort-title">
     <div className="mi-exec-heading"><div><h3 id="department-effort-title">Department distribution</h3>
-      <p>{effort ? reportMonth(report.month) + " · Approved allocation share" : "Approved delivery projects by department"}</p></div>
-      <button type="button" className="exec-text-button" onClick={() => onLink("areas")}>Browse departments <ArrowUpRight size={16} aria-hidden="true" /></button>
+      <p>{effort ? reportMonth(report.month) + " · Approved allocated effort" : "Approved delivery projects by department"}</p></div>
+      {showDirectoryLink && <button type="button" className="exec-text-button" onClick={() => onLink("areas")}>Browse departments <ArrowUpRight size={16} aria-hidden="true" /></button>}
     </div>
     <div className="mi-insight-controls">
       <div className="mi-insight-segments" role="group" aria-label="Department metric">
-        <button type="button" aria-pressed={effort} onClick={() => setMode("effort")}>Effort allocation</button>
-        <button type="button" aria-pressed={!effort} onClick={() => setMode("projects")}>Project count</button>
+        <button className="mi-v4-segment-control" type="button" aria-pressed={!effort} onClick={() => { setMode("projects"); inspect(""); }}>Project count</button>
+        <button className="mi-v4-segment-control" type="button" aria-pressed={effort} onClick={() => { setMode("effort"); inspect(""); }}>Approved effort</button>
       </div>
-      <label>Project status<select value={status} onChange={event => setStatus(event.target.value as typeof status)}>
+      <label>Project status<select value={status} onChange={event => { setStatus(event.target.value as typeof status); inspect(""); }}>
         <option value="all">All</option><option value="active">In progress</option><option value="completed">Completed</option><option value="upcoming">Upcoming</option>
       </select></label>
+      {effort && onUnit && <div className="mi-insight-segments" role="group" aria-label="Department effort display">
+        <button type="button" aria-pressed={unit === "percentage"} onClick={() => onUnit("percentage")}>Percentage</button>
+        <button type="button" aria-pressed={unit === "hours"} onClick={() => onUnit("hours")}>Exact hours</button>
+      </div>}
     </div>
-    {total > 0 ? <ol className="mi-composition-rows">{departments.map(item => {
-      const share = metricPercent(item.value, total)!;
-      const detail = amount(item.value) + " of " + amount(total) + (effort ? " approved allocated effort in the selected scope" : " approved delivery projects in the selected scope");
-      return <li key={item.id}><button type="button" aria-label={item.name + ", " + percentText(share) + ", " + detail}
-        onClick={() => onLink(item.target, undefined, item.id === "unassigned" ? status === "all" ? "unassigned" : `unassigned-${status}` : status)}>
-        <span>{item.name}<small>{detail}</small></span>
-        <span className="mi-insight-bar" aria-hidden="true"><i style={{ inlineSize: share + "%" }} /></span>
-        <b>{effort && unit === "percentage" ? percentText(share) : amount(item.value)}</b>
-      </button></li>;
-    })}</ol> : <p className="mi-cockpit-empty">{effort ? "No approved effort yet for this period." : "No approved delivery projects match this status."}</p>}
+    {status === "all" && <ul className="mi-v4-legend" aria-label="Delivery statuses">{portfolioStatuses.map(([key, label]) =>
+      <li key={key}><i data-state={key} aria-hidden="true" />{label}</li>)}</ul>}
+    <ul className="mi-v4-stack-list">{departments.map((item, index) => {
+      const value = totals[index];
+      const share = metricPercent(value, total);
+      const detail = item.name + " · " + amount(value) + " of " + amount(total) +
+        (effort ? " approved allocated effort" : " approved delivery projects") + (share === undefined ? "" : " · " + percentText(share));
+      return <li key={item.id} className="mi-v4-stack-row">
+        <button className="exec-text-button mi-v4-stack-label" type="button" aria-label={detail} title={detail}
+          onClick={() => open(item.id, status)} onFocus={() => inspect(detail)} onPointerEnter={() => inspect(detail)}>{item.name}</button>
+        <div className="mi-v4-stack-rail"><div className="mi-v4-stack" style={{ inlineSize: value / max * 100 + "%" }}>
+          {portfolioStatuses.filter(([key]) => status === "all" || status === key).map(([key, label]) => {
+            const segment = measure(item.projects, key);
+            if (!segment) return null;
+            const labelDetail = item.name + " · " + label + " · " + amount(segment) + " of " + amount(value) + " · " + percentText(segment / value * 100);
+            return <button type="button" className="mi-v4-stack-segment" key={key} data-state={key} style={{ flexGrow: segment }} aria-label={labelDetail}
+              title={labelDetail} onPointerEnter={() => inspect(labelDetail)} onFocus={() => inspect(labelDetail)}
+              onClick={() => open(item.id, key)}><span>{amount(segment)}</span></button>;
+          })}
+        </div></div>
+        <b>{effort && unit === "percentage" ? share === undefined ? "—" : percentText(share) : amount(value)}</b>
+      </li>;
+    })}</ul>
+    <p role="status" className="mi-v4-chart-detail">{inspected || (total ? amount(total) + (effort ? " of approved effort" : " approved delivery projects") :
+      effort ? "No approved effort yet for this period." : "No approved delivery projects match this status.")}</p>
   </section>;
 }
+
 
 export function UpcomingDeadlines({ delivery, report, onLink }: { delivery: Delivery; report: ProjectReport; onLink: OpenClientView }) {
   const [showAll, setShowAll] = useState(false);

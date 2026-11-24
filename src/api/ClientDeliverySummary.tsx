@@ -21,9 +21,9 @@ export function BudgetUtilization({ budget, title = "Hour caps", showHours = fal
       const percentage = used === undefined ? undefined : metricPercent(used, cap);
       const exact = used === undefined ? reportHours(cap) + " h limit" : reportHours(used) + " of " + reportHours(cap) + " hours";
       return <div className="mi-budget-cap" key={label}>
-        {showHours && <p className="mi-budget-exact">{exact}</p>}
         {cap === 0 && <p className="mi-budget-exact">Zero-hour cap · percentage does not apply.</p>}
-        <DottedTrack value={percentage} label={label} tone={percentage !== undefined && percentage >= 90 ? "gold" : "blue"} detail={exact} />
+        <DottedTrack value={percentage} label={label} tone={percentage !== undefined && percentage >= 90 ? "gold" : "blue"}
+          displayValue={showHours ? exact : undefined} detail={showHours ? undefined : exact} />
         {used !== undefined && used > cap && <small className="mi-budget-warning">Over cap by {reportHours(used - cap)} h</small>}
         {percentage !== undefined && percentage >= 90 && percentage <= 100 && <small>{percentage === 100 ? "Cap reached" : "Approaching cap"}</small>}
       </div>;

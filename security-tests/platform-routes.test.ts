@@ -14,12 +14,14 @@ import { key } from "../server/firestore-store";
 import { apiServer, RequestLimit } from "../server/http";
 import { seedProjectSynthetic } from "../server/project-operator";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
-import { projectView, type Project } from "../src/projects/model";
+import { approvedProjectContent, projectView, type Project } from "../src/projects/model";
+import { newPortfolio, type Portfolio } from "../src/projects/portfolio";
+import { portfolioRef } from "../server/portfolio";
 import { clientBase, clientPath, controlSections, staffPath, staffSegments, type StaffSection } from "../src/api/platform-routes";
 import { auditViewport } from "./viewport-audit";
 import { otherContacts } from "../src/projects/other-contacts";
 
-test("native portal URLs keep authenticated roles, approved reporting, editable settings and chapter links across reload and history", { timeout: 240000 }, async () => {
+test("native portal URLs keep authenticated roles, approved reporting, editable settings and chapter links across reload and history", { timeout: 420000 }, async () => {
   const runtime = firebaseRuntime("emulator", "demo-mi-security", "mi-client-staging");
   const directory = await mkdtemp(join(tmpdir(), "mi-platform-routes-"));
   const tenant = "synthetic-platform-browser";
@@ -275,6 +277,222 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     }
     await writeFile(join(auditEvidence, "viewport-audit.json"), JSON.stringify(probes, null, 2));
   }
+  async function verifyExplorerScale() {
+    const scaleEvidence = join(evidence, "experience-v4");
+    await mkdir(scaleEvidence, { recursive: true });
+    const teams = ["finance", "hr", "cfw", "health", "miscellaneous", "training"];
+    const ids = Array.from({ length: 300 }, (_, index) => "v4-project-" + String(index + 1).padStart(3, "0"));
+    const writeFixture = async (project: Project) => {
+      const batch = runtime.db.batch();
+      batch.set(root.collection("projects").doc(project.id), project);
+      batch.set(root.collection("projectViews").doc(project.id), projectView(project, 0));
+      await batch.commit();
+    };
+    const parentProjects = ["v4-parent-north", "v4-parent-south"];
+    for (const [index, id] of parentProjects.entries()) await writeFixture({
+      ...backendProject, id, name: index === 0 ? "Northern engagement" : "Southern engagement",
+      status: "active", delivery: { kind: "engagement", type: "hourly", managerIds: [], teamIds: [] },
+    });
+    for (let start = 0; start < ids.length; start += 125) {
+      const batch = runtime.db.batch();
+      for (const [offset, id] of ids.slice(start, start + 125).entries()) {
+        const index = start + offset;
+        const completed = index % 7 === 0;
+        const upcoming = index % 7 === 1;
+        const blocked = index % 7 === 3;
+        const project: Project = {
+          ...backendProject, id, name: "V4 project " + id.slice(-3), status: completed ? "completed" : "active",
+          published: index < 299, internalNotes: "V4-PRIVATE-NOTE", description: "Approved delivery overview for the synthetic portfolio.",
+          delivery: { kind: "project", type: "hourly", parentId: parentProjects[index % 2], areaId: teams[index % teams.length],
+            managerIds: [], teamIds: [], manualCompletion: completed ? 100 : index % 7 === 2 ? undefined : 48,
+            completedOn: completed ? index === 0 ? "2026-04-17" : index === 7 ? "2025-10-17" : "2026-10-17" : undefined,
+            start: upcoming ? "2026-12-04" : "2026-09-03",
+            deadline: index % 5 === 0 ? undefined : "2026-12-10", publishSummary: index % 5 !== 0,
+            ...(blocked ? { blocker: { active: true, message: "Awaiting scope review", internal: "V4-PRIVATE-BLOCKER" } } : {}),
+          },
+          milestones: [{ id: "review", title: "Published review", completed, visible: true, date: "2026-11-19",
+            status: completed ? "completed" : blocked ? "blocked" : "in-progress" }],
+        };
+        const plain = JSON.parse(JSON.stringify(project)) as Project;
+        batch.set(root.collection("projects").doc(id), plain);
+        batch.set(root.collection("projectViews").doc(id), projectView(plain, 0));
+      }
+      await batch.commit();
+    }
+    const sample = await session(mainBrowser!, "client");
+    const explorer = sample.page.getByRole("region", { name: "Project Explorer", exact: true });
+    const grants = root.collection("memberships").doc(key("client"));
+    try {
+      await sample.page.clock.setFixedTime(new Date("2026-11-24T17:00:00Z"));
+      await grants.update({ projectIds: ids.slice(0, 6) });
+      await sample.page.goto(route("/clients/zagime/projects"));
+      await explorer.getByText("Showing 1–6 of 6 projects", { exact: true }).waitFor();
+      await grants.update({ projectIds: ids.slice(0, 100) });
+      await sample.page.reload();
+      await explorer.getByText("Showing 1–20 of 100 projects", { exact: true }).waitFor();
+      assert.equal(await explorer.locator(".mi-explorer-project").count(), 20);
+      await sample.page.screenshot({ path: join(scaleEvidence, "project-explorer-100-full.png"), fullPage: true, animations: "disabled" });
+      const projectsPerPage = explorer.getByLabel("Projects per page", { exact: true });
+      await projectsPerPage.selectOption("10");
+      await explorer.getByRole("button", { name: "Next", exact: true }).click();
+      await explorer.getByText("Showing 11–20 of 100 projects", { exact: true }).waitFor();
+      await explorer.getByRole("button", { name: "Open project V4 project 011", exact: true }).click();
+      await sample.page.getByRole("heading", { name: "V4 project 011", level: 2 }).waitFor();
+      assert.equal(await sample.page.getByText("V4-PRIVATE-NOTE").count(), 0);
+      await sample.page.screenshot({ path: join(scaleEvidence, "project-detail-full.png"), fullPage: true, animations: "disabled" });
+      await sample.page.getByRole("button", { name: "Back to Project Explorer", exact: true }).click();
+      await explorer.getByText("Showing 11–20 of 100 projects", { exact: true }).waitFor();
+      assert.equal(await sample.page.evaluate(() => document.activeElement?.id), "client-open-v4-project-011");
+      await explorer.getByRole("button", { name: /^HR · .*approved projects/ }).click();
+      await sample.page.waitForURL(url => url.searchParams.get("explorer-department") === "hr" && !url.searchParams.has("explorer-page"));
+      await explorer.getByRole("button", { name: "Cards", exact: true }).click();
+      await sample.page.waitForURL(url => url.searchParams.get("explorer-view") === "cards");
+      for (const theme of ["light", "dark"] as const) {
+        await sample.page.getByRole("combobox", { name: "Appearance" }).selectOption(theme);
+        for (const width of [320, 390, 768, 1024, 1440, 1920]) {
+          await auditViewport(sample.page, "V4 Project Explorer " + theme, width, 940, { compactSidebar: true });
+          const boxes = await explorer.locator(".mi-explorer-project").evaluateAll(elements => elements.map(el => {
+            const box = el.getBoundingClientRect(); return { top: Math.round(box.top), bottom: Math.round(box.bottom) };
+          }));
+          for (const box of boxes) assert.ok(boxes.every(other => other.top !== box.top || other.bottom === box.bottom));
+          if (width === 1024 || width === 1440) {
+            const miscellaneous = explorer.getByRole("button", { name: /^Miscellaneous · .*approved projects/ })
+              .locator(".mi-explorer-department-name");
+            assert.equal(await miscellaneous.evaluate(label => {
+              const text = document.createRange(); text.selectNodeContents(label);
+              return text.getClientRects().length;
+            }), 1, "Miscellaneous fits on one line at " + width);
+          }
+          await sample.page.screenshot({ path: join(scaleEvidence, "explorer-" + theme + "-" + width + ".png"), animations: "disabled" });
+        }
+      }
+      await sample.page.setViewportSize({ width: 1440, height: 900 });
+      await sample.page.evaluate(() => { document.documentElement.style.zoom = "2"; });
+      assert.ok(await sample.page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+      await sample.page.screenshot({ path: join(scaleEvidence, "explorer-200-percent.png"), animations: "disabled" });
+      await sample.page.evaluate(() => { document.documentElement.style.zoom = ""; });
+      await sample.page.goto(route("/clients/zagime"));
+      const chart = sample.page.getByRole("region", { name: "Department distribution" });
+      await chart.getByRole("button", { name: "Project count", exact: true }).waitFor();
+      await sample.page.getByText("No approved effort yet for this period.", { exact: true }).first().waitFor();
+      await sample.page.screenshot({ path: join(scaleEvidence, "leadership-100-zero-hours-full.png"), fullPage: true, animations: "disabled" });
+      const completionChart = sample.page.getByRole("region", { name: "Completed projects by month" });
+      assert.equal(await completionChart.locator(".mi-completion-month").count(), 12);
+      await completionChart.getByRole("button", { name: "May 2026 · 0 recorded completions", exact: true }).waitFor();
+      await completionChart.locator('[data-state="unavailable"]').filter({ hasText: /Nov.*Historical reporting unavailable/ }).waitFor();
+      await completionChart.getByRole("button", { name: "Earlier 12 months" }).click();
+      await completionChart.getByRole("button", { name: /^October 2025 · 1 recorded completion/ }).waitFor();
+      await completionChart.getByRole("button", { name: "Later 12 months" }).click();
+      for (const theme of ["light", "dark"]) {
+        await sample.page.getByRole("combobox", { name: "Appearance" }).selectOption(theme);
+        await sample.page.locator('.secure-shell[data-theme="' + theme + '"]').waitFor();
+        await completionChart.screenshot({ path: join(scaleEvidence, "completion-calendar-" + theme + ".png"), animations: "disabled" });
+      }
+      await completionChart.getByRole("button", { name: /^April 2026 · 1 recorded completion/ }).click();
+      await sample.page.waitForURL(url => url.searchParams.get("explorer-completed-month") === "2026-04");
+      await explorer.getByText("Showing 1–1 of 1 project", { exact: true }).waitFor();
+      await sample.page.goBack();
+      await chart.getByRole("button", { name: /^HR · In progress · / }).first().click();
+      await sample.page.waitForURL(url => url.searchParams.get("explorer-department") === "hr" && url.searchParams.get("status") === "active");
+      await explorer.locator(".mi-explorer-project").first().waitFor();
+      assert.equal(await explorer.getByLabel("Department", { exact: true }).inputValue(), "hr");
+      const scopedResponse = await sample.context.request.get(origin + "/api/v2/tenants/" + tenant + "/report?month=" + month, { headers: { authorization: "Bearer client" } });
+      assert.equal(scopedResponse.status(), 200);
+      const body = await scopedResponse.text();
+      assert.equal(JSON.parse(body).projects.length, 100);
+      assert.doesNotMatch(body, /V4-PRIVATE|V4 project 300/);
+      await sample.page.goto(route("/clients/zagime/departments"));
+      const departmentChart = sample.page.getByRole("region", { name: "Department distribution" });
+      await departmentChart.waitFor();
+      const readSegmentColors = () => departmentChart.locator(".mi-v4-stack-list > li").first().evaluate(row =>
+        [...row.querySelectorAll(".mi-v4-stack-segment")].map(segment => {
+          const legend = row.closest("section")?.querySelector('.mi-v4-legend i[data-state="' + segment.getAttribute("data-state") + '"]');
+          return { segment: getComputedStyle(segment).backgroundColor, legend: legend ? getComputedStyle(legend).backgroundColor : undefined };
+        }));
+      for (const theme of ["light", "dark"]) {
+        await sample.page.getByRole("combobox", { name: "Appearance" }).selectOption(theme);
+        await sample.page.locator('.secure-shell[data-theme="' + theme + '"]').waitFor();
+        const colors = await readSegmentColors();
+        assert.ok(new Set(colors.map(color => color.segment)).size >= 3, "Delivery status segments use distinct colors in " + theme);
+        assert.ok(colors.every(color => color.segment === color.legend), "Segment colors match their legend");
+      }
+      await sample.page.screenshot({ path: join(scaleEvidence, "departments-100-full.png"), fullPage: true, animations: "disabled" });
+    } finally { await sample.context.close(); }
+    const staffPreview = await session(mainBrowser!, "owner");
+    try {
+      await staffPreview.page.goto(route("/clients/zagime/projects", "&previewMode=draft&q=V4+project&explorer-size=50&explorer-page=6"));
+      const staffExplorer = staffPreview.page.getByRole("region", { name: "Project Explorer", exact: true });
+      await staffExplorer.getByText("Showing 251–300 of 300 projects", { exact: true }).waitFor();
+      assert.equal(await staffExplorer.locator(".mi-explorer-project").count(), 50);
+      await staffExplorer.getByRole("button", { name: "Open project V4 project 300", exact: true }).waitFor();
+      await staffPreview.page.screenshot({ path: join(scaleEvidence, "project-explorer-300-page-six.png"), animations: "disabled" });
+    } finally { await staffPreview.context.close(); }
+
+    const fullId = ids[10];
+    const context = portfolioRef(root);
+    const fullProject: Project = {
+      ...backendProject, id: fullId, name: "Community reporting toolkit", status: "completed",
+      description: "A shared reporting toolkit with an agreed set of measures, templates and handover materials.",
+      plan: { basis: "monthly", targetSeconds: 43200 },
+      internalNotes: "V4-PRIVATE-DETAIL-NOTE",
+      delivery: { structure: 3, kind: "project", type: "hourly", areaId: "miscellaneous",
+        start: "2026-08-10", deadline: "2026-11-20", completedOn: "2026-11-17", publishSummary: true,
+        managerIds: ["detail-manager"], teamIds: ["detail-specialist", "detail-hidden"], monthlyCap: 86400, lifetimeCap: 216000 },
+      milestones: [
+        { id: "scope", title: "Confirm reporting measures", date: "2026-08-26", completed: true, visible: true },
+        { id: "review", title: "Review toolkit with leadership", date: "2026-10-21", completed: true, visible: true },
+        { id: "handover", title: "Hand over templates and guide", date: "2026-11-17", completed: true, visible: true },
+        { id: "private", title: "V4-PRIVATE-MILESTONE", date: "2026-11-14", completed: true, visible: false },
+      ],
+      updates: [{ id: "handover-note", title: "Toolkit delivered", date: "2026-11-17", body: "Templates and the reporting guide are ready to use.", visible: true }],
+    };
+    const setup = runtime.db.batch();
+    setup.set(root.collection("projects").doc(fullId), fullProject);
+    setup.set(root.collection("projectViews").doc(fullId), { ...projectView(fullProject, 43200), ...approvedProjectContent(fullProject) });
+    for (const [period, seconds] of [[month, 21600], [previousMonth, 21600]] as const) {
+      setup.set(root.collection("projectPeriods").doc(key(period, fullId)), { projectId: fullId, month: period, seconds });
+    }
+    const portfolio = ((await context.get()).data()?.portfolio as Portfolio | undefined) ?? newPortfolio();
+    setup.set(context, { portfolio: { ...portfolio, directory: [...portfolio.directory, ...[
+      { id: "detail-manager", name: "Avery Morgan", role: "Delivery lead", visible: true },
+      { id: "detail-specialist", name: "Jordan Lee", role: "Reporting specialist", visible: true },
+      { id: "detail-hidden", name: "V4-PRIVATE-CONTACT", role: "Private reviewer", visible: false },
+    ].map((entry, order) => ({
+      ...entry, areaId: "", responsibility: "", internalContact: "", publicContact: "", active: true,
+      email: "private@fixture.invalid", shareEmail: false, projectIds: [fullId], order: order + portfolio.directory.length,
+    }))] } });
+    await setup.commit();
+    const detailed = await session(mainBrowser!, "client");
+    try {
+      const evidencePath = route("/clients/zagime/projects/" + fullId);
+      const response = await detailed.context.request.get(origin + "/api/v2/tenants/" + tenant + "/report?month=" + month,
+        { headers: { authorization: "Bearer client" } });
+      assert.equal(response.status(), 200, await response.text());
+      assert.doesNotMatch(await response.text(), /V4-PRIVATE-DETAIL-NOTE|V4-PRIVATE-MILESTONE|V4-PRIVATE-CONTACT|private@fixture/);
+      await detailed.page.goto(evidencePath);
+      await detailed.page.getByRole("heading", { name: "Community reporting toolkit", exact: true }).waitFor();
+      const sections = detailed.page.locator(".mi-detailed-project");
+      for (const label of ["Avery Morgan", "Jordan Lee", "Toolkit delivered", "Confirm reporting measures"]) {
+        await sections.getByText(label, { exact: true }).waitFor();
+      }
+      await sections.getByRole("progressbar", { name: "Completed approved milestones" }).waitFor();
+      assert.equal(await sections.locator("time[datetime='2026-11-17']").count(), 3);
+      assert.doesNotMatch(await sections.innerText(), /V4-PRIVATE|private@fixture/);
+      const budget = sections.getByRole("region", { name: "Delivery project hour caps" });
+      await sections.getByRole("button", { name: "Hours", exact: true }).click();
+      await budget.getByRole("meter", { name: "Monthly hours used" }).getByText("6 of 24 hours", { exact: true }).waitFor();
+      await budget.getByRole("meter", { name: "Whole-project hours used" }).getByText("12 of 60 hours", { exact: true }).waitFor();
+      await sections.getByRole("button", { name: "Percentage", exact: true }).click();
+      for (const theme of ["light", "dark"]) {
+        await detailed.page.getByRole("combobox", { name: "Appearance" }).selectOption(theme);
+        for (const width of [390, 1024, 1440]) {
+          await auditViewport(detailed.page, "Populated project detail " + theme, width, 900, { compactSidebar: true });
+          await detailed.page.screenshot({ path: join(scaleEvidence, "populated-project-" + theme + "-" + width + ".png"), fullPage: true, animations: "disabled" });
+        }
+      }
+    } finally { await detailed.context.close(); }
+  }
+
   const editPath = "/workspace/projects/" + projectId;
   async function reviewProjectEdit(page: Page, description: string) {
     await page.goto(route(editPath));
@@ -514,7 +732,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.getByRole("heading", { name: /Leadership\s*summary/i }).waitFor();
     await client.page.getByLabel("All-time delivery projects", { exact: true }).getByText("All-time approved portfolio").waitFor();
     assert.equal(await client.page.locator(".mi-workspace-sidebar").evaluate(element => getComputedStyle(element).backgroundColor), "rgb(16, 41, 66)");
-    const panelBounds = await client.page.locator(".mi-insight-grid > section").evaluateAll(panels => panels.slice(0, 2)
+    const panelBounds = await client.page.locator(".mi-v4-analytics-grid > section").evaluateAll(panels => panels.slice(0, 2)
       .map(panel => [panel.getBoundingClientRect().top, panel.getBoundingClientRect().bottom]));
     assert.deepEqual(panelBounds[0], panelBounds[1], "Leadership analytics cards align in their shared row");
     await client.page.screenshot({ path: join(evidence, "client-dashboard-native-overview.png"), fullPage: true, animations: "disabled" });
@@ -568,9 +786,11 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await monthlyEffort.getByRole("button", { name: /^September 2026, Approved effort: 1\.5 h/ }).waitFor();
     const effortDepartment = monthlyEffort.getByRole("combobox", { name: "Effort department" });
     await effortDepartment.selectOption("hr");
+    await client.page.waitForURL(url => url.searchParams.get("effort-department") === "hr");
     const hrNovember = monthlyEffort.getByRole("button", { name: /^November 2026, Approved effort: 0 h.*0%/ });
+    await client.page.mouse.move(0, 0);
     await hrNovember.focus();
-    assert.match(await monthlyEffort.getByRole("tooltip").innerText(), /Monthly portfolio effort: 2 h.*0%/);
+    await monthlyEffort.getByRole("tooltip").filter({ hasText: /November 2026.*Monthly portfolio effort: 2 h.*0%/ }).waitFor();
     await effortDepartment.selectOption("");
     const effortProject = monthlyEffort.getByRole("combobox", { name: "Effort project" });
     await effortProject.selectOption(projectId);
@@ -636,11 +856,9 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.screenshot({ path: join(evidence, "client-dashboard-tablet.png"), fullPage: true, animations: "disabled" });
     await client.page.getByRole("button", { name: "Workspace navigation", exact: true }).click();
     await client.page.getByRole("dialog", { name: "Workspace menu" }).getByRole("button", { name: "Projects", exact: true }).click();
-    await client.page.getByRole("heading", { name: "Published projects", exact: true }).waitFor();
-    await client.page.locator(".secure-published-project .secure-project-hours > div").first().waitFor();
-    const narrowestTile = await client.page.locator(".secure-published-project .secure-project-hours > div")
-      .evaluateAll(tiles => Math.min(...tiles.map(tile => tile.getBoundingClientRect().width)));
-    assert.ok(Number.isFinite(narrowestTile) && narrowestTile >= 96, "tablet project metrics have readable columns");
+    await client.page.getByRole("heading", { name: "Project Explorer", exact: true }).waitFor();
+    await client.page.locator(".mi-explorer-project").first().waitFor();
+    await auditViewport(client.page, "Tablet explorer", 768, 1024);
     await client.page.screenshot({ path: join(evidence, "client-projects-tablet.png"), fullPage: true, animations: "disabled" });
     await client.page.setViewportSize({ width: 1440, height: 1000 });
     assert.equal(await client.page.getByRole("link", { name: /Morris Workspace|Control Panel/ }).count(), 0);
@@ -868,6 +1086,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await scheduledClient.context.close();
     }
 
+    await verifyExplorerScale();
     assert.deepEqual(errors, []);
   } finally {
     await mainBrowser?.close();

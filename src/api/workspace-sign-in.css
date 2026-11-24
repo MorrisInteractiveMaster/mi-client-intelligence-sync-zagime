@@ -7,11 +7,13 @@
   --access-emblem: #e8f0f8;
   --access-focus: #1e619b;
   display: grid;
-  place-items: start center;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, .85fr);
   width: 100%;
   max-width: none;
-  padding: clamp(24px, 7vh, 96px) 0 clamp(24px, 6vh, 64px);
-  margin: 0;
+  padding: 0;
+  margin: 16px 0 0;
+  border-radius: 20px;
+  overflow: clip;
 }
 
 .nordic.secure-shell[data-theme="dark"] .mi-access {
@@ -90,7 +92,30 @@
 .nordic.secure-shell .mi-access-card .mi-access-error { margin-block-start: 16px; }
 
 @media (max-width: 480px), (max-height: 630px) {
-  .nordic.secure-shell .mi-access { padding-block: 16px 24px; }
-  .mi-access-card { border-radius: 18px; }
   .mi-access-providers { margin-top: 16px; }
+}
+
+.mi-access-story {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  gap: 16px;
+  padding: clamp(24px, 5.5vw, 88px);
+  color: #f3f7fc;
+  background: linear-gradient(100deg,#071a2cf0,#0c273b6b), url("/branding/intelligence/delivery-background.webp") center / cover #0b263f;
+}
+.nordic.secure-shell .mi-access-story strong { font-size: clamp(2.2rem, 5vw, 5.75rem); letter-spacing: -.06em; line-height: 1; color: white; text-wrap: balance; }
+.nordic.secure-shell .mi-access-story p { color: #dfebf7; margin: 0; max-width: 34ch; }
+.nordic.secure-shell .mi-access-story p:first-child { color: #f4d981; font-size: .86rem; font-weight: 700; }
+.nordic.secure-shell .mi-access-card { width: 100%; display: flex; flex-direction: column; justify-content: center; border-radius: 0; border: 0; align-items: stretch; min-width: 0; }
+.mi-access-mark { align-self: center; }
+@media (min-width: 841px) {
+  .nordic.secure-shell:has(> .mi-access) { display: flex; flex-direction: column; min-height: 100svh; padding-block-end: 20px; }
+  .nordic.secure-shell .mi-access { flex: 1; min-height: 400px; }
+  .mi-access-story { background-position: center, right center; }
+}
+@media (max-width: 840px) {
+  .nordic.secure-shell .mi-access { grid-template-columns: minmax(0,1fr); }
+  .mi-access-story { padding: 24px; gap: 8px; }
 }

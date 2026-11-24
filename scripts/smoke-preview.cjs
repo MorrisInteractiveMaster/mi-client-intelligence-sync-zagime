@@ -211,6 +211,25 @@ async function observe(context, page) {
               return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
             });
             assert.ok(contrast >= 4.5, "native sign-in instructions contrast");
+            if (width === 1440 && item.path.startsWith("/clients/")) {
+              await page.locator(".mi-access-story").waitFor();
+              const appearance = page.getByRole("combobox", { name: "Appearance" });
+              for (const theme of ["light", "dark"]) {
+                await appearance.selectOption(theme);
+                for (const size of [320, 390, 768, 1024, 1440, 1920]) {
+                  await page.setViewportSize({ width: size, height: 900 });
+                  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+                    "sign-in geometry at " + size + " " + theme);
+                  if (size >= 1024) {
+                    const bottomGutter = await page.locator(".mi-access").evaluate(panel => innerHeight - panel.getBoundingClientRect().bottom);
+                    assert.ok(bottomGutter >= 0 && bottomGutter <= 32, "sign-in fills desktop viewport at " + size + " " + theme);
+                  }
+                  await page.screenshot({ path: resolve(output, "v4-sign-in-" + theme + "-" + size + ".png"), fullPage: true, animations: "disabled" });
+                }
+              }
+              await appearance.selectOption("system");
+              await page.setViewportSize({ width, height: 1000 });
+            }
           }
           assert.ok(
             await page.evaluate(

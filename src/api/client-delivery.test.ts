@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deliveryDate } from "../projects/delivery";
 import type { ProjectReport } from "../projects/model";
-import { clientDelivery, deadlineWindow, forProjectFilter, projectCompletionHistory, projectMeasures, publishedMonthlyCap } from "./client-delivery";
+import { clientDelivery, completionCalendar, deadlineWindow, forProjectFilter, projectCompletionHistory, projectMeasures, publishedMonthlyCap } from "./client-delivery";
 
 type Project = ProjectReport["projects"][number];
 type Placement = NonNullable<ProjectReport["portfolio"]>["placements"][number];
@@ -137,9 +137,25 @@ test("completion trends use published dated completions and never infer an activ
     "Unusable date": { completedOn: "2026-02-31" },
   });
   const { projects } = clientDelivery(fixture, "2026-11-23");
-  assert.deepEqual(projectCompletionHistory(projects, "2026-11-23").map(bucket => [bucket.month, bucket.projects.map(entry => entry.id)]), [
+  const dated = projectCompletionHistory(projects, "2026-11-23");
+  assert.deepEqual(dated.map(bucket => [bucket.month, bucket.projects.map(entry => entry.id)]), [
     ["2026-09", ["Legacy closeout"]], ["2026-10", ["October completion"]],
   ]);
+});
+
+test("completion calendar keeps consecutive months and distinguishes recorded zeroes from unavailable history", () => {
+  const dated = [
+    { id: "2025-12", month: "2025-12", projects: [project("December closeout", 0, "closed")] },
+    { id: "2026-02", month: "2026-02", projects: [project("February delivered", 0, "completed")] },
+  ];
+  const months = completionCalendar(dated, "2026-03");
+  assert.equal(months.length, 12);
+  assert.equal(months[0].month, "2025-04");
+  assert.deepEqual(months.slice(-5).map(item => [item.month, item.state, item.projects.length]), [
+    ["2025-11", "unavailable", 0], ["2025-12", "recorded", 1], ["2026-01", "zero", 0],
+    ["2026-02", "recorded", 1], ["2026-03", "unavailable", 0],
+  ]);
+  assert.ok(completionCalendar([], "2026-03").every(item => item.state === "unavailable"));
 });
 
 test("deadline horizons advance in Regina calendar months and keep private dates excluded", () => {

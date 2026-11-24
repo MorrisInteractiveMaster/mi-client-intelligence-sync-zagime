@@ -47,12 +47,63 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
   const managers = team.filter(member => isManager(member.id));
   const arrangement = delivery?.type && { hourly: "Hourly", "fixed-fee": "Fixed fee", training: "Training & Workshops", workshop: "Training & Workshops" }[delivery.type];
   const tone = blocked || overdue ? "risk" : project.status === "completed" ? "complete" : near ? "near" : dueSoon ? "warning" : undefined;
+  const status = <p className="secure-badge" data-status={active ? "active" : project.status}>
+    {placement?.archived ? "Archived" : upcoming ? "Upcoming" : projectStatus[active ? "active" : project.status]}
+  </p>;
+  const lineage = (parent || department) && <div className="mi-project-lineage">
+    {parent && (onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("group:" + parent.id)}>{parent.name}</button> : <span>{parent.name}</span>)}
+    {department && (onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("area:" + department.id)}>{department.name}</button> : <span>{department.name}</span>)}
+  </div>;
+  const alert = <>{blocked ? <p className="mi-project-risk"><CircleAlert size={16} aria-hidden="true" /><span><b>Blocked</b>{risk && " · " + risk}</span></p>
+    : overdue ? <p className="mi-project-risk"><CircleAlert size={16} aria-hidden="true" />Overdue · {reportDay(overdue)}</p>
+      : dueSoon ? <p className="mi-project-warning">Deadline approaching</p>
+        : near ? <p className="mi-project-near">Nearing completion</p> : null}
+    {delivery?.blocker?.active === false && delivery.blocker.message && <p className="secure-message">Blocker resolved · {delivery.blocker.message}</p>}
+  </>;
+  const effort = <dl className="secure-project-hours">
+    <div><dt>{period} approved effort</dt><dd>{reportHours(descendantTotals?.monthly ?? project.seconds)} h</dd></div>
+    <div><dt>Whole-project approved effort</dt><dd>{reportHours(descendantTotals?.lifetime ?? project.lifetimeSeconds)} h</dd></div>
+  </dl>;
+  const budgetTitle = delivery?.kind === "engagement" ? "Parent engagement hour caps" : "Delivery project hour caps";
+  if (detail) {
+    const approved = (project.milestones ?? []).filter(item => item.status !== "waived");
+    const complete = approved.filter(item => item.completed).length;
+    const hasCaps = (budget?: Delivery) => budget?.monthlyCap !== undefined || budget?.lifetimeCap !== undefined;
+    return <div className="mi-detailed-project" data-progress-tone={tone}>
+      <div className="mi-project-summary-grid">
+        <section className="mi-project-detail-section" aria-label="Project overview">
+          <div className="mi-project-status-line">{status}{lineage}</div>
+          {alert}
+          {project.description && <p className="secure-project-description">{project.description}</p>}
+          <dl className="mi-project-facts" aria-label="Approved project facts">
+            {arrangement && <div><dt>Arrangement</dt><dd>{arrangement}</dd></div>}
+            {start && <div><dt>Start date</dt><dd><time dateTime={start}>{reportDay(start)}</time></dd></div>}
+            {deadline && <div><dt>Expected completion</dt><dd><time dateTime={deadline}>{reportDay(deadline)}</time></dd></div>}
+            {delivery?.completedOn && <div><dt>Completion date</dt><dd><time dateTime={delivery.completedOn}>{reportDay(delivery.completedOn)}</time></dd></div>}
+          </dl>
+          <dl className="mi-project-progress">
+            <div><dt>Work completion</dt><dd>{completion === undefined ? "Not assessed" : completion + "%"}</dd>
+              {completion !== undefined && <progress value={completion} max={100} aria-label="Work completion" />}</div>
+            {approved.length > 0 && <div><dt>Approved milestones completed</dt><dd>{complete} of {approved.length}</dd>
+              <progress value={complete} max={approved.length} aria-label="Completed approved milestones" /></div>}
+          </dl>
+        </section>
+        <section className="mi-project-detail-section mi-project-effort" aria-label="Approved effort and hour caps">
+          <h3>Approved effort</h3>
+          {effort}
+          {reportingTargets()}
+          {(hasCaps(delivery) || hasCaps(parent?.budget)) && <EffortToggle unit={unit} onChange={setUnit} />}
+          {hasCaps(delivery) ? <BudgetUtilization budget={delivery} showHours={unit === "hours"} title={budgetTitle} />
+            : <p className="secure-muted">No published project cap</p>}
+          <BudgetUtilization budget={parent?.budget} showHours={unit === "hours"} title="Parent engagement hour caps" />
+        </section>
+      </div>
+      <div className="mi-project-document" aria-label="Project detail sections">{detailSections()}</div>
+    </div>;
+  }
   return <article className="secure-card secure-published-project mi-project-card" data-progress-tone={tone}>
     <header className="mi-project-card-header">
-      <div><p className="secure-badge" data-status={active ? "active" : project.status}>
-        {placement?.archived ? "Archived" : upcoming ? "Upcoming" : projectStatus[active ? "active" : project.status]}
-      </p>
-      {!detail && <h3>{project.name}</h3>}</div>
+      <div>{status}<h3>{project.name}</h3></div>
       <div className="mi-project-completion">
         <ProgressArc value={completion} label={project.name + " work completion"}
           detail="out of 100% of planned work" tone={blocked ? "risk" : project.status === "completed" ? "complete" : "active"} />
@@ -60,68 +111,52 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
         <span className="exec-sr-only">{completion === undefined ? "Work completion not recorded" : completion + "% work completion"}</span>
       </div>
     </header>
-    {(parent || department) && <div className="mi-project-lineage">
-      {parent && (onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("group:" + parent.id)}>{parent.name}</button> : <span>{parent.name}</span>)}
-      {department && (onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("area:" + department.id)}>{department.name}</button> : <span>{department.name}</span>)}
-    </div>}
-    {blocked ? <p className="mi-project-risk"><CircleAlert size={16} aria-hidden="true" /><span><b>Blocked</b>{risk && " · " + risk}</span></p>
-      : overdue ? <p className="mi-project-risk"><CircleAlert size={16} aria-hidden="true" />Overdue · {reportDay(overdue)}</p>
-        : dueSoon ? <p className="mi-project-warning">Deadline approaching</p>
-          : near ? <p className="mi-project-near">Nearing completion</p> : null}
-    {delivery?.blocker?.active === false && delivery.blocker.message && <p className="secure-message">Blocker resolved · {delivery.blocker.message}</p>}
+    {lineage}{alert}
     {(start || deadline) && <p className="mi-project-dates">
       {start && <span>Start {reportDay(start)}</span>}{deadline && <span>Expected completion {reportDay(deadline)}</span>}
     </p>}
-    {detail && <dl className="mi-project-facts" aria-label="Approved project facts">
-      <div><dt>Arrangement</dt><dd>{arrangement ?? "Not published"}</dd></div>
-      <div><dt>Expected completion</dt><dd>{deadline ? reportDay(deadline) : "Not published"}</dd></div>
-      <div><dt>Completion date</dt><dd>{delivery?.completedOn ? reportDay(delivery.completedOn) : "Not yet recorded"}</dd></div>
-    </dl>}
     {project.description && <p className="secure-project-description">{project.description}</p>}
-    {!detail && !detailsOpen && Boolean(project.milestones?.length) && <ol className="mi-card-milestones" aria-label="Approved milestone highlights">
+    {!detailsOpen && Boolean(project.milestones?.length) && <ol className="mi-card-milestones" aria-label="Approved milestone highlights">
       {[...(project.milestones ?? [])].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999")).slice(0, 3).map(item => <li
         key={item.id} data-complete={item.completed || undefined} data-blocked={item.status === "blocked" || undefined}>
         <span>{item.title} <small>· {milestoneStatus(item)}</small></span>
       </li>)}
     </ol>}
-    <dl className="secure-project-hours">
-      <div><dt>{period} approved effort</dt><dd>{reportHours(descendantTotals?.monthly ?? project.seconds)} h</dd></div>
-      <div><dt>Whole-project approved effort</dt><dd>{reportHours(descendantTotals?.lifetime ?? project.lifetimeSeconds)} h</dd></div>
-    </dl>
-    {detail && (delivery?.monthlyCap !== undefined || delivery?.lifetimeCap !== undefined) && <EffortToggle unit={unit} onChange={setUnit} />}
-    {detail && delivery?.monthlyCap === undefined && delivery?.lifetimeCap === undefined && <p className="secure-muted">No published cap</p>}
-    <BudgetUtilization budget={delivery} showHours={detail && unit === "hours"} title={delivery?.kind === "engagement" ? "Parent engagement hour caps" : "Delivery project hour caps"} />
+    {effort}
+    <BudgetUtilization budget={delivery} title={budgetTitle} />
     {team.length > 0 && <div className="mi-project-people">
       <div className="mi-project-faces" aria-hidden="true">{(managers.length ? managers : team).slice(0, 3).map(member =>
         <PersonPhoto key={member.id} name={member.name} photo={member.photo} alt="" />)}</div>
       <span>{managers.length ? managers.map(member => member.name).join(", ") : team.length + (team.length === 1 ? " team member" : " team members")}</span>
     </div>}
-    {detail ? <div className="mi-project-detail-panel mi-project-document" aria-label="Project detail sections">
-      {detailDetails()}
-    </div> : <details className="mi-project-detail-panel" onToggle={event => setDetailsOpen(event.currentTarget.open)}>
+    <details className="mi-project-detail-panel" onToggle={event => setDetailsOpen(event.currentTarget.open)}>
       <summary>Project details</summary>
-      {detailsOpen && detailDetails()}
-    </details>}
-    {onLink && !detail && <button type="button" className="exec-text-button intel-open-project" onClick={() => onLink("project:" + project.id)}>
+      {detailsOpen && <>{reportingTargets()}<BudgetUtilization budget={parent?.budget} title="Parent engagement hour caps" />{detailSections()}</>}
+    </details>
+    {onLink && <button type="button" className="exec-text-button intel-open-project" onClick={() => onLink("project:" + project.id)}>
       Open project <span className="exec-sr-only">{project.name}</span><ArrowUpRight size={16} aria-hidden="true" />
     </button>}
   </article>;
 
-  function detailDetails() {
+  function reportingTargets() {
+    const showDirect = detail && Boolean(descendantTotals?.descendants);
+    return (showDirect || project.plan.targetSeconds > 0) && <dl className="secure-project-hours">
+      {showDirect && <div><dt>Approved effort on this project in {period}</dt><dd>{reportHours(project.seconds)} h</dd></div>}
+      {project.plan.targetSeconds > 0 && <div><dt>{project.plan.basis === "monthly" ? "Monthly" : "Lifetime"} reporting target</dt><dd>{reportHours(project.plan.targetSeconds)} h</dd></div>}
+    </dl>;
+  }
+
+  function detailSections() {
+    const Heading = detail ? "h3" : "h4";
     return <>
-      {(Boolean(detail && descendantTotals) || project.plan.targetSeconds > 0) && <dl className="secure-project-hours">
-        {detail && descendantTotals && <div><dt>Approved effort on this project in {period}</dt><dd>{reportHours(project.seconds)} h</dd></div>}
-        {project.plan.targetSeconds > 0 && <div><dt>{project.plan.basis === "monthly" ? "Monthly" : "Lifetime"} reporting target</dt><dd>{reportHours(project.plan.targetSeconds)} h</dd></div>}
-      </dl>}
-      <BudgetUtilization budget={parent?.budget} showHours={detail && unit === "hours"} title="Parent engagement hour caps" />
       {Boolean(history?.length) && <div>
-        <h4>Reported effort by month</h4>
+        <Heading>Reported effort by month</Heading>
         <ul className="mi-project-history">{history?.map(row => <li key={row.month}>
           <time dateTime={row.month}>{reportMonth(row.month)}</time><strong>{reportHours(row.seconds)} h</strong>
         </li>)}</ul>
       </div>}
       {team.length > 0 && <div className="exec-project-team">
-        <h4>Project team</h4>
+        <Heading>Project team</Heading>
         <ul>{team.map(member => <li key={member.id}>
           <PersonPhoto name={member.name} photo={member.photo} alt={member.photoAlt} />
           <div>{onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("contact:" + member.id)}>{member.name}</button> : member.name}
@@ -129,7 +164,7 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
         </li>)}</ul>
       </div>}
       {Boolean(project.milestones?.length) && <div>
-        <h4>Milestones</h4>
+        <Heading>Milestones</Heading>
         <ul className="secure-timeline">
           {[...(project.milestones ?? [])].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999")).map(item => <li key={item.id}>
             {onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("milestone:" + project.id + ":" + item.id)}>{item.title}</button> : <b>{item.title}</b>}
@@ -141,7 +176,7 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
         </ul>
       </div>}
       {Boolean(project.updates?.length) && <div>
-        <h4>Project updates</h4>
+        <Heading>Project updates</Heading>
         <ul className="secure-timeline">
           {[...(project.updates ?? [])].sort((a, b) => b.date.localeCompare(a.date)).map(item => <li key={item.id}>
             <time dateTime={item.date}>{reportDay(item.date)}</time><b>{item.title}</b><p className="secure-project-description">{item.body}</p>
