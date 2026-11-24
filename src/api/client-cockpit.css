@@ -93,9 +93,12 @@
 .mi-status-wheel small { display: block; max-inline-size: 5.25rem; margin-block-start: 3px; color: var(--mi-client-muted); font-size: clamp(.58rem, .85vw, .7rem); line-height: 1.2; overflow-wrap: anywhere; }
 .mi-status-wheel circle { fill: var(--mi-status-color, var(--mi-cockpit-quiet)); transition: opacity .22s ease, fill .25s ease; animation: mi-cockpit-dot-in 300ms ease-out both; animation-delay: calc(var(--dot-order) * 6ms); }
 .mi-status-wheel circle[data-muted="true"] { opacity: .22; }
-.mi-status-composition-key { min-inline-size: 0; }
+.mi-status-composition-key { min-inline-size: 0; container: status-options / inline-size; }
 .mi-status-composition-key h3 { margin: 0 0 6px; font-size: .9rem; line-height: 1.25; letter-spacing: -.018em; }
 .mi-status-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+@container status-options (max-width: 252px) {
+  .mi-status-legend { grid-template-columns: minmax(0,1fr); }
+}
 .nordic.secure-shell .mi-status-legend button {
   display: grid;
   grid-template-columns: 6px minmax(0,1fr) auto;
@@ -276,29 +279,25 @@
 }
 @keyframes mi-cockpit-dot-in { from { opacity: .15; } }
 @keyframes mi-cockpit-track-in { from { transform: scaleX(0); } }
-@media (max-width: 1160px) {
-  .mi-status-legend { grid-template-columns: minmax(0,1fr); }
-  .mi-status-composition { grid-template-columns: minmax(72px,110px) minmax(0,1fr); gap: 8px; }
-}
-@media (max-width: 1020px) {
-  .mi-status-legend { grid-template-columns: repeat(2,minmax(0,1fr)); }
-}
-@media (max-width: 830px) {
+.intel-workspace.exec-content { container: client-report / inline-size; }
+@container client-report (max-width: 760px) {
   .mi-cockpit-hero { grid-template-columns: minmax(0,1fr); gap: 12px; }
   .mi-cockpit-portfolio { border-inline-start: 0; border-block-start: 1px solid #6b97b286; padding: 8px 0 0; }
   .mi-status-composition { grid-template-columns: minmax(0,92px) minmax(0,1fr); }
   .mi-client-cockpit { gap: 10px; }
   .mi-cockpit-analysis { gap: 8px; }
+  .intel-workspace .mi-project-filters { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .mi-project-filters label:first-child { grid-column: 1 / -1; }
 }
-@media (max-width: 600px) {
+@container client-report (max-width: 600px) {
   .mi-cockpit-signals { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .mi-cockpit-analysis, .mi-department-analysis { grid-template-columns: minmax(0,1fr); }
   .mi-department-analysis > .mi-cockpit-progress { grid-column: auto; }
 }
-@media (max-width: 460px) {
-  .mi-status-legend { grid-template-columns: minmax(0,1fr); }
+@container client-report (max-width: 420px) {
+  .intel-workspace .mi-project-filters { grid-template-columns: minmax(0,1fr); }
 }
-@media (max-width: 375px) {
+@container client-report (max-width: 350px) {
   .nordic.secure-shell .mi-cockpit-signals button { grid-template-columns: 28px minmax(0,1fr); gap: 6px; min-block-size: 61px; }
   .mi-cockpit-signals button > svg { display: none; }
   .mi-signal-glyph { inline-size: 28px; block-size: 28px; }
@@ -310,6 +309,10 @@
 .mi-engagement-effort strong { color: var(--mi-client-ink); font-variant-numeric: tabular-nums; }
 .mi-budget-warning { color: var(--mi-client-risk); }
 .mi-project-card .secure-project-hours dt { color: var(--mi-client-muted); font-size: .75rem; }
+.nordic.secure-shell .intel-workspace .mi-project-card .secure-project-hours {
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,7rem),1fr));
+}
+.nordic.secure-shell .mi-project-filters label { margin: 0; }
 .mi-project-card .secure-project-hours dd { font-variant-numeric: tabular-nums; }
 .nordic.secure-shell :is(.intel-workspace, .intel-analytics-dialog) svg.lucide {
   inline-size: 1em;

@@ -15,9 +15,11 @@ import { apiServer, RequestLimit } from "../server/http";
 import { seedProjectSynthetic } from "../server/project-operator";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
 import { projectView, type Project } from "../src/projects/model";
+import { clientBase, clientPath, controlSections, staffPath, staffSegments, type StaffSection } from "../src/api/platform-routes";
+import { auditViewport } from "./viewport-audit";
 import { otherContacts } from "../src/projects/other-contacts";
 
-test("native portal URLs keep authenticated roles, approved reporting, editable settings and chapter links across reload and history", { timeout: 210000 }, async () => {
+test("native portal URLs keep authenticated roles, approved reporting, editable settings and chapter links across reload and history", { timeout: 240000 }, async () => {
   const runtime = firebaseRuntime("emulator", "demo-mi-security", "mi-client-staging");
   const directory = await mkdtemp(join(tmpdir(), "mi-platform-routes-"));
   const tenant = "synthetic-platform-browser";
@@ -120,7 +122,6 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
   const evidence = resolve("test-results/platform-routes-browser");
   await mkdir(evidence, { recursive: true });
   const errors: string[] = [];
-  const publicPhotos = new Set(otherContacts.map(contact => contact.photo));
   let mainBrowser: Browser | undefined;
   async function session(browser: Browser, token: "owner" | "staff" | "client", width = 1440) {
     const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 1000 }, reducedMotion: "reduce" });
@@ -128,10 +129,10 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await context.route("**/*", route => {
       const url = new URL(route.request().url());
       if (url.origin === origin) return route.continue();
-      if (publicPhotos.has(url.href)) return route.fulfill({ status: 204 });
       return route.abort();
     });
     const page = await context.newPage();
+    page.setDefaultNavigationTimeout(60_000);
     page.on("pageerror", error => errors.push(error.message));
     return { page, context };
   }
@@ -159,6 +160,105 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await appearance.selectOption("light");
     await page.setViewportSize({ width: 1440, height: 900 });
   }
+
+  async function checkContactPortraits(page: Page, missing?: string) {
+    const section = page.getByRole("region", { name: "MI Other Contacts" });
+    await section.waitFor();
+    assert.equal(await section.getByRole("link").count(), otherContacts.length);
+    for (const contact of otherContacts) {
+      const link = section.getByRole("link", { name: new RegExp(contact.name) });
+      await link.scrollIntoViewIfNeeded();
+      if (contact.slug === missing) {
+        await link.locator(".delivery-initials").waitFor();
+        assert.equal(await link.locator("img").count(), 0);
+      } else {
+        const [src, width, height] = await link.locator("img").evaluate(async element => {
+          const img = element as HTMLImageElement;
+          await img.decode();
+          return [img.currentSrc, img.naturalWidth, img.naturalHeight];
+        });
+        assert.deepEqual([src, width, height], [`${origin}/${contact.photo}`, 300, 300]);
+      }
+      assert.equal(await link.getAttribute("href"), contact.url);
+    }
+    assert.ok(await page.evaluate(() => {
+      const cards = [...document.querySelectorAll(".mi-public-contacts a")].map(card => card.getBoundingClientRect());
+      return document.documentElement.scrollWidth <= innerWidth && cards.every((card, index) =>
+        card.left >= 0 && card.right <= innerWidth && cards.slice(index + 1).every(other =>
+          card.right <= other.left || other.right <= card.left || card.bottom <= other.top || other.bottom <= card.top));
+    }), "Public contact cards fit the viewport without overlap");
+    await page.evaluate(() => window.scrollTo(0, 0));
+  }
+  async function auditNativeRoutes(browser: Browser) {
+    const auditEvidence = join(evidence, "route-layout-audit");
+    const referenceEvidence = join(auditEvidence, "reference-sizes");
+    await mkdir(auditEvidence, { recursive: true });
+    await mkdir(referenceEvidence, { recursive: true });
+    const probes: Awaited<ReturnType<typeof auditViewport>>[] = [];
+    const references: Record<string, [string, number, number][]> = {
+      "/workspace/portfolio": [["01-portfolio-layout", 1792, 920]],
+      "/workspace/portfolio?subsection=engagements": [["11-portfolio-settings", 1473, 794]],
+      [clientBase + "?previewMode=draft"]: [["02-client-preview", 1731, 948]],
+      [clientBase + "?month=2026-08"]: [["03-department-zero-allocated", 1293, 723]],
+      [clientBase + "/projects"]: [["05-client-projects", 1622, 881]],
+      "/workspace": [["06-staff-overview", 1684, 877]],
+      [clientBase + "/team"]: [["07-directory", 1684, 868]],
+      "/workspace/projects/new": [["08-project-wizard", 1415, 888]],
+      "/workspace/time": [["09-time-allocation", 926, 889]],
+      [staffPath("management", projectId)]: [["10-contextual-milestones", 1276, 784]],
+    };
+    for (const [role, paths] of [
+      ["owner", ["/", ...Object.keys(staffSegments).map(key => staffPath(key as StaffSection)), staffPath("departments", "health"),
+        staffPath("projects", "new"), editPath, staffPath("management", projectId), "/workspace/portfolio?subsection=engagements",
+        "/control", ...Object.keys(controlSections).map(key => "/control/" + key), clientBase, clientBase + "?previewMode=draft"]],
+      ["client", ["overview", "engagements", "areas", "area:health", "projects", "project:" + projectId, "timeline:" + projectId,
+        "milestones", "directory", "history", "notes"].map(view => clientPath("zagime", view)).concat(clientBase + "/service-areas", clientBase + "/present", clientBase + "?month=2026-08")],
+    ] as const) {
+      const review = await session(browser, role);
+      try {
+        for (const path of paths) {
+          const destination = new URL(path, origin);
+          if (!destination.searchParams.has("month")) destination.searchParams.set("month", month);
+          try {
+            await review.page.setViewportSize({ width: 1440, height: 900 });
+            await review.page.goto(destination.href, { waitUntil: "domcontentloaded" });
+            await review.page.locator(path.endsWith("/present") ? "dialog[open]" : "#platform-content h2:visible").first().waitFor({ timeout: 15_000 });
+            await review.page.waitForLoadState("networkidle");
+            if (path === "/control/team") await review.page.getByRole("region", { name: "MI Other Contacts" }).waitFor();
+            if (path === clientBase + "?month=2026-08")
+              await review.page.getByText("No approved effort yet for this period.", { exact: true }).waitFor();
+            const compactSidebar = path.startsWith("/workspace") || path.startsWith("/control") ||
+              path.startsWith(clientBase) && !path.endsWith("/present");
+            for (const [width, height] of [[1440, 900], [768, 1024], [390, 844], [320, 568]]) {
+              probes.push(await auditViewport(review.page, role + " " + path, width, height, { compactSidebar }));
+              if (["/workspace/time", "/control/branding", clientBase + "/team", clientBase + "/projects"].includes(path)) {
+                const scene = path.slice(1).replaceAll("/", "-");
+                await review.page.screenshot({ path: join(auditEvidence, `${scene}-${width}x${height}.png`), animations: "disabled" });
+              }
+            }
+            if (path === "/control/branding") {
+              const controlMenu = review.page.getByText("Control Panel sections", { exact: true });
+              await controlMenu.click();
+              await review.page.getByRole("navigation", { name: "Control Panel sections" }).getByRole("link", { name: "Branding", exact: true }).waitFor();
+              await review.page.keyboard.press("Escape");
+              assert.equal(await controlMenu.evaluate(element => document.activeElement === element), true);
+            }
+            if (role === "client" || !path.startsWith(clientBase) || path.includes("previewMode")) {
+              for (const [name, width, height] of references[path] ?? []) {
+                probes.push(await auditViewport(review.page, role + " " + path, width, height, { compactSidebar }));
+                await review.page.screenshot({ path: join(referenceEvidence, `${name}-${width}x${height}.png`), animations: "disabled" });
+              }
+            }
+          } catch (cause) {
+            await review.page.screenshot({ path: join(auditEvidence, "layout-audit-failure.png"), fullPage: true, animations: "disabled" });
+            const recentErrors = errors.slice(-3).join(" · ");
+            throw new Error(`Layout audit failed for ${role} ${path}${recentErrors ? ` (${recentErrors})` : ""}`, { cause });
+          }
+        }
+      } finally { await review.context.close(); }
+    }
+    await writeFile(join(auditEvidence, "viewport-audit.json"), JSON.stringify(probes, null, 2));
+  }
   const editPath = "/workspace/projects/" + projectId;
   async function reviewProjectEdit(page: Page, description: string) {
     await page.goto(route(editPath));
@@ -176,6 +276,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32"
         ? { executablePath: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" } : {}),
     });
+    await auditNativeRoutes(mainBrowser);
     const admin = await session(mainBrowser, "owner");
     await admin.page.goto(route("/"));
     await admin.page.getByRole("heading", { name: "Morris Interactive", exact: true }).waitFor();
@@ -251,8 +352,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await admin.page.reload();
     await admin.page.getByRole("heading", { name: "Health", exact: true }).waitFor();
     await staffNav.getByRole("button", { name: "Team Directory", exact: true }).click();
-    const otherContacts = admin.page.getByRole("region", { name: "MI Other Contacts" });
-    for (const name of ["Chris Cey", "Steve Atkinson", "Monica Pollard"]) await otherContacts.getByRole("link", { name: new RegExp(name) }).waitFor();
+    await checkContactPortraits(admin.page);
     await admin.page.screenshot({ path: join(evidence, "staff-directory-public-contacts.png"), fullPage: true, animations: "disabled" });
     await staffNav.getByRole("button", { name: "Overview", exact: true }).click();
     await admin.page.getByRole("region", { name: "Delivery pulse" }).waitFor();
@@ -403,9 +503,18 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     assert.equal(await clientNav.getByRole("button", { name: "Reporting history", exact: true }).count(), 0);
     assert.equal(await client.page.getByText("LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW").count(), 0);
     await clientNav.getByRole("button", { name: "MI Directory", exact: true }).click();
-    const clientContacts = client.page.getByRole("region", { name: "MI Other Contacts" });
-    for (const name of ["Chris Cey", "Steve Atkinson", "Monica Pollard"]) await clientContacts.getByRole("link", { name: new RegExp(name) }).waitFor();
+    await checkContactPortraits(client.page);
     await client.page.screenshot({ path: join(evidence, "client-directory-public-contacts.png"), fullPage: true, animations: "disabled" });
+    const directoryViewport = client.page.viewportSize()!;
+    await client.page.setViewportSize({ width: 390, height: 844 });
+    await checkContactPortraits(client.page);
+    await client.page.screenshot({ path: join(evidence, "client-directory-public-contacts-mobile.png"), fullPage: true, animations: "disabled" });
+    await client.page.setViewportSize(directoryViewport);
+    const missingPortrait = "**/branding/morris/contacts/monica-pollard.png";
+    await client.page.route(missingPortrait, request => request.fulfill({ status: 204 }));
+    await client.page.reload();
+    await checkContactPortraits(client.page, "monica-pollard");
+    await client.page.unroute(missingPortrait);
     await clientNav.getByRole("button", { name: "Health", exact: true }).click();
     await client.page.waitForURL(route("/clients/zagime/departments/health"));
     assert.equal(await clientNav.getByRole("button", { name: "Health", exact: true }).getAttribute("aria-current"), "page");
@@ -620,6 +729,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     } finally {
       await scheduledClient.context.close();
     }
+
     assert.deepEqual(errors, []);
   } finally {
     await mainBrowser?.close();

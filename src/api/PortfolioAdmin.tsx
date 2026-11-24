@@ -1,21 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { Building2, Layers3, NotebookPen, UsersRound } from "lucide-react";
 import type { ProjectPage, StaffProjectSummary } from "../projects/model";
 import { byOrder, type Portfolio, type PortfolioRecord, type PortfolioSection, type PortfolioTotals } from "../projects/portfolio";
 import { ApiError, type SecuredApiClient } from "./client";
 import { reportHours, reportMonth } from "./dashboard-format";
 import { hoursToSeconds } from "../projects/duration";
 import { ContextHelp } from "./ContextHelp";
-import { portalNavigate, usePlatformRoute, usePortalLocation } from "./portal-location";
+import { portalNavigate, usePortalLocation } from "./portal-location";
 
 type Snapshot = { revision: number; portfolio: Portfolio; totals?: PortfolioTotals[] };
 const editorSections = {
-  areas: ["Service areas", Building2],
-  engagements: ["Reporting groups", Layers3],
-  placements: ["Project organization", Layers3],
-  directory: ["MI Directory", UsersRound],
-  notes: ["Executive notes", NotebookPen],
+  areas: { title: "Departments", returnTo: "departments" },
+  engagements: { title: "Reporting configuration", returnTo: "health" },
+  placements: { title: "Project placement", returnTo: "management" },
+  directory: { title: "Directory settings", returnTo: "directory" },
+  notes: { title: "Executive updates", returnTo: "preview" },
 } as const;
 const blank = (section: PortfolioSection, month: string, project: string): PortfolioRecord => {
   const id = crypto.randomUUID(), order = 0, visible = false;
@@ -34,8 +33,8 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
   onDenied: () => void; onSaved: () => void; onDirty: (value: boolean) => void;
 }) {
   const requested = usePortalLocation().get("subsection");
-  const nativeWorkspace = usePlatformRoute()?.kind === "staff";
   const section: PortfolioSection = requested && Object.hasOwn(editorSections, requested) ? requested as PortfolioSection : initialProject ? "placements" : "areas";
+  const { title: sectionTitle, returnTo } = editorSections[section];
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [editing, setEditing] = useState<PortfolioRecord>();
   const [dirty, setDirty] = useState(false);
@@ -85,10 +84,6 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
     setDirty(false);
     setError("");
     setNotice("");
-  }
-  function choose(s: PortfolioSection) {
-    if (!discard()) return;
-    portalNavigate({ staff: "portfolio", subsection: s });
   }
   async function find(event?: FormEvent, next?: string) {
     event?.preventDefault();
@@ -149,7 +144,7 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
     finally { if (alive.current) setBusy(false); }
   }
   if (!config) return <section className="exec-panel">
-    <h2>Portfolio management</h2>
+    <h2>{sectionTitle}</h2>
     {error ? <><p role="alert">{error}</p><button type="button" onClick={() => { setError(""); setReload(x => x + 1); }}>Retry</button></> : <p role="status">Loading portfolio…</p>}
   </section>;
 
@@ -158,18 +153,11 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
   const publishedCheck = (value: boolean, label: string) => <label className="exec-check"><input type="checkbox" name="visible" defaultChecked={value} />{label}</label>;
   const selected = projects.find(p => p.id === projectId);
   const currentPlacement = config.placements.find(x => x.id === projectId);
-  const sectionTitle = nativeWorkspace ? ({ areas: "Departments", engagements: "Reporting configuration", placements: "Project placement",
-    directory: "Directory settings", notes: "Executive updates" })[section] : editorSections[section][0];
   return <section className="exec-portfolio" aria-labelledby="portfolio-management">
-    {nativeWorkspace ? <div className="delivery-section-heading"><h2 id="portfolio-management">{sectionTitle}</h2>
+    <div className="delivery-section-heading"><h2 id="portfolio-management">{sectionTitle}</h2>
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
-        if (discard()) portalNavigate({ staff: section === "engagements" ? "health" : section === "directory" ? "directory" :
-          section === "placements" ? "management" : section === "notes" ? "preview" : "departments", subsection: null });
-      }}>Back to workspace</button></div> : <>
-      <div className="secure-section-heading"><div><h2 id="portfolio-management">Portfolio management</h2><p>Organize delivery projects, configure reporting plans and curate published content.</p></div></div>
-      <nav className="secure-tabs" aria-label="Portfolio settings">
-      {Object.entries(editorSections).map(([key, [label, Icon]]) => <button type="button" aria-pressed={key === section} disabled={busy} key={key} onClick={() => choose(key as PortfolioSection)}><Icon size={16} aria-hidden="true" />{label}</button>)}
-      </nav></>}
+        if (discard()) portalNavigate({ staff: returnTo, subsection: null, ...(section === "placements" && { managed: selected?.id ?? null }) });
+      }}>Back to workspace</button></div>
     {error && <p className="secure-message secure-error" role="alert">{error}</p>}
     {notice && <p className="secure-message" role="status">{notice}</p>}
     {error && <button type="button" disabled={busy} onClick={() => { if (discard()) { setEditing(undefined); setDirty(false); setError(""); setReload(x => x + 1); } }}>Refresh settings</button>}
@@ -183,7 +171,7 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
       {cursor && <button type="button" disabled={busy} onClick={() => void find(undefined, cursor)}>More projects</button>}
       {selected && <button type="button" disabled={busy} onClick={() => edit(currentPlacement ?? blank("placements", month, selected.id))}>Organize {selected.name}</button>}
     </div> : <div className="exec-panel">
-      <div className="secure-section-heading">{!nativeWorkspace && <h3>{editorSections[section][0]}</h3>}<button type="button" disabled={busy} onClick={() => edit(section === "notes" ? config.notes.find(n => n.month === month) ?? blank(section, month, "") : blank(section, month, ""))}>{section === "notes" ? "Edit " + reportMonth(month) : "Add record"}</button></div>
+      <div className="secure-section-heading"><button type="button" disabled={busy} onClick={() => edit(section === "notes" ? config.notes.find(n => n.month === month) ?? blank(section, month, "") : blank(section, month, ""))}>{section === "notes" ? "Edit " + reportMonth(month) : "Add record"}</button></div>
       <ul className="exec-admin-list">
         {config[section].slice().sort((a, b) => "order" in a && "order" in b ? byOrder(a, b) : b.id.localeCompare(a.id)).map(item => <li key={item.id}>
           <div><b>{"name" in item ? item.name : reportMonth(item.id)}</b><span>{item.visible ? "Available to eligible clients" : "Morris only"}</span>
@@ -225,7 +213,7 @@ export function PortfolioAdmin({ client, tenant, month, initialProject, onDenied
           <label>Morris-only contact<input name="internalContact" defaultValue={record.internalContact} maxLength={200} /></label>
           <label>Approved client contact<input name="publicContact" defaultValue={record.publicContact} maxLength={200} /></label>
           <label className="exec-span">Responsibilities<textarea name="responsibility" defaultValue={record.responsibility} maxLength={500} /></label>
-          <p className="secure-muted exec-span">Assign this person from Project organization to associate them with a project. Clients see only approved active contacts linked to projects they can access.</p>
+          <p className="secure-muted exec-span">Use the Organize action on a project to assign this person. Clients see only approved active contacts linked to projects they can access.</p>
           {record.projectIds.map(id => <input key={id} type="hidden" name="projectIds" value={id} />)}
           <label className="exec-check"><input name="active" type="checkbox" defaultChecked={record.active} />Active contact</label>
         </>}

@@ -19,7 +19,7 @@ import { PersonPhoto } from "./PersonPhoto";
 import { OtherContacts } from "./OtherContacts";
 import { isOtherContact } from "../projects/other-contacts";
 import { WorkspaceNavigation, type WorkspaceGroup } from "./WorkspaceNavigation";
-import { ReportingPeriod } from "./ReportingPeriod";
+import { ReportingMonthField, ReportingPeriod } from "./ReportingPeriod";
 import { readReportingRange } from "./reporting-period";
 import { reportingTimeMonth } from "../projects/time-history";
 import { CsvExport } from "./CsvExport";
@@ -165,6 +165,9 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
       "from-month": range.preset === "custom" ? range.from ?? null : null,
       "through-month": range.preset === "custom" ? range.through ?? null : null, chart: null })} />;
 
+  const legacyMonth = !nativeClient && !preview && <ReportingMonthField month={month}
+    onMonth={selected => portalNavigate({ month: selected })} />;
+
   const [kind, id, itemId] = view.split(":");
   const area = kind === "area" ? report?.portfolio?.areas.find(a => a.id === id) : undefined;
   const engagementProject = kind === "group" && report?.hierarchy?.[id]?.kind === "engagement" ? report.projects.find(p => p.id === id) : undefined;
@@ -185,7 +188,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   if (current && !current.report)
     return (
       <section className="secure-empty">
-        {nativeClient && periodToolbar()}
+        {nativeClient ? periodToolbar() : legacyMonth}
         <h2>Reporting is temporarily unavailable</h2>
         <p role="alert">
           The published report could not be loaded. Try again in a moment.
@@ -203,7 +206,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   if (!report)
     return (
       <div>
-        {nativeClient && scopedResult && periodToolbar()}
+        {nativeClient ? scopedResult && periodToolbar() : legacyMonth}
         <p className="intel-empty intel-loading" role="status">Loading approved reporting…</p>
       </div>
     );
@@ -295,13 +298,14 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
     { id: "presentation", label: "Presentation", icon: PresentationIcon, active: presenting, select: () => openOverlay("present", "1") },
   ] }];
   return (
-    <WorkspaceNavigation groups={groups} heading="Client workspace" navigationLabel="Client workspace" mobileLabel="Workspace navigation"
+    <WorkspaceNavigation groups={groups} heading="Client workspace" navigationLabel="Client workspace" embedded={Boolean(preview && !nativeClient)}
+      mobileLabel={preview && !nativeClient ? "Browse client preview" : "Workspace navigation"}
       collapseLabel="sidebar" collapsed={collapsed} busy={false} onCollapse={() => setCollapsed(value => !value)}
       searchResults={delivery.projects.map(row => ({ id: "client-project-" + row.project.id, label: row.project.name,
         context: row.department?.name ?? "Published projects", select: () => choose("project:" + row.project.id) }))}>
       <div className="exec-content intel-workspace" tabIndex={-1} ref={page}>
-        {(nativeClient || view !== "overview") && <div className="mi-report-top">
-          {nativeClient ? periodToolbar(presentationButton) : presentationButton}
+        {(nativeClient || legacyMonth || view !== "overview") && <div className="mi-report-top">
+          {nativeClient ? periodToolbar(presentationButton) : <>{legacyMonth}{view !== "overview" && presentationButton}</>}
         </div>}
         {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose}
           onChart={(type, trigger) => openOverlay("chart", type, trigger)} onPresentation={trigger => openOverlay("present", "1", trigger)} />}
@@ -343,19 +347,16 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
               <ArrowUpRight aria-hidden="true" size={18} />
             </button>})}</div> : <p className="intel-empty">There are no approved departments.</p>}
         </section>}
-        {activeDepartment && <>
+        {activeDepartment && activeDepartment.counts.all > 0 && <>
           <section className="mi-exec-panel" aria-label={activeDepartment.name + " delivery metrics"}>
-            {activeDepartment.counts.all ? <DeliveryMetrics counts={activeDepartment.counts} seconds={activeDepartment.seconds} period={period} active={status} onFilter={setStatus} />
-              : <p className="mi-cockpit-empty">No approved delivery projects are available in {activeDepartment.name}.
-                {activeDepartment.seconds > 0 && " " + reportHours(activeDepartment.seconds) + " h of approved effort were reported directly against this department in " + period + "."}
-              </p>}
+            <DeliveryMetrics counts={activeDepartment.counts} seconds={activeDepartment.seconds} period={period} active={status} onFilter={setStatus} />
           </section>
-          {activeDepartment.counts.all > 0 && <div className="mi-cockpit-analysis mi-department-analysis">
+          <div className="mi-cockpit-analysis mi-department-analysis">
             <div className="mi-exec-panel"><StatusComposition counts={activeDepartment.counts} onFilter={setStatus} label="Department status composition" /></div>
             <DeliveryTrends counts={activeDepartment.counts} projects={activeDepartment.projects} onFilter={setStatus}
               onProject={id => choose("project:" + id)} />
             <WorkProgress projects={activeDepartment.projects} onProject={id => choose("project:" + id)} />
-          </div>}
+          </div>
         </>}
         {activeEngagement && <ParentEngagementCard engagement={activeEngagement} period={period}
           onOpen={activeEngagement.project ? () => choose("project:" + activeEngagement.id) : undefined}
@@ -379,7 +380,9 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
               {Object.entries(projectSorts).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select></label>
           </div>}
-          {!scoped.length && <p className="secure-empty">No approved delivery projects are available in this view.</p>}
+          {!scoped.length && <p className="secure-empty">No approved delivery projects are available in {activeDepartment?.name ?? "this view"}.
+            {activeDepartment && activeDepartment.seconds > 0 && " " + reportHours(activeDepartment.seconds) + " h of approved effort were reported directly against this department in " + period + "."}
+          </p>}
           {scoped.length > 0 && !matching.length && <div className="secure-empty">
             <p>No published projects match.</p>
             <button type="button" onClick={() => portalNavigate({ q: null, status: null })}>Clear filters</button>
@@ -415,7 +418,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
         {view === "directory" && <OtherContacts />}
       </section>}
       {view === "history" && <DotChart report={report} kind="trend" expanded monthRange={monthRange} draft={preview?.mode === "draft"} onLink={choose} onOpen={trigger => openOverlay("chart", "trend", trigger)} />}
-      {(selectedArea || engagement) && <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"} onLink={choose} onOpen={trigger => openOverlay("chart", "plan", trigger)} />}
+      {(selectedArea || engagement) && presentReport.projects.length > 0 && <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"}
+        onLink={choose} onOpen={trigger => openOverlay("chart", "plan", trigger)} />}
       {view === "notes" && <article className="intel-detail"><h3>Delivery narrative</h3>
         <p>{portfolio?.narrative || "No executive narrative has been published for this period."}</p>
         {portfolio?.action && <><h3>Next decision</h3><p>{portfolio.action}</p></>}</article>}

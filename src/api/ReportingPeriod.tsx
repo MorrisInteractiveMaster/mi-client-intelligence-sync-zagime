@@ -6,6 +6,24 @@ import { validMonth } from "./portal-location";
 import { followingTimeMonth, historyRange, reportingMonthOptions, type ReportingMonthRange } from "./reporting-period";
 import "./reporting-period.css";
 
+export function ReportingMonthField({ month, onMonth }: { month: string; onMonth: (month: string) => void }) {
+  const [native] = useState(() => {
+    const input = document.createElement("input");
+    input.type = "month";
+    return input.type === "month";
+  });
+  const select = (value: string) => { if (validMonth(value)) onMonth(value); };
+  return <form className="mi-report-month" onSubmit={event => {
+    event.preventDefault();
+    select(String(new FormData(event.currentTarget).get("month") ?? ""));
+  }}>
+    <label>Reporting month{native ? <input name="month" type="month" value={month}
+      onChange={event => select(event.currentTarget.value)} /> : <input name="month" type="text" key={month}
+      defaultValue={month} placeholder="YYYY-MM" pattern="[0-9]{4}-(0[1-9]|1[0-2])" required />}</label>
+    {!native && <button type="submit" className="secure-secondary">Apply month</button>}
+  </form>;
+}
+
 export function ReportingPeriod({ month, currentMonth = reportingTimeMonth(), availableMonths = [], latestMonth, empty,
   onMonth, range, onRange, pending, action }: {
   month: string;

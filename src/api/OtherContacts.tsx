@@ -1,4 +1,5 @@
 import { ArrowUpRight } from "lucide-react";
+import { brandAsset } from "../config/branding";
 import { otherContacts } from "../projects/other-contacts";
 import { PersonPhoto } from "./PersonPhoto";
 
@@ -9,8 +10,8 @@ export function OtherContacts() {
     <ul className="mi-public-contacts">
       {otherContacts.map(person => <li key={person.id}>
         <a href={person.url} target="_blank" rel="noopener noreferrer" aria-label={person.name + " · " + person.role + " (opens in a new tab)"}>
-          <PersonPhoto name={person.name} photo={person.photo} alt="" />
-          <div><strong>{person.name}</strong><span>{person.role}</span></div>
+          <PersonPhoto name={person.name} photo={brandAsset(person.photo)} alt="" />
+          <div className="mi-public-contact-identity"><strong>{person.name}</strong><span>{person.role}</span></div>
           <ArrowUpRight aria-hidden="true" size={18} />
         </a>
       </li>)}

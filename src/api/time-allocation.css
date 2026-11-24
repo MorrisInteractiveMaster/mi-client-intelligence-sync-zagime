@@ -40,6 +40,7 @@
 }
 .delivery-allocation .time-filter-options { grid-row: 2; }
 .delivery-allocation .time-advanced > summary {
+  box-sizing: border-box;
   min-height: 44px;
   padding: 10px 12px;
   cursor: pointer;
@@ -55,7 +56,8 @@
   min-height: 44px;
   margin: 0;
 }
-.time-scope-status { color: var(--mi-time-muted); font-size: .85rem; font-weight: 650; }
+.time-scope-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-block-start: 8px; }
+.time-scope-actions .time-scope-status { margin: 0; color: var(--mi-time-muted); font-size: .85rem; font-weight: 650; overflow-wrap: anywhere; }
 .time-analytics-grid { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 12px; margin-block: 12px; }
 .time-analytics-grid > :is(.mi-effort-panel, .time-mix-panel) {
   min-width: 0;
@@ -68,7 +70,9 @@
 .nordic.secure-shell .time-mix-panel .mi-cockpit-heading { padding: 0; border: 0; gap: 8px; }
 .time-mix-panel h3 { margin: 0; font-size: 1.12rem; }
 .time-history-summary > details { margin-block: 6px; }
-.time-breakdowns > details { margin: 6px 0 0; }
+.delivery-allocation .time-breakdowns { padding: 0; }
+.delivery-allocation .time-breakdowns > summary { box-sizing: border-box; min-height: 44px; padding: 10px 12px; }
+.time-breakdowns > details { margin: 0 10px 8px; }
 .time-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 128px), 1fr)); gap: 8px; margin-block: 12px; }
 .time-counts > div { color: var(--mi-time-ink); background: var(--mi-time-soft); border-radius: 8px; padding: 8px 10px; min-width: 0; }
 .time-counts dt { color: var(--mi-time-muted); font-size: .75rem; overflow-wrap: anywhere; }
@@ -76,6 +80,7 @@
 .delivery-allocation .time-summary-table table { min-width: 440px; }
 .delivery-allocation .time-entries { margin-block: 16px; max-inline-size: 100%; }
 .delivery-allocation .time-entries table { min-width: 840px; }
+.delivery-allocation .time-entries th { overflow-wrap: normal; }
 .time-entries :is(th, td)[data-cell="Original provider notes"] { min-width: 144px; }
 .time-entries :is(th, td):last-child { position: sticky; inset-inline-end: 0; background: var(--mi-time-surface); box-shadow: -1px 0 var(--mi-time-line); }
 .time-entries [data-cell="Actions"] button { white-space: nowrap; min-height: 44px; }
@@ -117,6 +122,12 @@
 .time-alloc-drawer dl dt { color: var(--mi-time-muted); font-size: .78rem; }
 .time-alloc-drawer dl dd { margin: 0; overflow-wrap: anywhere; }
 .time-alloc-drawer .secure-actions { position: sticky; bottom: 0; padding-block: 12px; background: var(--mi-time-surface); border-block-start: 1px solid var(--mi-time-line); }
+@container mi-time (min-width: 761px) {
+  .delivery-allocation .time-advanced:not([open]) { grid-column: auto; grid-row: auto; }
+  .delivery-allocation .time-filter-form:not(:has(.time-filter-options[open])) {
+    grid-template-columns: minmax(0, 1fr) repeat(3, max-content);
+  }
+}
 @container mi-time (max-width: 730px) {
   .time-analytics-grid { grid-template-columns: minmax(0, 1fr); }
   .delivery-allocation .time-entries { overflow: visible; border: 0; }

@@ -57,7 +57,7 @@ section.nordic.secure-shell[data-theme="dark"] :is(.secure-brandmarks img, .plat
 section.nordic.secure-shell[data-theme="dark"] :is(
   .mi-account summary, .mi-account-menu, .secure-card, .secure-empty, .secure-form, .secure-metrics > div,
   .secure-table, .secure-table :is(thead,tbody,tr,th,td), .secure-list, .secure-timeline li, .platform-control-card,
-  .platform-control-nav a, a.platform-card, .platform-report-directory li, .mi-workspace-tools, .mi-search-dialog,
+  a.platform-card, .platform-report-directory li, .mi-workspace-tools, .mi-search-dialog,
   .delivery-person, .delivery-project-card, .delivery-filter-bar, .mi-operation-metrics > div:not([data-featured="true"]),
   .mi-operations-trend li button, .exec-panel, .exec-card, .exec-tile, .exec-drawer,
   .exec-workspace-grid article, .mi-report-period-menu, .mi-action-menu, .mi-sign-in-panel, .mi-mapping-order,
@@ -106,6 +106,8 @@ section.nordic.secure-shell[data-theme="dark"] :is(button:not([class]), .platfor
 section.nordic.secure-shell[data-theme="dark"] :is(a,button,input,select,textarea,summary):focus-visible {
   outline-color: #fae398;
 }
+section.nordic.secure-shell[data-theme="dark"] .platform-control-nav a { color: #f7fafc; }
+section.nordic.secure-shell[data-theme="dark"] .platform-control-nav a[aria-current="page"] { color: #091d31; }
 .mi-mapping { display: grid; gap: 16px; }
 .mi-mapping > p { max-width: 70ch; margin: 0; }
 .mi-mapping > label { width: min(100%, 28rem); }
@@ -149,15 +151,6 @@ section.nordic.secure-shell[data-theme="dark"] .intel-dot-series button:is(:hove
   border-color: var(--mi-line);
 }
 
-.nordic.secure-shell.platform-shell .platform-control .platform-hero-compact {
-  min-height: clamp(140px, 22vh, 240px);
-  align-content: center;
-  padding: clamp(18px, 3vw, 42px);
-}
-.nordic.secure-shell.platform-shell .platform-control .platform-hero-compact h2 {
-  font-size: clamp(1.65rem, 4vw, 3.4rem);
-}
-.nordic.secure-shell.platform-shell .platform-control .platform-hero-compact p { margin-block: 6px 0; }
 body:has(section.nordic.secure-shell[data-theme="dark"]) { background: #0b1826; }
 
 .nordic.secure-shell.platform-shell .mi-home-primary { white-space: nowrap; }

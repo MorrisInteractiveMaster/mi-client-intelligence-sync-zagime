@@ -20,11 +20,12 @@ import { key } from "../server/firestore-store";
 import { apiServer, RequestLimit } from "../server/http";
 import type { ReportingBackend } from "../server/backend";
 import { staffTestFixture } from "../server/testing/morris-staff-fixture";
-import { otherContacts } from "../src/projects/other-contacts";
+import { staffSegments } from "../src/api/platform-routes";
+import { auditViewport } from "./viewport-audit";
 
 test(
   "project-only secured Auth/Firestore workflow and real browser persistence without agreement records",
-  { timeout: 210000 },
+  { timeout: 240000 },
   async () => {
     const runtime = firebaseRuntime(
       "emulator",
@@ -107,7 +108,7 @@ test(
     // Fixture entry only: no production test hook, token value in bundle, browser storage or real OAuth.
     await build({
       stdin: {
-        contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {ProjectStaffWorkspace} from './src/api/ProjectWorkspace'; import {ProjectClientReport} from './src/api/ProjectClientReport'; import {SecuredApiClient} from './src/api/client'; import {portalNavigate,useReportingMonth} from './src/api/portal-location'; import './src/api/secure.css'; import './src/reporting/nordic.css'; const identity=window.__localProjectFixture; async function fixtureRequest(input, init) {
+        contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {ProjectStaffWorkspace} from './src/api/ProjectWorkspace'; import {ProjectClientReport} from './src/api/ProjectClientReport'; import {SecuredApiClient} from './src/api/client'; import {useReportingMonth} from './src/api/portal-location'; import './src/api/secure.css'; import './src/reporting/nordic.css'; const identity=window.__localProjectFixture; async function fixtureRequest(input, init) {
   const race = window.__reportRace;
   const url = new URL(input);
   if (race && url.pathname.endsWith("/report")) {
@@ -138,9 +139,13 @@ const client=new SecuredApiClient(true, location.origin, async()=>identity.token
 const denied=()=>document.body.textContent='Access denied';
 function ClientFixture() {
   const month=useReportingMonth("2026-11");
-  return <><form className="secure-period"><label>Reporting month<input type="month" value={month} onChange={(event)=>portalNavigate({month:event.target.value})}/></label></form><ProjectClientReport client={client} tenant="${tenant}" month={month} onDenied={denied}/></>;
+  return <ProjectClientReport client={client} tenant="${tenant}" month={month} onDenied={denied}/>;
 }
- client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElementById('root')).render(<main className="nordic secure-shell"><header className="secure-masthead"><div className="secure-brandmarks"><img alt="Zagimē Anishinabēk" src="/branding/zagime/zagime-main-logo.png" style={{background:'#01264f',padding:'4px'}}/><img alt="Morris Interactive" src="/branding/morris/morris-wordmark.png"/></div><div className="secure-identity"><h1>Client Intelligence</h1></div></header>{workspace.role === "staff" ? <ProjectStaffWorkspace client={client} tenant="${tenant}" workspace={{...workspace,tenant:{...workspace.tenant,name:'Zagimē Anishinabēk Nation'}}} month="2026-11" onDenied={()=>document.body.textContent='Access denied'}/> : <ClientFixture/>}</main>)).catch(()=>document.body.textContent='Access denied');`,
+function StaffFixture({workspace}) {
+  const month=useReportingMonth("2026-11");
+  return <ProjectStaffWorkspace client={client} tenant="${tenant}" workspace={{...workspace,tenant:{...workspace.tenant,name:'Zagimē Anishinabēk Nation'}}} month={month} onDenied={denied}/>;
+}
+client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElementById('root')).render(<section className="nordic secure-shell platform-shell"><header className="secure-masthead"><div className="secure-brandmarks"><img alt="Zagimē Anishinabēk" src="/branding/zagime/zagime-main-logo.png" style={{background:'#01264f',padding:'4px'}}/><img alt="Morris Interactive" src="/branding/morris/morris-wordmark.png"/></div><div className="secure-identity"><h1>Client Intelligence</h1></div><div className="mi-masthead-actions"><div id="mi-workspace-commands"/></div></header><main id="platform-content" className={workspace.role === "staff" ? "platform-workspace" : "platform-client-report"}>{workspace.role === "staff" ? <StaffFixture workspace={workspace}/> : <ClientFixture/>}</main></section>)).catch(()=>document.body.textContent='Access denied');`,
         loader: "jsx",
         resolveDir: process.cwd(),
       },
@@ -693,7 +698,6 @@ function ClientFixture() {
       const evidence = resolve("test-results/project-only-browser");
       await mkdir(evidence, { recursive: true });
       const errors: string[] = [];
-      const publicPhotos = new Set(otherContacts.map(contact => contact.photo));
       const session = async (width: number, role: "staff" | "client" = "staff", engine: Browser = browser!) => {
         const fresh = role === "staff" ? await signStaff() : await authenticate("signInWithPassword", { email: "project-client@example.com", password, returnSecureToken: true });
         const context = await engine.newContext({
@@ -715,8 +719,6 @@ function ClientFixture() {
         await context.route("**/*", route => {
           const url = new URL(route.request().url());
           if (url.origin === origin) return route.continue();
-          // Exercise the initials fallback while this authenticated test stays offline.
-          if (publicPhotos.has(url.href)) return route.fulfill({ status: 204 });
           return route.abort();
         });
         const page = await context.newPage();
@@ -923,7 +925,45 @@ function ClientFixture() {
       await first.page.getByRole("status").filter({ hasText: /0 matches out of/ }).waitFor();
       await first.page.getByRole("button", { name: "Clear filters", exact: true }).click();
       await first.page.getByText("Reviewed delivery preparation", { exact: true }).waitFor();
+      const initialTimeViewport = first.page.viewportSize()!;
+      const timeLayout = [await auditViewport(first.page, "Legacy Time Allocation", 1440, 1000, { compactSidebar: true })];
       await first.page.screenshot({ path: join(evidence, "time-allocation.png"), fullPage: true, animations: "disabled" });
+      assert.equal(await staffNavigation.getByRole("button", { name: "Time Allocation", exact: true }).getAttribute("aria-current"), "page");
+      for (const [width, height] of [[1024, 768], [768, 1024], [390, 844], [320, 568]]) {
+        timeLayout.push(await auditViewport(first.page, "Legacy Time Allocation", width, height, { compactSidebar: true }));
+        await first.page.screenshot({ path: join(evidence, `time-allocation-${width}x${height}.png`), fullPage: true, animations: "disabled" });
+      }
+      await first.page.setViewportSize(initialTimeViewport);
+      const bookmarkPage = await first.context.newPage();
+      bookmarkPage.on("pageerror", error => errors.push(error.message));
+      try {
+        const timeBookmark = new URL("/?staff=hours&month=2026-11&period=month&workOrder=synthetic-job#/secure", origin);
+        await bookmarkPage.goto(timeBookmark.href);
+        const selectedTimeScope = bookmarkPage.getByRole("status").filter({ hasText: /Work order: synthetic-job.*1 match out of/ });
+        await selectedTimeScope.waitFor();
+        assert.equal(bookmarkPage.url(), timeBookmark.href);
+        timeLayout.push(await auditViewport(bookmarkPage, "Bookmarked legacy Time filter", 1440, 1000, { compactSidebar: true }));
+        await bookmarkPage.getByRole("button", { name: "Manage Time", exact: true }).click();
+        const entryLink = bookmarkPage.getByRole("link", { name: "Link to this entry", exact: true });
+        const linkedEntry = new URL((await entryLink.getAttribute("href"))!, origin);
+        assert.equal(linkedEntry.hash, "#/secure");
+        assert.equal(linkedEntry.searchParams.get("workOrder"), "synthetic-job");
+        assert.ok(linkedEntry.searchParams.get("source"));
+        await bookmarkPage.goto(linkedEntry.href);
+        const linkedDrawer = bookmarkPage.getByRole("dialog", { name: "Time allocation", exact: true });
+        await linkedDrawer.waitFor();
+        const linkedDescription = linkedDrawer.getByRole("textbox", { name: /^Reporting description/ });
+        assert.equal(await linkedDescription.inputValue(), "Reviewed delivery preparation");
+        timeLayout.push(await auditViewport(bookmarkPage, "Bookmarked legacy Time entry", 390, 844));
+        await bookmarkPage.screenshot({ path: join(evidence, "time-allocation-bookmarked-entry-390.png"), animations: "disabled" });
+        await bookmarkPage.getByRole("button", { name: "Close allocation", exact: true }).click();
+        await bookmarkPage.getByRole("link", { name: "Back to Time Allocation", exact: true }).click();
+        await selectedTimeScope.waitFor();
+        assert.equal(bookmarkPage.url(), timeBookmark.href);
+      } finally {
+        await bookmarkPage.close();
+      }
+      await writeFile(join(evidence, "legacy-staff-time-layout.json"), JSON.stringify(timeLayout, null, 2));
       const historic = root.collection("rawTime").doc("historical-browser-row");
       const historicModified = "2025-03-07T17:00:00Z";
       const historicRevision = "historic-1";
@@ -1029,11 +1069,16 @@ function ClientFixture() {
       assert.equal(syncedPerson.internalRole, "Private coordination");
       assert.equal(syncedPerson.visible, false);
       directoryAvailable = true;
-      await first.page.getByRole("button", { name: "Portfolio management", exact: true }).click();
+      await staffNavigation.getByRole("button", { name: "Departments", exact: true }).click();
+      await first.page.getByRole("button", { name: "Manage departments", exact: true }).click();
       await first.page.getByRole("button", { name: "Edit Health", exact: true }).click();
       await first.page.getByLabel("Description", { exact: true }).fill("Approved health service area.");
       await first.page.getByRole("button", { name: "Save changes", exact: true }).click();
-      await first.page.getByRole("heading", { name: "Service areas editor", exact: true }).waitFor({ state: "hidden" });
+      await first.page.getByRole("heading", { name: "Departments editor", exact: true }).waitFor({ state: "hidden" });
+      assert.equal(await first.page.getByRole("navigation", { name: "Portfolio settings", exact: true }).count(), 0);
+      await first.page.reload();
+      await first.page.getByRole("button", { name: "Edit Health", exact: true }).waitFor();
+      assert.equal(new URL(first.page.url()).searchParams.get("subsection"), "areas");
       await first.page.screenshot({ path: join(evidence, "portfolio-management.png"), fullPage: true });
       await first.context.close();
       for (const width of [1366, 768, 390]) {
@@ -1135,6 +1180,14 @@ function ClientFixture() {
       await previewPage.getByLabel("Preview mode").selectOption("draft");
       await previewPage.getByText("DRAFT PREVIEW · MORRIS STAFF ONLY", { exact: true }).waitFor();
       await previewPage.getByRole("heading", { name: "Leadership summary", exact: true }).waitFor();
+      await auditViewport(previewPage, "Legacy staff client preview", 1440, 1000, { compactSidebar: true });
+      const browsePreview = previewPage.getByRole("button", { name: "Browse client preview", exact: true });
+      await browsePreview.click();
+      await previewPage.getByRole("dialog", { name: "Client preview menu", exact: true })
+        .getByRole("button", { name: "Leadership summary", exact: true }).waitFor();
+      await previewPage.keyboard.press("Escape");
+      await browsePreview.waitFor();
+      assert.ok(await browsePreview.evaluate(button => document.activeElement === button));
       await previewPage.screenshot({ path: join(evidence, "staff-draft-preview.png"), fullPage: true, animations: "disabled" });
       await previewPage.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Projects", exact: true }).click();
       await previewPage.getByRole("button", { name: "Edit Browser saved project", exact: true }).click();
@@ -1809,6 +1862,66 @@ function ClientFixture() {
       await compactCreation.page.getByText("Project created and published.", { exact: true }).waitFor();
       await compactCreation.context.close();
       await hierarchyBrowser.context.close();
+
+      const legacyClient = await session(1440, "client");
+      const legacyClientAudit: Awaited<ReturnType<typeof auditViewport>>[] = [];
+      try {
+        const views = [
+          ["overview", "Leadership summary"], ["projects", "Projects"], ["engagements", "Parent engagements"],
+          ["areas", "Departments"], ["area:health", "Health"], ["project:" + persisted.id, "Browser saved project"],
+          ["timeline:" + persisted.id, "Project timeline"], ["milestones", "Milestones"],
+          ["milestone:" + persisted.id + ":browser-approved-milestone", "Approved milestone"],
+          ["history", "Reporting history"], ["notes", "Executive notes"],
+          ["directory", "MI Directory"], ["contact:reviewed-contact", "Approved synthetic contact"],
+        ];
+        for (const [view, heading] of views) {
+          const query = new URLSearchParams({ month: "2026-11", view });
+          const page = legacyClient.page;
+          await page.goto(`${origin}/?${query}#/secure`);
+          await page.getByRole("heading", { name: heading, exact: true, level: 2 }).waitFor();
+          assert.equal(await page.getByText("This link is unavailable for your approved report.").count(), 0, view);
+          if (view === "engagements") {
+            await page.getByRole("region", { name: "Parent engagements" }).waitFor();
+            legacyClientAudit.push(await auditViewport(page, "legacy client parent engagement cards", 1661, 930, { compactSidebar: true }));
+            await page.screenshot({ path: join(evidence, "04-parent-engagements-1661x930.png"), animations: "disabled" });
+          }
+          for (const [width, height] of [[1440, 900], [390, 844], [320, 568]]) {
+            legacyClientAudit.push(await auditViewport(page, `legacy client ${view}`, width, height, { compactSidebar: true }));
+            if (view === "directory" && width !== 320) {
+              const images = page.getByRole("region", { name: "MI Other Contacts" }).locator("img");
+              assert.equal(await images.count(), 3);
+              for (const image of await images.all()) {
+                await image.scrollIntoViewIfNeeded();
+                assert.equal(await image.evaluate(async element => {
+                  const img = element as HTMLImageElement;
+                  await img.decode();
+                  return img.naturalWidth;
+                }), 300);
+              }
+              await page.evaluate(() => window.scrollTo(0, 0));
+              await page.screenshot({ path: join(evidence, `legacy-client-directory-${width}.png`), fullPage: true, animations: "disabled" });
+            }
+          }
+        }
+      } finally {
+        await legacyClient.context.close();
+      }
+      const legacyStaff = await session(1440, "staff");
+      const legacyStaffAudit: Awaited<ReturnType<typeof auditViewport>>[] = [];
+      try {
+        for (const staff of Object.keys(staffSegments)) {
+          const query = new URLSearchParams({ month: "2026-11", staff });
+          const page = legacyStaff.page;
+          await page.goto(`${origin}/?${query}#/secure`, { waitUntil: "domcontentloaded" });
+          await page.locator("#platform-content h2:visible").first().waitFor();
+          await page.waitForLoadState("networkidle");
+          for (const [width, height] of [[1440, 900], [768, 1024], [390, 844], [320, 568]]) {
+            legacyStaffAudit.push(await auditViewport(page, `legacy staff ${staff}`, width, height, { compactSidebar: true }));
+          }
+        }
+      } finally {
+        await legacyStaff.context.close();
+      }
       assert.deepEqual(errors, []);
       await writeFile(
         join(evidence, "report.json"),
@@ -1829,6 +1942,8 @@ function ClientFixture() {
             clientLayoutWidths: [320, 360, 390, 430, 768, 1024, 1280, 1440, 1920, 2560],
             tooltipCorners: true,
             browserMeasurements,
+            legacyClientAudit,
+            legacyStaffAudit,
             publishedTimeline: true,
             rapidMonthSwitch: true,
             allocation: true,

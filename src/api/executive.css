@@ -183,8 +183,6 @@
 .exec-project-team { margin: 12px 0; font-size: .875rem; }
 .exec-project-team ul { padding-left: 18px; margin: 5px 0 0; }
 .nordic.secure-shell .secure-card { border-radius: var(--exec-radius); box-shadow: var(--exec-shadow); }
-.nordic.secure-shell .secure-hero.secure-staff-hero { border-radius: 20px; background: #e8eff6; padding: 21px clamp(14px,3vw,32px); margin-bottom: 18px; }
-.nordic.secure-shell .secure-hero.secure-staff-hero h2 { font-size: clamp(1.5rem, 3vw, 2.7rem); }
 .nordic.secure-shell .secure-editor-grid { min-width: 0; }
 .exec-portfolio { display: grid; gap: 16px; }
 .exec-portfolio .secure-tabs { flex-wrap: wrap; margin: 0; }

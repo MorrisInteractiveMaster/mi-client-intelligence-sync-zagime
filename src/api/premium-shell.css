@@ -1,4 +1,4 @@
-/* Native Morris and Zagimē application surfaces. Legacy hash routes keep their layout. */
+/* Shared shell for Morris and Zagimē application surfaces. */
 .nordic.secure-shell.platform-shell {
   --mi-ink: #112537;
   --mi-muted: #4c5f71;

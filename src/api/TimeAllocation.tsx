@@ -376,8 +376,9 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       }}>Clear filters</button>
     </form></div>}
     {summary && !linkedId && <>
-      <p role="status" className="time-scope-status">Scope · {scope.length ? scope.join(" · ") : summary.period.kind === "month" ? "Entire month" : periodLabel} · {summary.matched} {summary.matched === 1 ? "match" : "matches"} out of {summary.monthTotal} {summary.period.kind === "month" ? "month" : "period"} entries</p>
-      <CsvExport label="Export time entries CSV"
+      <div className="time-scope-actions">
+        <p role="status" className="time-scope-status">Scope · {scope.length ? scope.join(" · ") : summary.period.kind === "month" ? "Entire month" : periodLabel} · {summary.matched} {summary.matched === 1 ? "match" : "matches"} out of {summary.monthTotal} {summary.period.kind === "month" ? "month" : "period"} entries</p>
+        <CsvExport label="Export time entries CSV"
         filename={["Morris", clientName, "Time", applied.workOrder, applied.consultant,
           summary.period.kind === "month" ? appliedMonth : summary.period.start ?? "All_History",
           summary.period.kind === "month" ? undefined : summary.period.end].filter(Boolean).join("_")}
@@ -387,6 +388,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
           for (const [name, value] of Object.entries(applied)) if (value) query.set(name, value);
           return sourceCsv(await allAuthorizedRows("sources", query, signal, authorizedPages(client, tenant)));
         }} />
+      </div>
       <TimeHistorySummary summary={summary} filenamePrefix={["Morris", clientName, summary.period.start ?? "All_History", summary.period.end].filter(Boolean).join("_")} grouping={applied.group ?? "month"} busy={busy} onConsultant={id => {
         setConsultant(id); void load(undefined, { ...applied, consultant: id });
       }} onWorkOrder={id => {
