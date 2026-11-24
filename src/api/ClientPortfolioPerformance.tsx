@@ -83,7 +83,7 @@ export function ParentPerformance({ delivery, onLink }: { delivery: Delivery; on
             {portfolioStatuses.map(([status, label]) => {
               const count = segmentCount(row.counts, status);
               const detail = label + " · " + count + " of " + row.counts.all + (count ? " · " + percentText(count / row.counts.all * 100) : "");
-              return count > 0 && <button type="button" key={status} data-state={status} style={{ flexGrow: count }}
+              return count > 0 && <button type="button" className="mi-v4-stack-segment" key={status} data-state={status} style={{ flexGrow: count }}
                 aria-label={row.name + " · " + detail} title={detail} onClick={() => onLink("projects", undefined, status as ProjectFilter, { parent: row.id })}>{count}</button>;
             })}
           </div></div>

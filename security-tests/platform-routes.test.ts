@@ -374,7 +374,20 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       assert.equal(JSON.parse(body).projects.length, 100);
       assert.doesNotMatch(body, /V4-PRIVATE|V4 project 300/);
       await sample.page.goto(route("/clients/zagime/departments"));
-      await sample.page.getByRole("region", { name: "Department distribution" }).waitFor();
+      const departmentChart = sample.page.getByRole("region", { name: "Department distribution" });
+      await departmentChart.waitFor();
+      const readSegmentColors = () => departmentChart.locator(".mi-v4-stack-list > li").first().evaluate(row =>
+        [...row.querySelectorAll(".mi-v4-stack-segment")].map(segment => {
+          const legend = row.closest("section")?.querySelector('.mi-v4-legend i[data-state="' + segment.getAttribute("data-state") + '"]');
+          return { segment: getComputedStyle(segment).backgroundColor, legend: legend ? getComputedStyle(legend).backgroundColor : undefined };
+        }));
+      for (const theme of ["light", "dark"]) {
+        await sample.page.getByRole("combobox", { name: "Appearance" }).selectOption(theme);
+        await sample.page.locator('.secure-shell[data-theme="' + theme + '"]').waitFor();
+        const colors = await readSegmentColors();
+        assert.ok(new Set(colors.map(color => color.segment)).size >= 3, "Delivery status segments use distinct colors in " + theme);
+        assert.ok(colors.every(color => color.segment === color.legend), "Segment colors match their legend");
+      }
       await sample.page.screenshot({ path: join(scaleEvidence, "departments-100-full.png"), fullPage: true, animations: "disabled" });
     } finally { await sample.context.close(); }
     const staffPreview = await session(mainBrowser!, "owner");

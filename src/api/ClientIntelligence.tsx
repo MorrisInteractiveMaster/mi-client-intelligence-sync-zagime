@@ -54,8 +54,8 @@ export function DepartmentAnalytics({ report, delivery, unit, onLink, onUnit, sh
     </div>
     <div className="mi-insight-controls">
       <div className="mi-insight-segments" role="group" aria-label="Department metric">
-        <button type="button" aria-pressed={!effort} onClick={() => { setMode("projects"); inspect(""); }}>Project count</button>
-        <button type="button" aria-pressed={effort} onClick={() => { setMode("effort"); inspect(""); }}>Approved effort</button>
+        <button className="mi-v4-segment-control" type="button" aria-pressed={!effort} onClick={() => { setMode("projects"); inspect(""); }}>Project count</button>
+        <button className="mi-v4-segment-control" type="button" aria-pressed={effort} onClick={() => { setMode("effort"); inspect(""); }}>Approved effort</button>
       </div>
       <label>Project status<select value={status} onChange={event => { setStatus(event.target.value as typeof status); inspect(""); }}>
         <option value="all">All</option><option value="active">In progress</option><option value="completed">Completed</option><option value="upcoming">Upcoming</option>
@@ -80,7 +80,7 @@ export function DepartmentAnalytics({ report, delivery, unit, onLink, onUnit, sh
             const segment = measure(item.projects, key);
             if (!segment) return null;
             const labelDetail = item.name + " · " + label + " · " + amount(segment) + " of " + amount(value) + " · " + percentText(segment / value * 100);
-            return <button type="button" key={key} data-state={key} style={{ flexGrow: segment }} aria-label={labelDetail}
+            return <button type="button" className="mi-v4-stack-segment" key={key} data-state={key} style={{ flexGrow: segment }} aria-label={labelDetail}
               title={labelDetail} onPointerEnter={() => inspect(labelDetail)} onFocus={() => inspect(labelDetail)}
               onClick={() => open(item.id, key)}><span>{amount(segment)}</span></button>;
           })}
