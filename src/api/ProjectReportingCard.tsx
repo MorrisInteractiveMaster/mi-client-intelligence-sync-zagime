@@ -8,6 +8,7 @@ import { ProgressArc } from "./ClientCockpitVisuals";
 import { BudgetUtilization } from "./ClientDeliverySummary";
 import { projectStatus, reportDay, reportHours, reportMonth, today } from "./dashboard-format";
 import { PersonPhoto } from "./PersonPhoto";
+import { SortControls, useSortedRows } from "./SortHeader";
 
 type Delivery = NonNullable<ProjectReport["hierarchy"]>[string];
 type Props = {
@@ -45,6 +46,14 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
   const teamRole = (member: PublishedPortfolio["directory"][number]) => [isManager(member.id) && "Project manager",
     placement?.facilitatorIds?.includes(member.id) && "Facilitator"].filter(Boolean).join(" · ") || member.role;
   const managers = team.filter(member => isManager(member.id));
+  const sortedTeam = useSortedRows<typeof team[number], "name" | "role">(team, { key: "name", direction: "asc" },
+    (row, field) => field === "name" ? row.name : teamRole(row), row => row.id);
+  const sortedHistory = useSortedRows<NonNullable<Props["history"]>[number], "month" | "seconds">(history ?? [],
+    { key: "month", direction: "desc" }, (row, field) => row[field], row => row.month);
+  const sortedMilestones = useSortedRows<NonNullable<Props["project"]["milestones"]>[number], "date" | "title" | "status">(project.milestones ?? [],
+    { key: "date", direction: "asc" }, (row, field) => field === "status" ? milestoneStatus(row) : row[field], row => row.id);
+  const sortedUpdates = useSortedRows<NonNullable<Props["project"]["updates"]>[number], "date" | "title">(project.updates ?? [],
+    { key: "date", direction: "desc" }, (row, field) => row[field], row => row.id);
   const arrangement = delivery?.type && { hourly: "Hourly", "fixed-fee": "Fixed fee", training: "Training & Workshops", workshop: "Training & Workshops" }[delivery.type];
   const tone = blocked || overdue ? "risk" : project.status === "completed" ? "complete" : near ? "near" : dueSoon ? "warning" : undefined;
   const status = <p className="secure-badge" data-status={active ? "active" : project.status}>
@@ -151,13 +160,17 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
     return <>
       {Boolean(history?.length) && <div>
         <Heading>Reported effort by month</Heading>
-        <ul className="mi-project-history">{history?.map(row => <li key={row.month}>
+        {detail && sortedHistory.rows.length > 1 && <SortControls fields={{ month: "Month", seconds: "Reported effort" }}
+          sort={sortedHistory.sort} onSort={sortedHistory.setSort} label="Sort reported effort" />}
+        <ul className="mi-project-history">{sortedHistory.rows.map(row => <li key={row.month}>
           <time dateTime={row.month}>{reportMonth(row.month)}</time><strong>{reportHours(row.seconds)} h</strong>
         </li>)}</ul>
       </div>}
       {team.length > 0 && <div className="exec-project-team">
         <Heading>Project team</Heading>
-        <ul>{team.map(member => <li key={member.id}>
+        {detail && sortedTeam.rows.length > 1 && <SortControls fields={{ name: "Name", role: "Role" }}
+          sort={sortedTeam.sort} onSort={sortedTeam.setSort} label="Sort project team" />}
+        <ul>{sortedTeam.rows.map(member => <li key={member.id}>
           <PersonPhoto name={member.name} photo={member.photo} alt={member.photoAlt} />
           <div>{onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("contact:" + member.id)}>{member.name}</button> : member.name}
             {teamRole(member) && <div>{teamRole(member)}</div>}</div>
@@ -165,8 +178,10 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
       </div>}
       {Boolean(project.milestones?.length) && <div>
         <Heading>Milestones</Heading>
+        {detail && sortedMilestones.rows.length > 1 && <SortControls fields={{ date: "Date", title: "Title", status: "Status" }}
+          sort={sortedMilestones.sort} onSort={sortedMilestones.setSort} label="Sort milestones" />}
         <ul className="secure-timeline">
-          {[...(project.milestones ?? [])].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999")).map(item => <li key={item.id}>
+          {sortedMilestones.rows.map(item => <li key={item.id}>
             {onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("milestone:" + project.id + ":" + item.id)}>{item.title}</button> : <b>{item.title}</b>}
             <p>{item.date && <><time dateTime={item.date}>{reportDay(item.date)}</time>{" · "}</>}
               {milestoneStatus(item)}</p>
@@ -177,8 +192,10 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
       </div>}
       {Boolean(project.updates?.length) && <div>
         <Heading>Project updates</Heading>
+        {detail && sortedUpdates.rows.length > 1 && <SortControls fields={{ date: "Date", title: "Title" }}
+          sort={sortedUpdates.sort} onSort={sortedUpdates.setSort} label="Sort project updates" />}
         <ul className="secure-timeline">
-          {[...(project.updates ?? [])].sort((a, b) => b.date.localeCompare(a.date)).map(item => <li key={item.id}>
+          {sortedUpdates.rows.map(item => <li key={item.id}>
             <time dateTime={item.date}>{reportDay(item.date)}</time><b>{item.title}</b><p className="secure-project-description">{item.body}</p>
           </li>)}
         </ul>

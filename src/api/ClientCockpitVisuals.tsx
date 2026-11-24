@@ -2,6 +2,7 @@ import { followingTimeMonth } from "./reporting-period";
 import { useState, type CSSProperties } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { projectCompletionHistory, type clientDelivery, type ProjectFilter } from "./client-delivery";
+import { SortedTable } from "./SortHeader";
 import { reportMonth } from "./dashboard-format";
 import { TrendPlot } from "./ReportingPlots";
 import { metricPercent, percentText } from "./insight-metrics";
@@ -145,10 +146,10 @@ export function DeliveryTrends({ counts, projects, onFilter, onProject, label = 
       <details key={selected.month} open><summary>See projects completed in {reportMonth(selected.month)}</summary>{selected.projects.length === 0 && <p>No dated completions in this month.</p>}<ul>{selected.projects.map(project => <li key={project.id}>
         <button type="button" className="exec-text-button" onClick={() => onProject(project.id)}>{project.name} <ArrowUpRight size={14} aria-hidden="true" /></button>
       </li>)}</ul></details>
-      <details><summary>Show completion data table</summary><table>
-        <caption>Published project completions by month</caption><thead><tr><th scope="col">Month</th><th scope="col">Projects completed</th></tr></thead>
-        <tbody>{history.map(bucket => <tr key={bucket.id}><th scope="row">{reportMonth(bucket.month)}</th><td>{bucket.projects.length}</td></tr>)}</tbody>
-      </table></details>
+      <details><summary>Show completion data table</summary><SortedTable rows={history} caption="Published project completions by month"
+        columns={{ month: "Month", count: "Projects completed" }} initial={{ key: "month", direction: "asc" }}
+        identity={row => row.id} value={(row, field) => field === "month" ? row.month : row.projects.length}
+        cells={row => <><th scope="row">{reportMonth(row.month)}</th><td>{row.projects.length}</td></>} /></details>
     </div> : <p className="mi-trend-empty">{metric === "active" ? "Trend tracking begins from the first verified historical snapshot." :
       "No dated project completions have been published."}</p>}
     {metric === "completed" && undated > 0 && <p className="mi-trend-empty">{undated} {undated === 1 ? "completed project is" : "completed projects are"} excluded from history because a verified completion date has not been published.</p>}

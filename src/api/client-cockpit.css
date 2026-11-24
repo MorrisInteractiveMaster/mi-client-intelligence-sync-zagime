@@ -128,7 +128,7 @@
 .nordic.secure-shell .mi-cockpit-hero .mi-status-legend b { color: var(--mi-status-color); }
 
 .mi-cockpit-signals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.nordic.secure-shell .mi-cockpit-signals button {
+.nordic.secure-shell .mi-cockpit-signals .mi-signal-action {
   display: grid;
   grid-template-columns: 38px minmax(0,1fr) auto;
   align-items: center;
@@ -146,7 +146,7 @@
   overflow-wrap: anywhere;
   transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
 }
-.nordic.secure-shell .mi-cockpit-signals button:hover {
+.nordic.secure-shell .mi-cockpit-signals .mi-signal-action:hover {
   border-color: var(--mi-status-color);
   box-shadow: 0 6px 18px #102f4414;
 }
@@ -154,7 +154,7 @@
 .mi-cockpit-signals strong { font-size: clamp(1.25rem, 2.2vw, 1.75rem); letter-spacing: -.05em; line-height: 1; font-variant-numeric: tabular-nums; }
 .mi-cockpit-signals small { color: var(--mi-client-muted); font-size: .77rem; margin-block-end: 4px; }
 .mi-signal-glyph { display: grid; place-items: center; inline-size: 38px; block-size: 38px; border-radius: 8px; color: var(--mi-status-color); background: color-mix(in srgb, var(--mi-status-color) 12%, var(--mi-client-surface)); }
-.mi-cockpit-signals button > svg { color: var(--mi-status-color); }
+.mi-cockpit-signals .mi-signal-action > svg { color: var(--mi-status-color); }
 
 .mi-cockpit-analysis { display: grid; grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr); align-items: start; gap: 12px; min-inline-size: 0; }
 .mi-client-cockpit .mi-exec-panel, .mi-department-analysis .mi-exec-panel { box-shadow: 0 4px 18px #18324b0a; }
@@ -298,12 +298,12 @@
   .intel-workspace .mi-project-filters { grid-template-columns: minmax(0,1fr); }
 }
 @container client-report (max-width: 350px) {
-  .nordic.secure-shell .mi-cockpit-signals button { grid-template-columns: 28px minmax(0,1fr); gap: 6px; min-block-size: 61px; }
-  .mi-cockpit-signals button > svg { display: none; }
+  .nordic.secure-shell .mi-cockpit-signals .mi-signal-action { grid-template-columns: 28px minmax(0,1fr); gap: 6px; min-block-size: 61px; }
+  .mi-cockpit-signals .mi-signal-action > svg { display: none; }
   .mi-signal-glyph { inline-size: 28px; block-size: 28px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  :is(.mi-status-wheel circle, .mi-progress-arc circle, .mi-cockpit-dot-track i, .mi-cockpit-signals button) { animation: none !important; transition: none !important; }
+  :is(.mi-status-wheel circle, .mi-progress-arc circle, .mi-cockpit-dot-track i, .mi-cockpit-signals .mi-signal-action) { animation: none !important; transition: none !important; }
 }
 .mi-engagement-effort { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px; margin: 0; color: var(--mi-client-muted); font-size: .82rem; }
 .mi-engagement-effort strong { color: var(--mi-client-ink); font-variant-numeric: tabular-nums; }

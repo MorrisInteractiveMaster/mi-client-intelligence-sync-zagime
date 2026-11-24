@@ -90,6 +90,10 @@ export function ClientProjectExplorer({ delivery, params, onOpen, managersFor, e
       <label>Sort by<select value={Object.hasOwn(explorerSorts, sort) ? sort : "name"} onChange={event => filter("project-sort", event.target.value)}>
         {Object.entries(explorerSorts).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
       </select></label>
+      <label>Sort direction<select value={params.get("project-direction") ?? (sort === "completion" || sort === "hours" ? "desc" : "asc")}
+        onChange={event => filter("project-direction", event.target.value)}>
+        <option value="asc">Ascending</option><option value="desc">Descending</option>
+      </select></label>
     </div>
     {(band || completedMonth || milestone) && <div className="mi-explorer-drilldowns">
       {band && <button type="button" className="secure-secondary" onClick={() => filter("explorer-completion", "")}>Work completion · {completionBands.find(([key]) => key === band)?.[1]} ×</button>}

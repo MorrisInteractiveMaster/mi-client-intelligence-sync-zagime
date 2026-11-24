@@ -12,6 +12,7 @@ import { CalendarPicker } from "./CalendarPicker";
 import { ApiError, type SecuredApiClient } from "./client";
 import { projectStatus, reportDay, today } from "./dashboard-format";
 import { SearchableCombobox } from "./SearchableCombobox";
+import { SortControls, useSortedRows } from "./SortHeader";
 import "./project-management.css";
 
 function departmentName(areaId: string | undefined, areas?: ServiceArea[]) {
@@ -54,17 +55,22 @@ export function ProjectManagement({ client, tenant, selected, projects, areas, c
   const index = new Map(projects.map(project => [project.id, project]));
   const summary = selected ? index.get(selected) : undefined;
   const path = summary ? projectLocation(summary, index, areas) : [];
-  const options = projects.map(project => {
+  const sorted = useSortedRows<StaffProjectSummary, "name" | "location" | "workOrder" | "status">(projects, { key: "name", direction: "asc" },
+    (project, field) => ({ name: project.name, location: projectLocation(project, index, areas).join(" / "),
+      workOrder: project.workOrderReference, status: projectStatus[project.status] })[field], project => project.id);
+  const options = sorted.rows.map(project => {
     const reference = project.workOrderReference;
     const ancestors = projectLocation(project, index, areas);
     return { value: project.id, label: project.name, detail: [...ancestors, reference].filter(Boolean).join(" / "),
       search: project.delivery?.workOrderIds?.join(" ") };
-  }).sort((a, b) => a.label.localeCompare(b.label));
+  });
   return <section className="mi-project-management" aria-label="Project management">
     <div className="mi-management-search">
       <SearchableCombobox label="Find a project" value={selected ?? ""} options={options}
         placeholder="Search by project, parent, department or work order"
         onChange={value => onSelect(value || undefined)} />
+      {options.length > 1 && <SortControls fields={{ name: "Name", location: "Parent and department", workOrder: "Work order", status: "Status" }}
+        sort={sorted.sort} onSort={sorted.setSort} label="Sort project choices" />}
     </div>
     {selected ? <ProgressEditor key={selected} id={selected} path={path} client={client} tenant={tenant} areas={areas}
       legacyArea={summary?.reportPreview?.placement?.areaId}

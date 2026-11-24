@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { CircleHelp } from "lucide-react";
 
 const eventName = "portfolio-help-open";
-export function ContextHelp({ label, children }: { label: string; children: string }) {
+export function ContextHelp({ label, children, watch }: { label: string; children: string; watch?: string }) {
   const id = useId();
   const anchor = useRef<HTMLButtonElement>(null);
   const tip = useRef<HTMLDivElement>(null);
@@ -13,6 +13,31 @@ export function ContextHelp({ label, children }: { label: string; children: stri
   const [position, setPosition] = useState<{ top: number; left: number }>();
   const close = () => { window.clearTimeout(delay.current); setOpen(false); pin(false); setPosition(undefined); };
   const show = () => { window.clearTimeout(delay.current); window.dispatchEvent(new CustomEvent(eventName, { detail: id })); setOpen(true); };
+  useEffect(() => {
+    const trigger = watch && anchor.current?.parentElement?.querySelector(watch);
+    if (!trigger) return;
+    const enter = (event: Event) => {
+      if (event.type === "pointerenter" && (event as PointerEvent).pointerType === "touch") return;
+      window.clearTimeout(delay.current);
+      delay.current = window.setTimeout(show, event.type === "focus" ? 0 : 180);
+    };
+    const leave = () => {
+      window.clearTimeout(delay.current);
+      delay.current = window.setTimeout(close, 160);
+    };
+    if (open) trigger.setAttribute("aria-describedby", id);
+    trigger.addEventListener("pointerenter", enter);
+    trigger.addEventListener("pointerleave", leave);
+    trigger.addEventListener("focus", enter);
+    trigger.addEventListener("blur", leave);
+    return () => {
+      trigger.removeEventListener("pointerenter", enter);
+      trigger.removeEventListener("pointerleave", leave);
+      trigger.removeEventListener("focus", enter);
+      trigger.removeEventListener("blur", leave);
+      if (trigger.getAttribute("aria-describedby") === id) trigger.removeAttribute("aria-describedby");
+    };
+  }, [id, watch, open]);
   useEffect(() => {
     const another = (event: Event) => { if ((event as CustomEvent).detail !== id) close(); };
     const keyboard = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };

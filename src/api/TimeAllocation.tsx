@@ -5,7 +5,8 @@ import type { ProjectPage, StaffProjectSummary } from "../projects/model";
 import type { Portfolio } from "../projects/portfolio";
 import type { Allocation } from "../reporting/model";
 import { calendarDate, canAllocateToDelivery } from "../projects/delivery";
-import { precedingTimeMonth, reportingTimeMonth, timeSortOrders, type TimeGrouping, type TimePeriod } from "../projects/time-history";
+import { precedingTimeMonth, reportingTimeMonth, timeEntrySortFields, timeSortOrders, type TimeEntrySortField, type TimeGrouping, type TimePeriod } from "../projects/time-history";
+import { SortHeader, type SortState } from "./SortHeader";
 import { ApiError, type SecuredApiClient } from "./client";
 import { reportDay, reportHours, reportMonth, reportTimestamp } from "./dashboard-format";
 import { sourceStatus, type AllocationAnnotations, type HistoryRow, type SourceFilters, type SourceSummary, type StaffSource } from "./types";
@@ -19,6 +20,10 @@ import "./time-allocation.css";
 
 const blank: AllocationAnnotations = { reportingDescription: "", internalNote: "" };
 const sourceStatusLabels = { allocated: "Classified", partial: "Partially classified", unallocated: "Not assigned to a delivery project", review: "Needs review", deleted: "Deleted" };
+const entryLabels: Record<TimeEntrySortField, string> = {
+  date: "Date", consultant: "Consultant", notes: "Original provider notes", workOrder: "Work order",
+  recorded: "Recorded", reporting: "Reporting", assignment: "Assignment", status: "Status",
+};
 type AppliedFilters = SourceFilters & { search?: string };
 type BulkBatch = { key: string; body: BulkAllocationRequest; labels: Record<string, string> };
 const timePresets = {
@@ -87,7 +92,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   const [projectFilter, setProjectFilter] = useState("");
   const [from, setFrom] = useState("");
   const [through, setThrough] = useState("");
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<StaffSource[]>([]);
   const [bulkProject, setBulkProject] = useState("");
   const [batch, setBatch] = useState<BulkBatch>();
   const [bulkResult, setBulkResult] = useState<BulkAllocationResponse>();
@@ -123,7 +128,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     setError(e instanceof Error ? e.message : "The request could not be completed.");
   };
   const linkedId = sourceLink?.id;
-  async function load(next?: string, filters = applied, anchor = appliedMonth, openLinked = false) {
+  async function load(next?: string, filters = applied, anchor = appliedMonth, openLinked = false, keepSelection = false) {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -142,7 +147,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       setApplied(requestFilters);
       setAppliedMonth(anchor);
       setCursor(page.nextCursor);
-      if (!next) setSelected([]);
+      if (!next && !keepSelection) setSelected([]);
       if (openLinked && page.sources?.[0]) edit(page.sources[0]);
     } catch (e) { if (!controller.signal.aborted) failed(e); }
     finally { if (!controller.signal.aborted) setBusy(false); }
@@ -154,6 +159,9 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     setFrom(""); setThrough(""); setEditor(undefined); setSelected([]); setUndo(undefined); setNotice("");
     const initialFilters: AppliedFilters = linkedId ? { period: "all", entry: linkedId }
       : { period: linkedPeriod, start: linkedStart, end: linkedEnd, status: linkedStatus, consultant: linkedConsultant, workOrder: linkedWorkOrder };
+    const params = new URLSearchParams(window.location.search);
+    const linkedSort = timeEntrySortFields.find(field => field === params.get("entry-sort"));
+    if (!linkedId && linkedSort) Object.assign(initialFilters, { sort: linkedSort, direction: params.get("entry-direction") === "desc" ? "desc" : "asc" });
     void load(undefined, initialFilters, month, Boolean(linkedId));
     return () => { mounted.current = false; request.current?.abort(); };
   }, [client, tenant, month, linkedId, linkedConsultant, linkedWorkOrder, linkedPeriod, linkedStart, linkedEnd, linkedStatus]);
@@ -254,7 +262,19 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     applied.status ? (applied.status === "queue" ? "Has unallocated time" : sourceStatusLabels[applied.status]) : "",
   ].filter(Boolean);
   const remaining = editor ? editor.seconds - portions.reduce((sum, part) => sum + part.seconds, 0) : 0;
-  const selectedRows = (rows ?? []).filter(source => selected.includes(source.id));
+  const selectedRows = selected;
+  const showConsultant = applied.sort === "consultant" || (summary?.visibleColumns?.consultant ?? rows?.some(row => row.consultantName));
+  const showNotes = applied.sort === "notes" || (summary?.visibleColumns?.notes ?? rows?.some(row => row.description));
+  const entrySort: SortState<TimeEntrySortField> = { key: applied.sort ?? "date", direction: applied.direction ?? (applied.order === "newest" ? "desc" : "asc") };
+  const sortEntries = (value: SortState<TimeEntrySortField>) => {
+    const href = new URL(window.location.href);
+    href.searchParams.set("entry-sort", value.key);
+    href.searchParams.set("entry-direction", value.direction);
+    window.history.replaceState(window.history.state, "", href);
+    void load(undefined, { ...applied, sort: value.key, direction: value.direction }, appliedMonth, false, true);
+  };
+  const header = (field: TimeEntrySortField) => linkedId ? <th scope="col">{entryLabels[field]}</th> :
+    <SortHeader field={field} label={entryLabels[field]} sort={entrySort} onSort={sortEntries} disabled={busy} />;
   const canBulk = selectedRows.length > 0 && selectedRows.length <= MAX_BULK_ALLOCATION_ENTRIES && bulkProject &&
     selectedRows.every(source => source.seconds > 0 && !source.conflict && !source.needsReview && !source.portions.length);
   async function write(source: StaffSource, expected: number, parts: Allocation[], notes: AllocationAnnotations) {
@@ -371,8 +391,8 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       <button type="submit" disabled={busy}>Apply filters</button>
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
         setSearch(""); setStatus(undefined); setWorkOrder(""); setConsultant(""); setArea(""); setProjectFilter(""); setFrom(""); setThrough("");
-        const { period, start, end, order, group } = applied;
-        void load(undefined, { period, start, end, order, group });
+        const { period, start, end, order, group, sort, direction } = applied;
+        void load(undefined, { period, start, end, order, group, sort, direction });
       }}>Clear filters</button>
     </form></div>}
     {summary && !linkedId && <>
@@ -418,18 +438,24 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       }} />}
     {!rows && !error && <p role="status">Loading recorded time…</p>}
     {rows && rows.length === 0 && <p className="secure-empty">{linkedId ? "This time entry is unavailable in this workspace." : "No entries match these filters."}</p>}
+    {!!rows?.length && !linkedId && <div className="mi-entry-sort-mobile">
+      <label>Sort time entries by<select value={entrySort.key} disabled={busy} onChange={e => sortEntries({ key: e.target.value as TimeEntrySortField, direction: "asc" })}>
+        {timeEntrySortFields.map(field => <option key={field} value={field}>{entryLabels[field]}</option>)}</select></label>
+      <label>Direction<select value={entrySort.direction} disabled={busy} onChange={e => sortEntries({ ...entrySort, direction: e.target.value === "desc" ? "desc" : "asc" })}>
+        <option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
+    </div>}
     {!!rows?.length && <div className="intel-table-scroll time-entries" tabIndex={0} role="region" aria-label="Recorded time table">
-      <table role="table"><thead role="rowgroup"><tr role="row"><th scope="col">Select</th><th scope="col">Date</th>{rows.some(row => row.consultantName) && <th scope="col">Consultant</th>}{rows.some(row => row.description) && <th scope="col">Original provider notes</th>}
-        <th scope="col">Work order</th><th scope="col">Recorded</th><th scope="col">Reporting</th><th scope="col">Assignment</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+      <table role="table"><thead role="rowgroup"><tr role="row"><th scope="col">Select</th>{header("date")}{showConsultant && header("consultant")}{showNotes && header("notes")}
+        {header("workOrder")}{header("recorded")}{header("reporting")}{header("assignment")}{header("status")}<th scope="col">Actions</th></tr></thead>
       <tbody role="rowgroup">{rows.map(source => <tr key={source.id} role="row">
         <td role="cell" data-cell="Select"><input aria-label={"Select entry on " + source.date} type="checkbox" disabled={source.conflict || source.needsReview || source.portions.length > 0 || source.seconds === 0}
-          checked={selected.includes(source.id)} onChange={e => setSelected(old => e.target.checked ? [...old, source.id] : old.filter(id => id !== source.id))} /></td>
+          checked={selected.some(row => row.id === source.id)} onChange={e => setSelected(old => e.target.checked ? [...old, source] : old.filter(row => row.id !== source.id))} /></td>
         <td role="cell" data-cell="Date">{reportDay(source.date)}</td>
-        {rows.some(row => row.consultantName) && <td role="cell" data-cell="Consultant"><div className="time-profile">
+        {showConsultant && <td role="cell" data-cell="Consultant"><div className="time-profile">
           {source.wordpressProfile?.photo && <img src={source.wordpressProfile.photo} alt={source.wordpressProfile.alt || ""} width="32" height="32" loading="lazy" />}
           <span>{source.consultantName}{source.wordpressProfile?.title && <small>{source.wordpressProfile.title}</small>}</span>
         </div></td>}
-        {rows.some(row => row.description) && <td role="cell" data-cell="Original provider notes">{source.description}</td>}<td role="cell" data-cell="Work order"><b>{source.workOrderName || source.sourceWorkOrderId}</b></td>
+        {showNotes && <td role="cell" data-cell="Original provider notes">{source.description}</td>}<td role="cell" data-cell="Work order"><b>{source.workOrderName || source.sourceWorkOrderId}</b></td>
         <td role="cell" data-cell="Recorded">{reportHours(source.seconds)} h</td><td role="cell" data-cell="Reporting">{source.annotations?.reportingDescription || "—"}</td>
         <td role="cell" data-cell="Assignment">{source.portions.length ? source.portions.map(p => <div key={p.projectId}>{projectName(p.projectId)}<small>{resolvedParent(p.projectId) ? projectName(resolvedParent(p.projectId)) + " · " : ""}{areaLabel(resolvedArea(p.projectId))}</small></div>) : "Unassigned"}
           {(source.annotations?.parentId || source.annotations?.areaId) && <small>Reporting: {source.annotations.parentId ? projectName(source.annotations.parentId) + " · " : ""}{areaLabel(source.annotations.areaId ?? "")}</small>}</td>

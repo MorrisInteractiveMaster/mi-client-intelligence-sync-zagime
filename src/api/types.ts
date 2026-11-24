@@ -1,5 +1,6 @@
 import type { Allocation, DeliveryProject } from "../reporting/model";
-import type { TimeGrouping, TimePeriod, TimeSortOrder, TimeWindow } from "../projects/time-history";
+import type { TimeEntrySortField, TimeGrouping, TimePeriod, TimeSortOrder, TimeWindow } from "../projects/time-history";
+import type { SortDirection } from "../projects/sort";
 export interface Workspace {
   corporateStaff?: true;
   role: "administrator" | "editor" | "client";
@@ -55,6 +56,8 @@ export interface StaffSource {
 export const sourceStatuses = ["allocated", "partial", "unallocated", "review", "deleted"] as const;
 export type SourceStatus = typeof sourceStatuses[number];
 export interface SourceFilters {
+  sort?: TimeEntrySortField;
+  direction?: SortDirection;
   workOrder?: string;
   consultant?: string;
   area?: string;
@@ -83,6 +86,7 @@ export interface SourceHoursGroup extends SourceHours {
   wordpressProfile?: StaffSource["wordpressProfile"];
 }
 export interface SourceSummary {
+  visibleColumns?: { consultant: boolean; notes: boolean };
   monthTotal: number;
   matched: number;
   counts: Record<SourceStatus, number> & { total: number; remaining: number };

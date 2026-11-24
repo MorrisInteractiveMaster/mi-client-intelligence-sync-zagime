@@ -8,6 +8,7 @@ import { reportHours, reportMonth, reportTimestamp } from "./dashboard-format";
 import { SearchableCombobox } from "./SearchableCombobox";
 import { PlatformLink } from "./PlatformHome";
 import { periodHref } from "./portal-location";
+import { SortControls, useSortedRows } from "./SortHeader";
 
 const queues = {
   awaiting: "Awaiting mapping",
@@ -15,6 +16,8 @@ const queues = {
   review: "Needs review",
   inactive: "Inactive or removed",
 } as const;
+const mappingSort = { name: "Work order name", jobcode: "Jobcode", status: "Mapping status", recorded: "Recorded this month",
+  history: "Historical recorded", allocated: "Existing allocations", synced: "Last successful sync" } as const;
 
 export function QuickBooksTimeMapping({ client, tenant, month, projects, portfolio, onDenied, onSaved }: {
   client: SecuredApiClient;
@@ -32,6 +35,10 @@ export function QuickBooksTimeMapping({ client, tenant, month, projects, portfol
   const [queue, setQueue] = useState<keyof typeof queues | "all">("all");
   const [selected, select] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const sorted = useSortedRows<TimeMapping, keyof typeof mappingSort>(status?.mappings ?? [], { key: "name", direction: "asc" },
+    (row, field) => ({ name: row.sourceName ?? projects.find(project => project.id === row.projectId)?.name ?? row.jobcodeId,
+      jobcode: row.jobcodeId, status: queues[workOrderQueue(row)], recorded: row.recordedSeconds, history: row.lifetimeRecordedSeconds,
+      allocated: row.lifetimeAllocatedSeconds, synced: row.lastSuccess })[field], row => row.jobcodeId);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -96,14 +103,15 @@ export function QuickBooksTimeMapping({ client, tenant, month, projects, portfol
       {!status.mappings.some(mapping => queue === "all" || workOrderQueue(mapping) === queue) &&
         <p className="secure-empty">No work orders match this status.</p>}
       <div className="mi-mapping-list">
-        {status.mappings.filter(mapping => queue === "all" || workOrderQueue(mapping) === queue).map(mapping => {
+        <SortControls fields={mappingSort} sort={sorted.sort} onSort={sorted.setSort} label="Sort work orders" />
+        {sorted.rows.filter(mapping => queue === "all" || workOrderQueue(mapping) === queue).map(mapping => {
           const current = projects.find(project => project.id === mapping.projectId);
           const open = selected === mapping.jobcodeId;
           return <article className="secure-card mi-mapping-order" key={mapping.jobcodeId}>
             <header className="delivery-section-heading">
               <div><p className="mi-kicker">{queues[workOrderQueue(mapping)]} · Jobcode {mapping.jobcodeId}</p>
                 <h3>{mapping.sourceName ?? current?.name ?? "Work order " + mapping.jobcodeId}</h3>
-                {mapping.mappingState !== "registered" && current && <p>Reporting project: <PlatformLink
+                {mapping.mappingState !== "registered" && current && <p>Reporting project: <PlatformLink className="exec-text-button"
                   href={periodHref("/workspace/projects/" + current.id, month)}>{current.name}</PlatformLink></p>}
               </div>
               <button type="button" className="secure-secondary" aria-expanded={open} onClick={() => select(open ? undefined : mapping.jobcodeId)}>

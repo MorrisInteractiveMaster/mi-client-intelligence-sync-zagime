@@ -10,6 +10,8 @@ import type { ExplorerScope } from "./project-explorer";
 import { TrendPlot } from "./ReportingPlots";
 import { monthlyEffort } from "./monthly-effort";
 import { portalNavigate, usePortalLocation } from "./portal-location";
+import { SortControls, SortedTable, useSortedRows } from "./SortHeader";
+import { ContextHelp } from "./ContextHelp";
 import "./client-intelligence.css";
 
 type Delivery = ReturnType<typeof clientDelivery>;
@@ -49,7 +51,7 @@ export function DepartmentAnalytics({ report, delivery, unit, onLink, onUnit, sh
   };
   return <section className="mi-exec-panel mi-department-composition mi-v4-department-chart" aria-labelledby="department-effort-title">
     <div className="mi-exec-heading"><div><h3 id="department-effort-title">Department distribution</h3>
-      <p>{effort ? reportMonth(report.month) + " · Approved allocated effort" : "Approved delivery projects by department"}</p></div>
+      <p>{effort ? reportMonth(report.month) + " · Approved allocated effort" : "Approved delivery projects by department"} <ContextHelp label="Explain department composition">Each segment shows one delivery status within a department. The percentage compares it with the department total in the selected scope. Select a segment to open the matching projects.</ContextHelp></p></div>
       {showDirectoryLink && <button type="button" className="exec-text-button" onClick={() => onLink("areas")}>Browse departments <ArrowUpRight size={16} aria-hidden="true" /></button>}
     </div>
     <div className="mi-insight-controls">
@@ -98,6 +100,9 @@ export function UpcomingDeadlines({ delivery, report, onLink }: { delivery: Deli
   const [showAll, setShowAll] = useState(false);
   const [horizon, setHorizon] = useState<DeadlineHorizon>(3);
   const { rows, unscheduled, through, completed } = deadlineWindow(delivery.projects, today(), horizon);
+  const sorted = useSortedRows<typeof rows[number], "date" | "project" | "department" | "status">(rows, {key: "date", direction: "asc"},
+    (row, key) => ({date: row.due, project: row.project.name, department: row.department?.name, status: row.upcoming ? "Upcoming" : projectStatus[row.project.status]})[key],
+    row => row.project.id);
   return <section className="mi-exec-panel mi-deadline-panel" aria-labelledby="upcoming-deadlines">
     <div className="mi-exec-heading"><div><h3 id="upcoming-deadlines"><CalendarClock size={19} aria-hidden="true" /> Upcoming deadlines</h3>
       <p>Approved dates through {reportDay(through)} · Regina time</p></div></div>
@@ -105,8 +110,10 @@ export function UpcomingDeadlines({ delivery, report, onLink }: { delivery: Deli
       {deadlineHorizons.map(value => <button key={value} type="button" aria-pressed={horizon === value}
         onClick={() => { setShowAll(false); setHorizon(value); }}>{value} months</button>)}
     </div>
+    {rows.length > 1 && <SortControls fields={{ date: "Deadline", project: "Project name", department: "Department", status: "Status" }}
+      sort={sorted.sort} onSort={sorted.setSort} label="Sort deadlines" />}
     <div aria-live="polite">
-      {rows.length ? <ul className="mi-priority-list">{rows.slice(0, showAll ? rows.length : 5).map(item => {
+      {rows.length ? <ul className="mi-priority-list">{sorted.rows.slice(0, showAll ? rows.length : 5).map(item => {
         const managers = report.portfolio?.directory.filter(person => person.projectIds.includes(item.project.id) &&
           (item.delivery?.managerIds?.includes(person.id) || item.placement?.managerIds?.includes(person.id) || person.id === item.placement?.leadId)) ?? [];
         const urgency = item.days < 0 ? Math.abs(item.days) + " days overdue" :
@@ -200,11 +207,10 @@ export function MonthlyEffort({ report, delivery, unit, onLink }: { report: Proj
           " · " + reportHours(cap.monthlyCapUsed) + " of " + reportHours(cap.monthlyCap) + " h against the published cap"}</p>
     </section>}
     <details><summary>Show approved monthly effort table</summary>
-      <table><caption>{series.label}</caption>
-        <thead><tr><th scope="col">Month</th><th scope="col">Approved effort</th><th scope="col">{denominatorLabel}</th><th scope="col">Share</th></tr></thead>
-        <tbody>{series.rows.map(row => <tr key={row.month}><th scope="row">{reportMonth(row.month)}</th>
-          <td>{exact(row.seconds)}</td><td>{exact(row.denominator)}</td><td>{share(row.share)}</td></tr>)}</tbody>
-      </table>
+      <SortedTable rows={series.rows} caption={series.label} columns={{ month: "Month", seconds: "Approved effort", denominator: denominatorLabel, share: "Share" }}
+        initial={{ key: "month", direction: "asc" }} identity={row => row.month} value={(row, field) => row[field]}
+        cells={row => <><th scope="row">{reportMonth(row.month)}</th>
+          <td>{exact(row.seconds)}</td><td>{exact(row.denominator)}</td><td>{share(row.share)}</td></>} />
     </details>
   </section>;
 }

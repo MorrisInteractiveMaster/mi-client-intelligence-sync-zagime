@@ -1,7 +1,8 @@
 import { FieldPath, type DocumentData, type DocumentReference, type DocumentSnapshot, type Transaction } from "firebase-admin/firestore";
 import { sourceStatus, sourceStatuses, type PageQuery, type SourceFilters, type SourceHours, type SourceHoursGroup, type SourceSummary, type StaffSource } from "../src/api/types";
 import { calendarDate } from "../src/projects/delivery";
-import { timeBucket, timeSortOrders, timeWindow, type TimeGrouping, type TimeWindow } from "../src/projects/time-history";
+import { timeBucket, timeEntrySortFields, timeSortOrders, timeWindow, type TimeGrouping, type TimeWindow } from "../src/projects/time-history";
+import { compareValues, directions } from "../src/projects/sort";
 import type { ProjectPage } from "../src/projects/model";
 import type { Allocation } from "../src/reporting/model";
 import { safeId } from "./contracts";
@@ -15,7 +16,7 @@ import { readEmployeeProfiles, timeEmployeeKey } from "./employee-mapping";
 export const sourceMonthLimit = 5000;
 export const sourceHistoryLimit = 12000;
 export const sourceFilterKeys = ["search", "workOrder", "consultant", "area", "project", "from", "through", "status",
-  "period", "start", "end", "order", "group", "entry"] as const;
+  "period", "start", "end", "order", "group", "entry", "sort", "direction"] as const;
 const filterId = /^[A-Za-z0-9_-]{1,128}$/;
 const normalized = (text: string) => text.normalize("NFKC").trim().toLowerCase();
 
@@ -31,6 +32,8 @@ export function sourceFilters(query: PageQuery) {
   if (f.from && f.through && f.from > f.through) throw Error("Invalid source date filter");
   if (f.status !== undefined && f.status !== "queue" && !sourceStatuses.includes(f.status)) throw Error("Invalid source status");
   if (f.order !== undefined && !timeSortOrders.includes(f.order)) throw Error("Invalid source order");
+  if (f.sort !== undefined && !timeEntrySortFields.includes(f.sort) ||
+      f.direction !== undefined && (!f.sort || !directions.includes(f.direction))) throw Error("Invalid source sort");
   if (f.group !== undefined && !["month", "quarter", "year"].includes(f.group)) throw Error("Invalid source group");
   return { filters: { ...f, search: normalized(query.search ?? "") }, window };
 }
@@ -113,11 +116,28 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
     const bucket = timeBucket(row.date, grouping);
     addGroup(byPeriod, bucket.id, bucket.label, row);
   }
-  if (filters.order === "newest") matches.reverse();
+  if (filters.sort) {
+    const statusRank = { review: 0, unallocated: 1, partial: 2, allocated: 3, deleted: 4 };
+    const value = (row: StaffSource) => {
+      switch (filters.sort) {
+        case "date": return row.date;
+        case "consultant": return row.consultantName;
+        case "notes": return row.description;
+        case "workOrder": return row.workOrderName || row.sourceWorkOrderId;
+        case "recorded": return row.seconds;
+        case "reporting": return row.annotations?.reportingDescription;
+        case "assignment": return row.portions.map(part => projects.get(part.projectId)?.title || "Assigned project").join(" · ");
+        case "status": return statusRank[sourceStatus(row)];
+      }
+    };
+    matches.sort((a, b) => compareValues(value(a), value(b), filters.direction) ||
+      a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  } else if (filters.order === "newest") matches.reverse();
   const options = (values: Map<string, string>) => [...values].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
   const breakdown = (groups: Map<string | null, SourceHoursGroup>) => [...groups.values()]
     .sort((a, b) => b.recordedSeconds - a.recordedSeconds || a.label.localeCompare(b.label) || (a.id ?? "").localeCompare(b.id ?? ""));
   const summary: SourceSummary = { monthTotal: rows.length, matched: matches.length, counts, period,
+    visibleColumns: { consultant: matches.some(row => Boolean(row.consultantName)), notes: matches.some(row => Boolean(row.description)) },
     workOrders: options(workOrders), consultants: options(consultants),
     hours: { ...hours, byConsultant: breakdown(byConsultant), byMorrisProfile: breakdown(byMorrisProfile), byWorkOrder: breakdown(byWorkOrder), byPeriod: [...byPeriod.values()] },
   };

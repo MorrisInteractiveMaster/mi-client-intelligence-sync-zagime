@@ -3,6 +3,7 @@ import { ArrowUpRight, Clock3 } from "lucide-react";
 import { reportHours } from "./dashboard-format";
 import { metricPercent, percentText } from "./insight-metrics";
 import type { SourceHours, SourceHoursGroup } from "./types";
+import { compareValues } from "../projects/sort";
 import "./effort-visuals.css";
 
 type Tone = "blue" | "teal" | "gold" | "coral";
@@ -49,18 +50,35 @@ export function AllocationCoverage({ hours, loading = false }: { hours?: SourceH
   </section>;
 }
 
-export function SourceMix({ groups, denominator, label, onSelect, busy = false, fallbackId }: {
+const mixOrders = {
+  "recorded-desc": "Most recorded hours", "recorded-asc": "Least recorded hours",
+  "share-desc": "Largest share", "share-asc": "Smallest share", "name-asc": "Name A–Z", "name-desc": "Name Z–A",
+  "allocated-desc": "Most allocated hours", "allocated-asc": "Least allocated hours",
+  "unallocated-desc": "Most unallocated hours", "unallocated-asc": "Least unallocated hours",
+} as const;
+
+export function SourceMix({ groups, denominator, label, onSelect, busy = false, fallbackId, sortable }: {
   groups: SourceHoursGroup[];
   denominator: number;
   label: string;
   onSelect?: (id: string) => void;
   fallbackId?: string;
   busy?: boolean;
+  sortable?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [order, setOrder] = useState<keyof typeof mixOrders>("recorded-desc");
+  const [field, direction] = order.split("-");
+  const sortValue = (group: SourceHoursGroup) => field === "name" ? group.label : field === "allocated" ? group.allocatedSeconds :
+    field === "unallocated" ? group.unallocatedSeconds : group.recordedSeconds;
   const roles = groups.filter(group => group.recordedSeconds !== 0);
+  if (sortable) roles.sort((a, b) => compareValues(sortValue(a), sortValue(b), direction === "asc" ? "asc" : "desc") ||
+    compareValues(a.label, b.label) || compareValues(a.id, b.id));
   if (denominator <= 0 || !roles.length) return <p className="mi-effort-muted">No recorded hours to compare in this scope.</p>;
-  return <><ul className="mi-effort-mix" aria-label={label}>{(expanded ? roles : roles.slice(0, 5)).map(group => {
+  return <>{sortable && <label className="mi-mix-sort">Sort time distribution<select value={order} disabled={busy}
+    onChange={event => setOrder(event.target.value as keyof typeof mixOrders)}>
+    {Object.entries(mixOrders).map(([value, name]) => <option key={value} value={value}>{name}</option>)}
+  </select></label>}<ul className="mi-effort-mix" aria-label={label}>{(expanded ? roles : roles.slice(0, 5)).map(group => {
     const id = group.id ?? fallbackId;
     const share = metricPercent(group.recordedSeconds, denominator);
     const exact = reportHours(group.recordedSeconds) + " h of " + reportHours(denominator) + " h recorded";
