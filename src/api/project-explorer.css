@@ -19,7 +19,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 12px;
+  padding: 8px;
   margin: 0;
   border: 1px solid var(--explorer-edge);
   border-radius: 12px;
@@ -30,7 +30,7 @@
   white-space: normal;
 }
 .nordic.secure-shell .mi-explorer-department:is(:hover,[aria-pressed="true"]) { border-color: var(--mi-insight-fill,#3676a3); background: var(--mi-insight-selected,#e0edf8); }
-.mi-explorer-count { display: grid; place-items: center; width: 38px; height: 38px; border: 2px dotted var(--mi-insight-fill,#3676a3); border-radius: 50%; font-variant-numeric: tabular-nums; }
+.mi-explorer-count { display: grid; place-items: center; width: 34px; height: 34px; border: 2px dotted var(--mi-insight-fill,#3676a3); border-radius: 50%; font-variant-numeric: tabular-nums; }
 .mi-explorer-department-copy { min-width: 0; display: grid; gap: 2px; line-height: 1.25; }
 .mi-explorer-department-copy b { overflow-wrap: anywhere; font-size: .83rem; }
 .mi-explorer-department-copy small { color: var(--explorer-muted); font-size: .68rem; }

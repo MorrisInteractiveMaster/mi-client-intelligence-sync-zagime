@@ -95,7 +95,10 @@ export function TrendPlot({ rows, label, active, unit, onSelect, onInspect, spok
             type="button" tabIndex={row.id === plot ? 0 : -1} aria-pressed={row.id === plot}
             aria-label={row.label + ", " + (spokenValue ? spokenValue(row.value, row) : plotValue(row.value, unit))}
             onClick={() => onSelect(row.id)} onKeyDown={event => move(event, index)}
-            onPointerEnter={() => onInspect?.(row.id)} onPointerLeave={() => onInspect?.()}
+            onPointerMove={() => onInspect?.(row.id)}
+            onPointerLeave={event => {
+              if (document.activeElement !== event.currentTarget) onInspect?.();
+            }}
             onFocus={() => onInspect?.(row.id)} onBlur={() => onInspect?.()}
             style={{ "--mi-point": (row.value / maximum * 100) + "%" } as CSSProperties}>
             <span className="mi-trend-marker" aria-hidden="true" />

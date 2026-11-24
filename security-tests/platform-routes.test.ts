@@ -373,6 +373,9 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       const body = await scopedResponse.text();
       assert.equal(JSON.parse(body).projects.length, 100);
       assert.doesNotMatch(body, /V4-PRIVATE|V4 project 300/);
+      await sample.page.goto(route("/clients/zagime/departments"));
+      await sample.page.getByRole("region", { name: "Department distribution" }).waitFor();
+      await sample.page.screenshot({ path: join(scaleEvidence, "departments-100-full.png"), fullPage: true, animations: "disabled" });
     } finally { await sample.context.close(); }
     const staffPreview = await session(mainBrowser!, "owner");
     try {
@@ -678,9 +681,11 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await monthlyEffort.getByRole("button", { name: /^September 2026, Approved effort: 1\.5 h/ }).waitFor();
     const effortDepartment = monthlyEffort.getByRole("combobox", { name: "Effort department" });
     await effortDepartment.selectOption("hr");
+    await client.page.waitForURL(url => url.searchParams.get("effort-department") === "hr");
     const hrNovember = monthlyEffort.getByRole("button", { name: /^November 2026, Approved effort: 0 h.*0%/ });
+    await client.page.mouse.move(0, 0);
     await hrNovember.focus();
-    assert.match(await monthlyEffort.getByRole("tooltip").innerText(), /Monthly portfolio effort: 2 h.*0%/);
+    await monthlyEffort.getByRole("tooltip").filter({ hasText: /November 2026.*Monthly portfolio effort: 2 h.*0%/ }).waitFor();
     await effortDepartment.selectOption("");
     const effortProject = monthlyEffort.getByRole("combobox", { name: "Effort project" });
     await effortProject.selectOption(projectId);

@@ -174,7 +174,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
     ...(periodReport?.portfolio?.history ?? []).filter(row => row.seconds > 0).map(row => row.month),
   ].filter(candidate => candidate <= currentMonth).sort().at(-1);
   const periodToolbar = (action?: ReactNode) => <ReportingPeriod month={month} currentMonth={currentMonth} action={action}
-    availableMonths={availableMonths} latestMonth={latestMonth} empty={report?.totalSeconds === 0}
+    availableMonths={availableMonths} latestMonth={latestMonth} empty={report?.totalSeconds === 0 && view === "history"}
     range={monthRange} pending={!report && !current}
     onMonth={selected => portalNavigate({ month: selected, "effort-point": null, "period-scope": null, "from-month": null, "through-month": null })}
     onRange={range => portalNavigate({ view: "history", "period-scope": range.preset,
