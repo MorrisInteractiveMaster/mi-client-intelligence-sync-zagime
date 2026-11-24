@@ -252,6 +252,9 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
             if (path === staffPath("health")) {
               const appearance = review.page.getByRole("combobox", { name: "Appearance" });
               await appearance.selectOption("dark");
+              const budgetFilters = review.page.locator(".delivery-filters").filter({ has: review.page.getByLabel("Search projects") }).first();
+              await budgetFilters.waitFor();
+              assert.equal(await budgetFilters.evaluate(element => getComputedStyle(element).backgroundColor), "rgb(20, 37, 55)");
               probes.push(await auditViewport(review.page, "Dark budget board", 1365, 801, { compactSidebar }));
               await review.page.screenshot({ path: join(referenceEvidence, "v3-11-budget-dark-1365x801.png"), animations: "disabled" });
               await appearance.selectOption("system");

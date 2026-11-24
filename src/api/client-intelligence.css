@@ -72,10 +72,10 @@
 .mi-project-card-header { min-block-size: 76px; }
 .mi-project-card-header h3 { overflow-wrap: anywhere; }
 .nordic.secure-shell .mi-report-month { background: transparent; padding: 0; margin: 0; }
-.nordic.secure-shell .exec-text-button:has(svg), .nordic.secure-shell .mi-preview-controls a {
+.nordic.secure-shell .mi-workspace-body .exec-text-button:has(svg), .nordic.secure-shell .mi-preview-controls a {
   text-decoration: none;
 }
-.nordic.secure-shell .exec-text-button:has(svg):hover, .nordic.secure-shell .mi-preview-controls a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.nordic.secure-shell .mi-workspace-body .exec-text-button:has(svg):hover, .nordic.secure-shell .mi-preview-controls a:hover { text-decoration: underline; text-underline-offset: 3px; }
 @media (min-width: 961px) {
   .nordic.secure-shell .mi-workspace-sidebar {
     min-height: calc(100svh - 116px);
