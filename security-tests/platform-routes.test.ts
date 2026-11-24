@@ -14,7 +14,8 @@ import { key } from "../server/firestore-store";
 import { apiServer, RequestLimit } from "../server/http";
 import { seedProjectSynthetic } from "../server/project-operator";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
-import { projectView, type Project } from "../src/projects/model";
+import { approvedProjectContent, projectView, type Project } from "../src/projects/model";
+import { portfolioRef } from "../server/portfolio";
 import { clientBase, clientPath, controlSections, staffPath, staffSegments, type StaffSection } from "../src/api/platform-routes";
 import { auditViewport } from "./viewport-audit";
 import { otherContacts } from "../src/projects/other-contacts";
@@ -303,7 +304,8 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
           published: index < 299, internalNotes: "V4-PRIVATE-NOTE", description: "Approved delivery overview for the synthetic portfolio.",
           delivery: { kind: "project", type: "hourly", parentId: parentProjects[index % 2], areaId: teams[index % teams.length],
             managerIds: [], teamIds: [], manualCompletion: completed ? 100 : index % 7 === 2 ? undefined : 48,
-            completedOn: completed ? "2026-10-17" : undefined, start: upcoming ? "2026-12-04" : "2026-09-03",
+            completedOn: completed ? index === 0 ? "2026-04-17" : index === 7 ? "2025-10-17" : "2026-10-17" : undefined,
+            start: upcoming ? "2026-12-04" : "2026-09-03",
             deadline: index % 5 === 0 ? undefined : "2026-12-10", publishSummary: index % 5 !== 0,
             ...(blocked ? { blocker: { active: true, message: "Awaiting scope review", internal: "V4-PRIVATE-BLOCKER" } } : {}),
           },
@@ -320,6 +322,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     const explorer = sample.page.getByRole("region", { name: "Project Explorer", exact: true });
     const grants = root.collection("memberships").doc(key("client"));
     try {
+      await sample.page.clock.setFixedTime(new Date("2026-11-24T17:00:00Z"));
       await grants.update({ projectIds: ids.slice(0, 6) });
       await sample.page.goto(route("/clients/zagime/projects"));
       await explorer.getByText("Showing 1–6 of 6 projects", { exact: true }).waitFor();
@@ -351,6 +354,14 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
             const box = el.getBoundingClientRect(); return { top: Math.round(box.top), bottom: Math.round(box.bottom) };
           }));
           for (const box of boxes) assert.ok(boxes.every(other => other.top !== box.top || other.bottom === box.bottom));
+          if (width === 1024 || width === 1440) {
+            const miscellaneous = explorer.getByRole("button", { name: /^Miscellaneous · .*approved projects/ })
+              .locator(".mi-explorer-department-name");
+            assert.equal(await miscellaneous.evaluate(label => {
+              const text = document.createRange(); text.selectNodeContents(label);
+              return text.getClientRects().length;
+            }), 1, "Miscellaneous fits on one line at " + width);
+          }
           await sample.page.screenshot({ path: join(scaleEvidence, "explorer-" + theme + "-" + width + ".png"), animations: "disabled" });
         }
       }
@@ -364,6 +375,22 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await chart.getByRole("button", { name: "Project count", exact: true }).waitFor();
       await sample.page.getByText("No approved effort yet for this period.", { exact: true }).first().waitFor();
       await sample.page.screenshot({ path: join(scaleEvidence, "leadership-100-zero-hours-full.png"), fullPage: true, animations: "disabled" });
+      const completionChart = sample.page.getByRole("region", { name: "Completed projects by month" });
+      assert.equal(await completionChart.locator(".mi-completion-month").count(), 12);
+      await completionChart.getByRole("button", { name: "May 2026 · 0 recorded completions", exact: true }).waitFor();
+      await completionChart.locator('[data-state="unavailable"]').filter({ hasText: /Nov.*Historical reporting unavailable/ }).waitFor();
+      await completionChart.getByRole("button", { name: "Earlier 12 months" }).click();
+      await completionChart.getByRole("button", { name: /^October 2025 · 1 recorded completion/ }).waitFor();
+      await completionChart.getByRole("button", { name: "Later 12 months" }).click();
+      for (const theme of ["light", "dark"]) {
+        await sample.page.getByRole("combobox", { name: "Appearance" }).selectOption(theme);
+        await sample.page.locator('.secure-shell[data-theme="' + theme + '"]').waitFor();
+        await completionChart.screenshot({ path: join(scaleEvidence, "completion-calendar-" + theme + ".png"), animations: "disabled" });
+      }
+      await completionChart.getByRole("button", { name: /^April 2026 · 1 recorded completion/ }).click();
+      await sample.page.waitForURL(url => url.searchParams.get("explorer-completed-month") === "2026-04");
+      await explorer.getByText("Showing 1–1 of 1 project", { exact: true }).waitFor();
+      await sample.page.goBack();
       await chart.getByRole("button", { name: /^HR · In progress · / }).first().click();
       await sample.page.waitForURL(url => url.searchParams.get("explorer-department") === "hr" && url.searchParams.get("status") === "active");
       await explorer.locator(".mi-explorer-project").first().waitFor();
@@ -399,6 +426,66 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await staffExplorer.getByRole("button", { name: "Open project V4 project 300", exact: true }).waitFor();
       await staffPreview.page.screenshot({ path: join(scaleEvidence, "project-explorer-300-page-six.png"), animations: "disabled" });
     } finally { await staffPreview.context.close(); }
+
+    const fullId = ids[10];
+    const context = portfolioRef(root);
+    const fullProject: Project = {
+      ...backendProject, id: fullId, name: "Community reporting toolkit", status: "completed",
+      description: "A shared reporting toolkit with an agreed set of measures, templates and handover materials.",
+      plan: { basis: "monthly", targetSeconds: 43200 },
+      internalNotes: "V4-PRIVATE-DETAIL-NOTE",
+      delivery: { structure: 3, kind: "project", type: "hourly", areaId: "miscellaneous",
+        start: "2026-08-10", deadline: "2026-11-20", completedOn: "2026-11-17", publishSummary: true,
+        managerIds: ["detail-manager"], teamIds: ["detail-specialist", "detail-hidden"], monthlyCap: 86400, lifetimeCap: 216000 },
+      milestones: [
+        { id: "scope", title: "Confirm reporting measures", date: "2026-08-26", completed: true, visible: true },
+        { id: "review", title: "Review toolkit with leadership", date: "2026-10-21", completed: true, visible: true },
+        { id: "handover", title: "Hand over templates and guide", date: "2026-11-17", completed: true, visible: true },
+        { id: "private", title: "V4-PRIVATE-MILESTONE", date: "2026-11-14", completed: true, visible: false },
+      ],
+      updates: [{ id: "handover-note", title: "Toolkit delivered", date: "2026-11-17", body: "Templates and the reporting guide are ready to use.", visible: true }],
+    };
+    const setup = runtime.db.batch();
+    setup.set(root.collection("projects").doc(fullId), fullProject);
+    setup.set(root.collection("projectViews").doc(fullId), { ...projectView(fullProject, 43200), ...approvedProjectContent(fullProject) });
+    for (const [period, seconds] of [[month, 21600], [previousMonth, 21600]] as const) {
+      setup.set(root.collection("projectPeriods").doc(key(period, fullId)), { projectId: fullId, month: period, seconds });
+    }
+    const directory = (await context.get()).data()?.portfolio?.directory ?? [];
+    setup.set(context, { portfolio: { directory: [...directory, ...[
+      { id: "detail-manager", name: "Avery Morgan", role: "Delivery lead", visible: true },
+      { id: "detail-specialist", name: "Jordan Lee", role: "Reporting specialist", visible: true },
+      { id: "detail-hidden", name: "V4-PRIVATE-CONTACT", role: "Private reviewer", visible: false },
+    ].map((entry, order) => ({
+      ...entry, areaId: "", responsibility: "", internalContact: "", publicContact: "", active: true,
+      email: "private@fixture.invalid", shareEmail: false, projectIds: [fullId], order: order + directory.length,
+    }))] } }, { merge: true });
+    await setup.commit();
+    const detailed = await session(mainBrowser!, "client");
+    try {
+      const evidencePath = route("/clients/zagime/projects/" + fullId);
+      await detailed.page.goto(evidencePath);
+      await detailed.page.getByRole("heading", { name: "Community reporting toolkit", exact: true }).waitFor();
+      const sections = detailed.page.locator(".mi-detailed-project");
+      for (const label of ["Avery Morgan", "Jordan Lee", "Toolkit delivered", "Confirm reporting measures"]) {
+        await sections.getByText(label, { exact: true }).waitFor();
+      }
+      await sections.getByRole("progressbar", { name: "Completed approved milestones" }).waitFor();
+      assert.equal(await sections.locator("time[datetime='2026-11-17']").count(), 3);
+      assert.doesNotMatch(await sections.innerText(), /V4-PRIVATE|private@fixture/);
+      const budget = sections.getByRole("region", { name: "Delivery project hour caps" });
+      await sections.getByRole("button", { name: "Hours", exact: true }).click();
+      await budget.getByText("6 of 24 hours", { exact: true }).waitFor();
+      await budget.getByText("12 of 60 hours", { exact: true }).waitFor();
+      await sections.getByRole("button", { name: "Percentage", exact: true }).click();
+      for (const theme of ["light", "dark"]) {
+        await detailed.page.getByRole("combobox", { name: "Appearance" }).selectOption(theme);
+        for (const width of [390, 1024, 1440]) {
+          await auditViewport(detailed.page, "Populated project detail " + theme, width, 900, { compactSidebar: true });
+          await detailed.page.screenshot({ path: join(scaleEvidence, "populated-project-" + theme + "-" + width + ".png"), fullPage: true, animations: "disabled" });
+        }
+      }
+    } finally { await detailed.context.close(); }
   }
 
   const editPath = "/workspace/projects/" + projectId;

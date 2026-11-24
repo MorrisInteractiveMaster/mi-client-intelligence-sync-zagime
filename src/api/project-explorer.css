@@ -12,12 +12,12 @@
   margin-block: 16px 24px;
   min-width: 0;
 }
-.mi-explorer-departments { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 138px), 1fr)); gap: 8px; }
+.mi-explorer-departments { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 8px; }
 .nordic.secure-shell .mi-explorer-department {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
   min-width: 0;
   padding: 8px;
   margin: 0;
@@ -30,10 +30,9 @@
   white-space: normal;
 }
 .nordic.secure-shell .mi-explorer-department:is(:hover,[aria-pressed="true"]) { border-color: var(--mi-insight-fill,#3676a3); background: var(--mi-insight-selected,#e0edf8); }
-.mi-explorer-count { display: grid; place-items: center; width: 34px; height: 34px; border: 2px dotted var(--mi-insight-fill,#3676a3); border-radius: 50%; font-variant-numeric: tabular-nums; }
-.mi-explorer-department-copy { min-width: 0; display: grid; gap: 2px; line-height: 1.25; }
-.mi-explorer-department-copy b { overflow-wrap: anywhere; font-size: .83rem; }
-.mi-explorer-department-copy small { color: var(--explorer-muted); font-size: .68rem; }
+.mi-explorer-count { display: grid; place-items: center; width: 30px; height: 30px; border: 2px dotted var(--mi-insight-fill,#3676a3); border-radius: 50%; font-variant-numeric: tabular-nums; }
+.mi-explorer-department-name { grid-column: 1/-1; font-size: .83rem; overflow-wrap: anywhere; }
+.mi-explorer-department-counts { color: var(--explorer-muted); font-size: .68rem; line-height: 1.25; }
 .mi-explorer-track { display: flex; grid-column: 1/-1; border-radius: 8px; overflow: hidden; height: 4px; background: var(--explorer-edge); }
 .mi-explorer-track i { flex-basis: 0; }
 .mi-explorer-track [data-state=active] { background: var(--status-active); }

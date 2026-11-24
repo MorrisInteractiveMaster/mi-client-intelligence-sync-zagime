@@ -1,5 +1,6 @@
 import type { ProjectReport } from "../projects/model";
 import { calendarDate } from "../projects/delivery";
+import { precedingTimeMonth } from "../projects/time-history";
 import { reportDay, today } from "./dashboard-format";
 
 type PublishedProject = ProjectReport["projects"][number];
@@ -140,6 +141,19 @@ export function projectCompletionHistory(
   return [...matches].sort(([a], [b]) => a.localeCompare(b)).map(([month, records]) => ({
     id: month, month, projects: records.sort((a, b) => a.name.localeCompare(b.name, "en-CA")),
   }));
+}
+
+export function completionCalendar(dated: ReturnType<typeof projectCompletionHistory>, through: string) {
+  const dates = new Map(dated.map(bucket => [bucket.month, bucket.projects]));
+  const first = dated[0]?.month;
+  const last = dated.at(-1)?.month;
+  const rows = [];
+  for (let month = through, count = 0; count < 12; count++, month = precedingTimeMonth(month)) {
+    const projects = dates.get(month);
+    const state = projects ? "recorded" : first && last && month >= first && month <= last ? "zero" : "unavailable";
+    rows.unshift({ month, projects: projects ?? [], state });
+  }
+  return rows;
 }
 
 export const deadlineHorizons = [3, 6, 9, 12] as const;

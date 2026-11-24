@@ -220,6 +220,10 @@ async function observe(context, page) {
                   await page.setViewportSize({ width: size, height: 900 });
                   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
                     "sign-in geometry at " + size + " " + theme);
+                  if (size >= 1024) {
+                    const bottomGutter = await page.locator(".mi-access").evaluate(panel => innerHeight - panel.getBoundingClientRect().bottom);
+                    assert.ok(bottomGutter >= 0 && bottomGutter <= 32, "sign-in fills desktop viewport at " + size + " " + theme);
+                  }
                   await page.screenshot({ path: resolve(output, "v4-sign-in-" + theme + "-" + size + ".png"), fullPage: true, animations: "disabled" });
                 }
               }

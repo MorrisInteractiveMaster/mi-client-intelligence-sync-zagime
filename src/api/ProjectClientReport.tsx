@@ -476,7 +476,9 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
           parent={activeProject.parent && { ...activeProject.parent, budget: hierarchy[activeProject.parent.id] }}
           history={report.historyByProject?.[project.id]} descendantTotals={delegatedTotals.get(project.id)} detail />
         {!!children.length && <section aria-label="Child projects"><h3>Child projects</h3><ul className="delivery-client-tree">{children.map(child => <li key={child.id}><button type="button" className="exec-text-button" onClick={() => choose("project:" + child.id)}>{child.name}</button></li>)}</ul></section>}
-        <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"} onLink={choose} onOpen={trigger => openOverlay("chart", "plan", trigger)} />
+        {project.plan.basis === "monthly" && project.plan.targetSeconds > 0
+          ? <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"} onLink={choose} onOpen={trigger => openOverlay("chart", "plan", trigger)} />
+          : <p className="mi-project-empty-plan">No monthly plan is published for this project.</p>}
       </article>}
       {(view === "milestones" || (project && kind === "timeline")) && <article className="intel-detail">
         <div className="secure-section-heading">

@@ -24,8 +24,9 @@ function DepartmentChooser({ delivery, value, onChange }: { delivery: Delivery; 
       const tip = [counts.all + " approved projects", ...portfolioStatuses.map(([status, label]) => segmentCount(counts, status) + " " + label.toLowerCase())].join(" · ");
       return <button className="mi-explorer-department" key={id} type="button" aria-pressed={value === id}
         aria-label={name + " · " + tip} title={tip} onClick={() => onChange(id)}>
+        <b className="mi-explorer-department-name">{name}</b>
         <span className="mi-explorer-count" aria-hidden="true">{counts.all}</span>
-        <span className="mi-explorer-department-copy"><b>{name}</b><small>{counts.active} active · {counts.completed} completed</small></span>
+        <small className="mi-explorer-department-counts">{counts.active} active · {counts.completed} completed</small>
         <span className="mi-explorer-track" aria-hidden="true">{portfolioStatuses.map(([status]) =>
           <i key={status} data-state={status} style={{ flexGrow: segmentCount(counts, status) }} />)}</span>
       </button>;

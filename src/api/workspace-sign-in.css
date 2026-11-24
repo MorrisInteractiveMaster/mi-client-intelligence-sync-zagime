@@ -10,7 +10,6 @@
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, .85fr);
   width: 100%;
   max-width: none;
-  min-height: clamp(420px, 62svh, 640px);
   padding: 0;
   margin: 16px 0 0;
   border-radius: 20px;
@@ -111,7 +110,11 @@
 .nordic.secure-shell .mi-access-story p:first-child { color: #f4d981; font-size: .86rem; font-weight: 700; }
 .nordic.secure-shell .mi-access-card { width: 100%; display: flex; flex-direction: column; justify-content: center; border-radius: 0; border: 0; align-items: stretch; min-width: 0; }
 .mi-access-mark { align-self: center; }
+@media (min-width: 841px) {
+  .nordic.secure-shell:has(> .mi-access) { display: flex; flex-direction: column; min-height: 100svh; padding-block-end: 20px; }
+  .nordic.secure-shell .mi-access { flex: 1; min-height: 400px; }
+}
 @media (max-width: 840px) {
-  .nordic.secure-shell .mi-access { grid-template-columns: minmax(0,1fr); min-height: 0; }
+  .nordic.secure-shell .mi-access { grid-template-columns: minmax(0,1fr); }
   .mi-access-story { padding: 24px; gap: 8px; }
 }

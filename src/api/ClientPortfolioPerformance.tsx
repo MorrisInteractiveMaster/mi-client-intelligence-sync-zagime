@@ -1,6 +1,6 @@
-import { ArrowUpRight } from "lucide-react";
-import { Fragment } from "react";
-import { projectCompletionHistory, type clientDelivery, type ProjectFilter } from "./client-delivery";
+import { ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { Fragment, useState } from "react";
+import { completionCalendar, projectCompletionHistory, type clientDelivery, type ProjectFilter } from "./client-delivery";
 import { completionBand, completionBands, milestoneState, milestoneStates } from "./project-explorer";
 import { portfolioStatuses, segmentCount } from "./ClientProjectExplorer";
 import { reportMonth, today } from "./dashboard-format";
@@ -18,9 +18,6 @@ function Comparison({ label, count, total, onOpen }: { label: string; count: num
 }
 
 export function CompletionPerformance({ delivery, onLink }: { delivery: Delivery; onLink: OpenClientView }) {
-  const completeMonths = projectCompletionHistory(delivery.projects);
-  const displayed = completeMonths.slice(-12);
-  const maximum = Math.max(1, ...displayed.map(item => item.projects.length));
   return <div className="mi-v4-analytics-grid">
     <section className="mi-exec-panel" aria-label="Project completion distribution">
       <div className="mi-exec-heading"><div><h3>Work completion</h3><p>Measured assessments across approved delivery projects</p></div></div>
@@ -28,22 +25,65 @@ export function CompletionPerformance({ delivery, onLink }: { delivery: Delivery
         count={delivery.projects.filter(row => completionBand(row.completion) === key).length}
         onOpen={() => onLink("projects", undefined, "all", { completion: key })} />)}</div>
     </section>
-    <section className="mi-exec-panel" aria-label="Completed projects by month">
-      <div className="mi-exec-heading"><div><h3>Completed projects by month</h3><p>Based on published completion dates</p></div></div>
-      {displayed.length ? <div className="mi-v4-month-scroll"><div className="mi-v4-columns" style={{ gridTemplateColumns: "repeat(" + displayed.length + ",minmax(52px,1fr))" }}>
-        {displayed.map(item => {
-          const detail = reportMonth(item.month) + " · " + item.projects.length + " · " + item.projects.map(project => project.name).join(", ");
-          return <button type="button" key={item.id} aria-label={detail} title={detail}
-            onClick={() => onLink("projects", undefined, "all", { completedMonth: item.month })}>
-            <b>{item.projects.length}</b>
-            <span aria-hidden="true" className="mi-v4-column" style={{ blockSize: Math.max(10, item.projects.length / maximum * 76) }} />
-            <span>{reportMonth(item.month)}</span>
-          </button>;
-        })}
-      </div></div> : <p className="mi-cockpit-empty">No published completion dates are available.</p>}
-      {delivery.counts.completed > 0 && <button className="exec-text-button" type="button" onClick={() => onLink("projects", undefined, "completed")}>View completed projects <ArrowUpRight size={14} aria-hidden="true" /></button>}
-    </section>
+    <CompletionTimeline delivery={delivery} onLink={onLink} />
   </div>;
+}
+
+const calendarLabel = new Intl.DateTimeFormat("en-CA", { month: "short", timeZone: "UTC" });
+
+function CompletionTimeline({ delivery, onLink }: { delivery: Delivery; onLink: OpenClientView }) {
+  const [yearsBack, setYearsBack] = useState(0);
+  const [inspected, inspect] = useState<string>();
+  const date = today();
+  const latest = date.slice(0, 7);
+  const dated = projectCompletionHistory(delivery.projects, date);
+  const through = String(Number(latest.slice(0, 4)) - yearsBack).padStart(4, "0") + latest.slice(4);
+  const months = completionCalendar(dated, through);
+  const from = months[0].month;
+  const maximum = Math.max(1, ...months.map(item => item.projects.length));
+  const result = (item: typeof months[number]) => item.state === "unavailable" ? "Historical reporting unavailable" :
+    item.projects.length + (item.projects.length === 1 ? " recorded completion" : " recorded completions");
+  const details = (item: typeof months[number]) => reportMonth(item.month) + " · " + result(item) +
+    (item.projects.length ? " · " + item.projects.map(project => project.name).join(", ") : "");
+  const active = months.find(item => item.month === inspected);
+  return <section className="mi-exec-panel mi-completion-calendar" aria-label="Completed projects by month">
+    <div className="mi-exec-heading"><div><h3>Completed projects by month</h3><p>Based on published completion dates</p></div></div>
+    {dated.length ? <>
+      <div className="mi-completion-period" role="group" aria-label="Completion history period">
+        <button type="button" className="exec-text-button" aria-label="Earlier 12 months" disabled={dated[0].month >= from}
+          onClick={() => { setYearsBack(value => value + 1); inspect(undefined); }}><ChevronLeft size={18} aria-hidden="true" /></button>
+        <b aria-live="polite">{reportMonth(from)} – {reportMonth(through)}</b>
+        <button type="button" className="exec-text-button" aria-label="Later 12 months" disabled={yearsBack === 0}
+          onClick={() => { setYearsBack(value => value - 1); inspect(undefined); }}><ChevronRight size={18} aria-hidden="true" /></button>
+      </div>
+      <div className="mi-v4-month-scroll">
+        <div className="mi-v4-columns" role="group" aria-label="Monthly completion timeline">
+          {months.map(item => {
+            const label = <time dateTime={item.month} aria-hidden="true">{calendarLabel.format(new Date(item.month + "-01T12:00:00Z"))}</time>;
+            return item.state === "unavailable"
+              ? <div key={item.month} className="mi-completion-month" data-state={item.state} title={details(item)}>
+                <span className="mi-completion-marker" aria-hidden="true">—</span>{label}<span className="exec-sr-only">{details(item)}</span>
+              </div>
+              : <button type="button" key={item.month} className="mi-completion-month" data-state={item.state} aria-label={details(item)} title={details(item)}
+                onFocus={() => inspect(item.month)} onPointerEnter={() => inspect(item.month)}
+                onClick={() => onLink("projects", undefined, "all", { completedMonth: item.month })}>
+                <b>{item.projects.length}</b>
+                <span aria-hidden="true" className="mi-v4-column" style={{ blockSize: item.state === "zero" ? 2 : item.projects.length / maximum * 72 }} />
+                {label}
+              </button>;
+          })}
+        </div>
+      </div>
+      <p className="mi-completion-key">0 = no dated completions recorded between published dates. — = historical reporting unavailable.</p>
+      {active && <p className="mi-completion-inspection" role="status">{details(active)}</p>}
+      <details className="mi-completion-table"><summary>Show monthly completion data</summary><table>
+        <caption>Published completion records</caption>
+        <thead><tr><th scope="col">Month</th><th scope="col">Recorded result</th></tr></thead>
+        <tbody>{months.map(item => <tr key={item.month}><th scope="row">{reportMonth(item.month)}</th><td>{result(item)}</td></tr>)}</tbody>
+      </table></details>
+    </> : <p className="mi-cockpit-empty">No published completion dates are available.</p>}
+    {delivery.counts.completed > 0 && <button className="exec-text-button" type="button" onClick={() => onLink("projects", undefined, "completed")}>View completed projects <ArrowUpRight size={14} aria-hidden="true" /></button>}
+  </section>;
 }
 
 export function MilestonePerformance({ delivery, onLink }: { delivery: Delivery; onLink: OpenClientView }) {
