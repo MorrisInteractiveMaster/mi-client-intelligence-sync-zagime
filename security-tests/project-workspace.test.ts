@@ -1857,8 +1857,12 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       assert.equal(await compactWizard.getByRole("group", { name: /Facilitators/ }).count(), 0);
       await compactWizard.getByRole("group", { name: /Project Managers/ }).getByRole("checkbox", { name: /Example delivery facilitator/ }).check();
       await compactNext.click();
-      compactCreation.page.once("dialog", dialog => void dialog.accept());
       await compactWizard.getByRole("button", { name: "Create & Publish", exact: true }).click();
+      const createDialog = compactCreation.page.getByRole("dialog", { name: "Publish new project?" });
+      await createDialog.waitFor();
+      await createDialog.getByText("Miscellaneous planning fixture", { exact: true }).waitFor();
+      await createDialog.screenshot({ path: join(evidence, "wizard-mobile-publication-confirmation.png"), animations: "disabled" });
+      await createDialog.getByRole("button", { name: "Publish", exact: true }).click();
       await compactCreation.page.getByText("Project created and published.", { exact: true }).waitFor();
       await compactCreation.context.close();
       await hierarchyBrowser.context.close();
