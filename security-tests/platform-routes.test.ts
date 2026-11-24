@@ -334,6 +334,10 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await hr.getByText("2 · 33.3%", { exact: true }).waitFor();
       await distribution.getByText("4 · 66.7%", { exact: true }).waitFor();
       await distribution.getByText("0 · 0%", { exact: true }).first().waitFor();
+      await sample.page.getByRole("button", { name: "Explain Approved projects", exact: true }).click();
+      await sample.page.getByRole("tooltip").filter({ hasText: /Parent engagement containers are excluded/ }).waitFor();
+      await sample.page.screenshot({ path: join(scaleEvidence, "v41-kpi-tooltip.png"), animations: "disabled" });
+      await sample.page.keyboard.press("Escape");
       await hr.getByRole("button", { name: "HR", exact: true }).focus();
       await sample.page.getByRole("tooltip").filter({ hasText: /2 of 6 approved delivery projects.*33.3%/ }).waitFor();
       await sample.page.screenshot({ path: join(scaleEvidence, "v41-distribution-tooltip.png"), fullPage: true, animations: "disabled" });
@@ -548,7 +552,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await time.page.getByLabel("Sort time distribution").selectOption("recorded-asc");
       await time.page.getByRole("region", { name: "Recorded time distribution" }).getByRole("listitem").first().getByText("synthetic-job", { exact: true }).waitFor();
       await time.page.getByText("Exact breakdowns and CSV exports", { exact: true }).click();
-      await time.page.getByText("Hours by work order", { exact: true }).click();
+      await time.page.locator("summary").filter({ hasText: /^Hours by work order$/ }).click();
       const breakdown = time.page.getByLabel("Hours by work order", { exact: true });
       await breakdown.getByRole("button", { name: "Recorded", exact: true }).click();
       await breakdown.locator('th[aria-sort="ascending"]').waitFor();
