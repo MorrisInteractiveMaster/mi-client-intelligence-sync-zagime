@@ -480,8 +480,8 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       assert.doesNotMatch(await sections.innerText(), /V4-PRIVATE|private@fixture/);
       const budget = sections.getByRole("region", { name: "Delivery project hour caps" });
       await sections.getByRole("button", { name: "Hours", exact: true }).click();
-      await budget.getByText("6 of 24 hours", { exact: true }).waitFor();
-      await budget.getByText("12 of 60 hours", { exact: true }).waitFor();
+      await budget.getByRole("meter", { name: "Monthly hours used" }).getByText("6 of 24 hours", { exact: true }).waitFor();
+      await budget.getByRole("meter", { name: "Whole-project hours used" }).getByText("12 of 60 hours", { exact: true }).waitFor();
       await sections.getByRole("button", { name: "Percentage", exact: true }).click();
       for (const theme of ["light", "dark"]) {
         await detailed.page.getByRole("combobox", { name: "Appearance" }).selectOption(theme);

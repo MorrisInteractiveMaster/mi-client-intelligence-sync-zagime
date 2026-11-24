@@ -7,10 +7,11 @@ import "./effort-visuals.css";
 
 type Tone = "blue" | "teal" | "gold" | "coral";
 
-export function DottedTrack({ value, label, detail, tone = "blue" }: {
+export function DottedTrack({ value, label, detail, displayValue, tone = "blue" }: {
   value?: number;
   label: string;
   detail?: string;
+  displayValue?: string;
   tone?: Tone;
 }) {
   const description = useId();
@@ -21,9 +22,9 @@ export function DottedTrack({ value, label, detail, tone = "blue" }: {
     role={measured ? "meter" : undefined} aria-label={label}
     aria-valuenow={value} aria-valuemin={measured ? 0 : undefined}
     aria-valuemax={measured ? Math.max(value, 100) : undefined}
-    aria-valuetext={measured ? wording : undefined} aria-describedby={detail ? description : undefined}
+    aria-valuetext={measured ? displayValue ?? wording : undefined} aria-describedby={detail ? description : undefined}
     data-measured={measured} tabIndex={detail ? 0 : undefined}>
-    <span className="mi-dot-meter-legend"><span>{label}</span><strong>{wording}</strong></span>
+    <span className="mi-dot-meter-legend"><span>{label}</span><strong>{displayValue ?? wording}</strong></span>
     {measured && <span className="mi-dot-meter-track" style={style} aria-hidden="true"><span /></span>}
     {detail && <span id={description} className="mi-dot-meter-detail">{detail}</span>}
   </span>;
