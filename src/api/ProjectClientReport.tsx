@@ -376,7 +376,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
               <input type="search" maxLength={120} value={search} onChange={event => setSearch(event.target.value)} />
             </label>
             <label>Status<select value={Object.hasOwn(clientProjectFilters, status) ? status : "all"} onChange={event => setStatus(event.target.value)}>
-              {Object.entries(clientProjectFilters).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              {Object.entries(clientProjectFilters).filter(([key]) => !key.startsWith("unassigned-") || key === status).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select></label>
             <label>Sort by<select value={Object.hasOwn(projectSorts, sort) ? sort : "name"} onChange={event => portalNavigate({ "project-sort": event.target.value === "name" ? null : event.target.value })}>
               {Object.entries(projectSorts).map(([key, label]) => <option key={key} value={key}>{label}</option>)}

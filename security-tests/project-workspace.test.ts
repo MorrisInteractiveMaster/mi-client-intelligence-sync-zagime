@@ -1281,7 +1281,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         await page.getByText("Approved delivery group", { exact: true }).waitFor();
         const departmentMetrics = page.getByRole("region", { name: "Health delivery metrics" });
         await departmentMetrics.getByRole("button", { name: /November 2026 hours/ }).click();
-        await page.getByText(/With attributable hours/).filter({ hasText: /project/ }).waitFor();
+        await page.getByText(/With approved effort/).filter({ hasText: /project/ }).waitFor();
         await page.getByLabel("Sort by").selectOption("completion");
         assert.match(page.url(), /project-sort=completion/);
         await page.screenshot({ path: join(evidence, "area-" + width + ".png"), fullPage: true });

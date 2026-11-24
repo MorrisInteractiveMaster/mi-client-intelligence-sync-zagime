@@ -237,6 +237,11 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
                 await review.page.screenshot({ path: join(auditEvidence, `${scene}-${width}x${height}.png`), animations: "disabled" });
               }
             }
+            for (const [width, height] of [[1440, 900], [390, 844]]) {
+              await review.page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+              probes.push(await auditViewport(review.page, role + " dark " + path, width, height, { compactSidebar }));
+            }
+            await review.page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
             if (path === "/control/branding") {
               const controlMenu = review.page.getByText("Control Panel sections", { exact: true });
               await controlMenu.click();
@@ -505,6 +510,10 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.getByRole("navigation", { name: "Client workspace" }).waitFor();
     await client.page.getByRole("heading", { name: /Leadership\s*summary/i }).waitFor();
     await client.page.getByLabel("All-time delivery projects", { exact: true }).getByText("All-time approved portfolio").waitFor();
+    assert.equal(await client.page.locator(".mi-workspace-sidebar").evaluate(element => getComputedStyle(element).backgroundColor), "rgb(16, 41, 66)");
+    const panelBounds = await client.page.locator(".mi-insight-grid > section").evaluateAll(panels => panels.slice(0, 2)
+      .map(panel => [panel.getBoundingClientRect().top, panel.getBoundingClientRect().bottom]));
+    assert.deepEqual(panelBounds[0], panelBounds[1], "Leadership analytics cards align in their shared row");
     await client.page.screenshot({ path: join(evidence, "client-dashboard-native-overview.png"), fullPage: true, animations: "disabled" });
     await captureExperience(client.page, "client-leadership");
     const referenceEvidence = join(evidence, "v3-reference-sizes");
@@ -801,6 +810,15 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await card.getByText("In progress", { exact: true }).waitFor();
       assert.doesNotMatch(await card.innerText(), /Start Nov|Expected completion Dec/);
       await card.screenshot({ path: join(evidence, "project-at-regina-start.png"), animations: "disabled" });
+      await captureReference(scheduledClient.page, "01-client-projects-1740x907", 1740, 907);
+      await scheduledClient.page.goto(route("/clients/zagime/departments/hr"));
+      await scheduledClient.page.getByRole("region", { name: "HR delivery metrics", exact: true }).waitFor();
+      await captureReference(scheduledClient.page, "02-hr-department-1674x887", 1674, 887);
+      await scheduledClient.page.goto(route("/clients/zagime"));
+      await scheduledClient.page.getByRole("region", { name: "Parent engagements", exact: true }).waitFor();
+      await auditViewport(scheduledClient.page, "Leadership parent cards", 1647, 868, { compactSidebar: true });
+      await scheduledClient.page.getByRole("region", { name: "Parent engagements", exact: true }).scrollIntoViewIfNeeded();
+      await scheduledClient.page.screenshot({ path: join(referenceEvidence, "03-leadership-engagements-1647x868.png"), animations: "disabled" });
     } finally {
       await scheduledClient.context.close();
     }

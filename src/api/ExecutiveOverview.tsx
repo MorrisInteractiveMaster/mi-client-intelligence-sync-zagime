@@ -70,6 +70,7 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
       </button>)}
     </section>
 
+    <div className="mi-effort-pair">
     <section className="mi-exec-panel mi-effort-summary" aria-label="Published portfolio summary">
       <div><span>Reported effort · {period} <ContextHelp label="How are reported hours calculated?">Approved project allocations in this period are counted once across the departments and projects you can see.</ContextHelp></span>
         <strong>{reportHours(report.totalSeconds)} h</strong>
@@ -86,6 +87,7 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
       </div>
       <button type="button" className="exec-text-button" onClick={event => onChart("plan", event.currentTarget)}>Review hours and caps <ArrowUpRight size={16} aria-hidden="true" /></button>
     </section>
+    </div>
     <div className="mi-cockpit-analysis mi-insight-grid">
       <DeliveryTrends counts={counts} projects={delivery.projects} onFilter={openFilter} onProject={id => onLink("project:" + id)} />
       <DepartmentAnalytics report={report} delivery={delivery} unit={effortUnit} onLink={onLink} />

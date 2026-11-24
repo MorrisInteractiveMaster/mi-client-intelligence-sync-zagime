@@ -22,7 +22,7 @@
 
 .nordic.secure-shell .mi-insight-grid { align-items: stretch; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--mi-space-2); }
 .mi-insight-grid > section { min-width: 0; margin: 0; align-content: start; }
-.mi-cockpit-signals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.nordic.secure-shell .mi-cockpit-signals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .nordic.secure-shell .mi-cockpit-signals button { min-width: 0; }
 .mi-cockpit-signals button small { overflow-wrap: anywhere; }
 .nordic.secure-shell .mi-cockpit-analysis .mi-exec-panel { border-radius: var(--mi-panel-radius); }
@@ -35,7 +35,11 @@
 }
 .mi-effort-summary { justify-content: space-between; gap: var(--mi-space-2); }
 .mi-effort-summary > div:first-child { display: grid; gap: 4px; }
-.mi-effort-summary strong { font-variant-numeric: tabular-nums; font-size: 1.28rem; }
+.mi-effort-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--mi-space-2); }
+.nordic.secure-shell .mi-effort-summary { margin: 0; padding: var(--mi-space-2); align-content: start; }
+.nordic.secure-shell .mi-effort-summary strong { font-variant-numeric: tabular-nums; font-size: 1.28rem; line-height: 1.3; font-weight: 680; }
+.nordic.secure-shell .mi-cockpit-signals button strong { font-size: clamp(1.15rem, 2vw, 1.6rem); line-height: 1.1; }
+.nordic.secure-shell :is(.mi-monthly-effort,.mi-client-completion-history) p strong { font: inherit; font-weight: 700; }
 .mi-effort-summary small { color: var(--mi-client-muted); }
 .mi-insight-controls { align-items: end; margin-block: var(--mi-space-1) var(--mi-space-2); }
 .mi-insight-controls label { min-width: 0; max-width: 100%; display: grid; gap: 4px; }
@@ -75,15 +79,16 @@
 @media (min-width: 961px) {
   .nordic.secure-shell .mi-workspace-sidebar {
     min-height: calc(100svh - 116px);
+    background-color: #102942;
     background-image: radial-gradient(circle, #b1d0ed28 1px, transparent 1px);
     background-size: 15px 15px;
   }
 }
 @media (max-width: 900px) {
-  .nordic.secure-shell .mi-insight-grid { grid-template-columns: minmax(0, 1fr); }
+  .nordic.secure-shell .mi-insight-grid, .mi-effort-pair { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 620px) {
-  .mi-cockpit-signals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nordic.secure-shell .mi-cockpit-signals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .mi-insight-bar i { transition: none; }

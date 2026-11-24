@@ -99,7 +99,7 @@ export const byOrder = <T extends { order: number; name: string }>(a: T, b: T) =
 export interface PublishedPortfolio {
   areas: ServiceArea[];
   engagements: { id: string; name: string }[];
-  placements: (Pick<ProjectPlacement, "id" | "areaId" | "engagementId" | "start" | "target" | "archived"> & { leadId?: string; managerIds?: string[] })[];
+  placements: (Pick<ProjectPlacement, "id" | "areaId" | "engagementId" | "start" | "target" | "archived"> & { leadId?: string; managerIds?: string[]; facilitatorIds?: string[] })[];
   directory: (Pick<DirectoryEntry, "id" | "name" | "role" | "responsibility" | "publicContact" | "projectIds" | "areaId" | "order"> & { photo?: string; photoAlt?: string; profileUrl?: string; email?: string; phone?: string })[];
   narrative: string;
   action: string;

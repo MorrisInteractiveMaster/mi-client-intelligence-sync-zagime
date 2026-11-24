@@ -42,6 +42,8 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
   const [detailsOpen, setDetailsOpen] = useState(Boolean(detail));
   const { start, deadline, completion, active, upcoming, blocked, near, dueSoon, overdue, risk } = projectMeasures(project, delivery, placement, today());
   const isManager = (id: string) => delivery?.managerIds?.includes(id) || placement?.managerIds?.includes(id) || placement?.leadId === id;
+  const teamRole = (member: PublishedPortfolio["directory"][number]) => [isManager(member.id) && "Project manager",
+    placement?.facilitatorIds?.includes(member.id) && "Facilitator"].filter(Boolean).join(" · ") || member.role;
   const managers = team.filter(member => isManager(member.id));
   const arrangement = delivery?.type && { hourly: "Hourly", "fixed-fee": "Fixed fee", training: "Training & Workshops", workshop: "Training & Workshops" }[delivery.type];
   const tone = blocked || overdue ? "risk" : project.status === "completed" ? "complete" : near ? "near" : dueSoon ? "warning" : undefined;
@@ -123,7 +125,7 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
         <ul>{team.map(member => <li key={member.id}>
           <PersonPhoto name={member.name} photo={member.photo} alt={member.photoAlt} />
           <div>{onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("contact:" + member.id)}>{member.name}</button> : member.name}
-            {(isManager(member.id) || member.role) && <div>{isManager(member.id) ? "Project manager" : member.role}</div>}</div>
+            {teamRole(member) && <div>{teamRole(member)}</div>}</div>
         </li>)}</ul>
       </div>}
       {Boolean(project.milestones?.length) && <div>
