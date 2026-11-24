@@ -330,7 +330,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await explorer.getByText("Showing 1–6 of 6 projects", { exact: true }).waitFor();
       await sample.page.goto(route("/clients/zagime"));
       const distribution = sample.page.getByRole("region", { name: "Project Portfolio Distribution" });
-      const hr = distribution.getByRole("listitem").filter({ has: distribution.getByRole("button", { name: "HR", exact: true }) });
+      const hr = distribution.getByRole("listitem").filter({ has: sample.page.getByRole("button", { name: "HR", exact: true }) });
       await hr.getByText("2 · 33.3%", { exact: true }).waitFor();
       await distribution.getByText("4 · 66.7%", { exact: true }).waitFor();
       await distribution.getByText("0 · 0%", { exact: true }).first().waitFor();

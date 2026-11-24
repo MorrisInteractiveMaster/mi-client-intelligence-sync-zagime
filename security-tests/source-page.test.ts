@@ -129,7 +129,7 @@ test("Time search, choices, counts and cursor cover a complete period without ex
     assert.equal(report.status, 200);
     assert.doesNotMatch(await report.text(), /Taylor Canoe|shoreline survey|Staff-only private line/);
 
-    const sortMonth = "2026-11";
+    const sortMonth = "2026-08";
     const sortBatch = runtime.db.batch();
     for (let index = 0; index < 52; index++) {
       const ref = root.collection("rawTime").doc("ordered-" + String(index).padStart(2, "0"));

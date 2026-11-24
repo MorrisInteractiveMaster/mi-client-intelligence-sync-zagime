@@ -279,8 +279,9 @@
 .mi-distribution-count { display: grid; text-align: right; font-variant-numeric: tabular-nums; }
 .mi-distribution-count small { color: var(--mi-muted); font-size: .75rem; }
 .mi-v4-stack-rail { background: var(--mi-insight-track); border-radius: 999px; }
+.mi-v4-stack { min-height: 26px; }
 .nordic.secure-shell .mi-v4-stack button {
-  min-height: 30px; border-radius: 12px;
+  min-height: 26px; border-radius: 12px;
   background-image: repeating-linear-gradient(90deg, transparent 0 7px, #0c233246 7px 8px), linear-gradient(120deg,#ffffff28,transparent);
 }
 .nordic.secure-shell .mi-v4-stack button:is(:first-child,:last-child,:only-child) { border-radius: 12px; }

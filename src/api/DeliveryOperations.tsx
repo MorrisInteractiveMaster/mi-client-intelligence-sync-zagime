@@ -322,10 +322,14 @@ export function DeliveryMilestones({ client, tenant, month, projects, onSaved, o
   const [error, setError] = useState("");
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const selected = usePortalLocation().get("milestone");
-  const milestones = projects.flatMap(p => (p.deliveryMilestones ?? []).map(m => ({ p, m, key: p.id + ":" + m.id })))
+  const matchingMilestones = projects.flatMap(p => (p.deliveryMilestones ?? []).map(m => ({ p, m, key: p.id + ":" + m.id })))
     .filter(({ p, m, key }) => selected ? selected === key || selected === p.id :
-      filter === "all" || (!m.completed && m.status !== "waived" && !completed.has(key)))
-    .sort((a, b) => (a.m.date || "9999").localeCompare(b.m.date || "9999"));
+      filter === "all" || (!m.completed && m.status !== "waived" && !completed.has(key)));
+  const sorted = useSortedRows<typeof matchingMilestones[number], "date" | "project" | "title" | "status" | "completed">(matchingMilestones,
+    { key: "date", direction: "asc" }, ({ p, m }, field) => ({
+      date: m.date, project: p.name, title: m.title, status: m.status ?? (m.completed ? "completed" : "not started"), completed: m.completedAt,
+    })[field], row => row.key);
+  const milestones = sorted.rows;
   async function complete(projectId: string, milestoneId: string, reopen = false) {
     const key = projectId + ":" + milestoneId;
     setSaving(key); setError(""); setMessage("");
@@ -361,6 +365,8 @@ export function DeliveryMilestones({ client, tenant, month, projects, onSaved, o
         <label>Show<select value={filter} onChange={e => setFilter(e.target.value)}><option value="open">Open milestones</option><option value="all">All milestones</option></select></label>}</div>
     {message && <p role="status">{message}</p>}{error && <p role="alert">{error}</p>}
     {!milestones.length && <p className="secure-empty">No milestones match. Add milestones from a project’s editor.</p>}
+    {milestones.length > 1 && <SortControls fields={{ date: "Due date", project: "Project", title: "Milestone", status: "Status", completed: "Completion date" }}
+      sort={sorted.sort} onSort={sorted.setSort} label="Sort staff milestones" />}
     <ul className="delivery-milestones">{milestones.map(({ p, m, key }) => <li key={key}>
       <div><button type="button" className="exec-text-button" onClick={() => portalNavigate({ milestone: key })}>{m.title}</button>
         <small>{p.name} · {m.date ? reportDay(m.date) : "No due date"} · {m.completed || completed.has(key) ? "Completed" : m.status?.replaceAll("-", " ") ?? "Not started"}</small></div>
