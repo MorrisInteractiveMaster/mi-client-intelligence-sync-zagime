@@ -205,7 +205,7 @@
 .mi-v4-breakdown { margin-block-start: 12px; }
 .mi-completion-period { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .84rem; text-align: center; }
 .nordic.secure-shell .mi-completion-period button { min-width: 32px; min-height: 32px; margin: 0; padding: 4px; }
-.mi-v4-month-scroll { overflow-x: auto; padding: 4px; }
+.mi-v4-month-scroll { position: relative; min-width: 0; max-width: 100%; overflow-x: auto; padding: 4px; }
 .mi-v4-columns { display: grid; grid-template-columns: repeat(12,minmax(37px,1fr)); gap: 2px; }
 .nordic.secure-shell .mi-completion-month {
   display: flex; flex-direction: column; justify-content: end; align-items: center; min-width: 0; min-height: 112px;
@@ -221,6 +221,10 @@
 .mi-completion-table summary { cursor: pointer; }
 .mi-completion-table table { width: 100%; text-align: start; }
 .mi-completion-table :is(th,td) { padding: 3px 4px; text-align: start; }
+@media (max-width: 600px) {
+  .mi-v4-columns { grid-template-columns: repeat(12,minmax(25px,1fr)); }
+  .nordic.secure-shell .mi-completion-month { font-size: .65rem; }
+}
 .mi-v4-parent-list { display: grid; gap: 4px; }
 .mi-v4-parent-list p { margin: 0 0 8px; color: var(--mi-muted); font-size: .81rem; }
 .nordic.secure-shell .mi-v4-project-detail { padding: 0; border: none; background: transparent; }

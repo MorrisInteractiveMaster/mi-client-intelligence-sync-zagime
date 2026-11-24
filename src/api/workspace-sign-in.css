@@ -113,6 +113,7 @@
 @media (min-width: 841px) {
   .nordic.secure-shell:has(> .mi-access) { display: flex; flex-direction: column; min-height: 100svh; padding-block-end: 20px; }
   .nordic.secure-shell .mi-access { flex: 1; min-height: 400px; }
+  .mi-access-story { background-position: center, right center; }
 }
 @media (max-width: 840px) {
   .nordic.secure-shell .mi-access { grid-template-columns: minmax(0,1fr); }

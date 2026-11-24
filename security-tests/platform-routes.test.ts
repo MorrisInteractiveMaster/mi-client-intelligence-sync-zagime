@@ -15,6 +15,7 @@ import { apiServer, RequestLimit } from "../server/http";
 import { seedProjectSynthetic } from "../server/project-operator";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
 import { approvedProjectContent, projectView, type Project } from "../src/projects/model";
+import { newPortfolio, type Portfolio } from "../src/projects/portfolio";
 import { portfolioRef } from "../server/portfolio";
 import { clientBase, clientPath, controlSections, staffPath, staffSegments, type StaffSection } from "../src/api/platform-routes";
 import { auditViewport } from "./viewport-audit";
@@ -451,19 +452,23 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     for (const [period, seconds] of [[month, 21600], [previousMonth, 21600]] as const) {
       setup.set(root.collection("projectPeriods").doc(key(period, fullId)), { projectId: fullId, month: period, seconds });
     }
-    const directory = (await context.get()).data()?.portfolio?.directory ?? [];
-    setup.set(context, { portfolio: { directory: [...directory, ...[
+    const portfolio = ((await context.get()).data()?.portfolio as Portfolio | undefined) ?? newPortfolio();
+    setup.set(context, { portfolio: { ...portfolio, directory: [...portfolio.directory, ...[
       { id: "detail-manager", name: "Avery Morgan", role: "Delivery lead", visible: true },
       { id: "detail-specialist", name: "Jordan Lee", role: "Reporting specialist", visible: true },
       { id: "detail-hidden", name: "V4-PRIVATE-CONTACT", role: "Private reviewer", visible: false },
     ].map((entry, order) => ({
       ...entry, areaId: "", responsibility: "", internalContact: "", publicContact: "", active: true,
-      email: "private@fixture.invalid", shareEmail: false, projectIds: [fullId], order: order + directory.length,
-    }))] } }, { merge: true });
+      email: "private@fixture.invalid", shareEmail: false, projectIds: [fullId], order: order + portfolio.directory.length,
+    }))] } });
     await setup.commit();
     const detailed = await session(mainBrowser!, "client");
     try {
       const evidencePath = route("/clients/zagime/projects/" + fullId);
+      const response = await detailed.context.request.get(origin + "/api/v2/tenants/" + tenant + "/report?month=" + month,
+        { headers: { authorization: "Bearer client" } });
+      assert.equal(response.status(), 200, await response.text());
+      assert.doesNotMatch(await response.text(), /V4-PRIVATE-DETAIL-NOTE|V4-PRIVATE-MILESTONE|V4-PRIVATE-CONTACT|private@fixture/);
       await detailed.page.goto(evidencePath);
       await detailed.page.getByRole("heading", { name: "Community reporting toolkit", exact: true }).waitFor();
       const sections = detailed.page.locator(".mi-detailed-project");
