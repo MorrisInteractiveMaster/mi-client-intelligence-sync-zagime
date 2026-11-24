@@ -9,12 +9,15 @@ import {
 } from "./dashboard-format";
 
 import { ArrowUpRight, ChevronLeft, ChevronRight, CircleAlert, FolderKanban, LayoutGrid, Layers3, Presentation as PresentationIcon, UsersRound } from "lucide-react";
+import { ClientProjectExplorer } from "./ClientProjectExplorer";
+import { explorerScopeFields, type ExplorerScope } from "./project-explorer";
 import { ProjectReportingCard } from "./ProjectReportingCard";
+import { DepartmentAnalytics } from "./ClientIntelligence";
 import { ExecutiveOverview, WorkProgress } from "./ExecutiveOverview";
 import { DeliveryTrends, StatusComposition } from "./ClientCockpitVisuals";
 import { metricPercent, percentText } from "./insight-metrics";
 import { chartKinds, DotChart, DotChartDialog, type ChartKind } from "./DotAnalytics";
-import { closePortalOverlay, portalNavigate, usePlatformRoute, usePortalLocation } from "./portal-location";
+import { closePortalOverlay, navigatePlatform, portalNavigate, usePlatformRoute, usePortalLocation } from "./portal-location";
 import { PersonPhoto } from "./PersonPhoto";
 import { OtherContacts } from "./OtherContacts";
 import { isOtherContact } from "../projects/other-contacts";
@@ -44,6 +47,7 @@ type ReportScope = {
   tenant: string;
   month: string;
   onDenied: () => void;
+  previewToolbar?: ReactNode;
   preview?: { mode: "published" | "draft"; scope?: string };
 };
 
@@ -56,7 +60,7 @@ export function ProjectClientReport(props: ReportScope) {
   );
 }
 
-function ScopedClientReport({ client, tenant, month, onDenied, preview }: ReportScope) {
+function ScopedClientReport({ client, tenant, month, onDenied, preview, previewToolbar }: ReportScope) {
   const [result, setResult] = useState<{
     client: SecuredApiClient;
     month: string;
@@ -81,10 +85,17 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   const page = useRef<HTMLDivElement>(null);
   const previousView = useRef(view);
   const revealView = useRef(false);
+  const explorerReturn = useRef<{ url: string; scroll: number; project: string } | undefined>(undefined);
   useLayoutEffect(() => {
     if (previousView.current !== view) {
       page.current?.focus({ preventScroll: true });
-      if (revealView.current) window.scrollTo({ top: 0, behavior: "instant" });
+      const prior = explorerReturn.current;
+      const here = window.location.pathname + window.location.search + window.location.hash;
+      if (prior && here === prior.url) {
+        const target = document.getElementById("client-open-" + prior.project);
+        target?.focus({ preventScroll: true });
+        window.scrollTo({ top: prior.scroll, behavior: "instant" });
+      } else if (revealView.current) window.scrollTo({ top: 0, behavior: "instant" });
       revealView.current = false;
     }
     previousView.current = view;
@@ -96,11 +107,15 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
     }
     hadOverlay.current = Boolean(chart || presenting);
   }, [chart, presenting]);
-  const choose = (destination: string, selectedMonth?: string, filter?: ProjectFilter) => {
+  const choose = (destination: string, selectedMonth?: string, filter?: ProjectFilter, scope?: ExplorerScope) => {
     const projectFilter = destination.startsWith("projects:");
     const next = projectFilter ? "projects" : destination;
     if (next !== view) revealView.current = true;
-    portalNavigate({ view: next === "overview" ? null : next, q: null,
+    portalNavigate({
+      "explorer-department": scope?.department ?? null, "explorer-parent": scope?.parent ?? null,
+      "explorer-completion": scope?.completion ?? null, "explorer-completed-month": scope?.completedMonth ?? null,
+      "explorer-milestone": scope?.milestone ?? null, "explorer-page": null, "explorer-deadline": null,
+      view: next === "overview" ? null : next, q: null,
       status: projectFilter ? destination.slice(9) : filter && filter !== "all" ? filter : null, "project-sort": null, chart: null, present: null,
       ...(selectedMonth && { month: selectedMonth }) }, Boolean(chart || presenting));
   };
@@ -176,7 +191,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   const project = ["project", "timeline", "milestone"].includes(kind) ? report?.projects.find(p => p.id === id) : undefined;
   const contact = kind === "contact" ? report?.portfolio?.directory.find(p => p.id === id) : undefined;
   const milestone = kind === "milestone" ? project?.milestones?.find(m => m.id === itemId) : undefined;
-  const labels: Record<string, string> = { overview: "Leadership summary", projects: "Projects", directory: "MI Directory",
+  const labels: Record<string, string> = { overview: "Leadership summary", projects: nativeClient ? "Project Explorer" : "Projects", directory: "MI Directory",
     history: "Reporting history", milestones: "Milestones", notes: "Executive notes", engagements: "Parent engagements", areas: "Departments" };
   const standardTitle = Object.hasOwn(labels, view) ? labels[view] : undefined;
   const title = area?.name ?? engagement?.name ?? contact?.name ?? milestone?.title ?? (project && kind === "timeline" ? "Project timeline" : project?.name) ?? standardTitle ?? "Report unavailable";
@@ -247,6 +262,12 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
     searchText(p.name + " " + p.role).includes(searchText(search)));
   const period = reportMonth(report.month);
   const directoryFor = (projectId: string) => (portfolio?.directory ?? []).filter(member => member.projectIds.includes(projectId));
+  const useExplorer = nativeClient ? view === "projects" || Boolean(activeDepartment || activeEngagement) :
+    view === "projects" && explorerScopeFields.some(field => location.has(field));
+  const openExplorerProject = (id: string) => {
+    explorerReturn.current = { url: window.location.pathname + window.location.search + window.location.hash, scroll: window.scrollY, project: id };
+    choose("project:" + id);
+  };
   const isPortfolio = (!nativeClient && view === "overview") || view === "projects" || Boolean(selectedArea || engagement);
   const unavailable = !standardTitle && !selectedArea && !engagement && !contact && (!project || (kind === "milestone" && !milestone));
   const presentReport = {
@@ -304,8 +325,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
       collapseLabel="sidebar" collapsed={collapsed} busy={false} onCollapse={() => setCollapsed(value => !value)}
       searchResults={delivery.projects.map(row => ({ id: "client-project-" + row.project.id, label: row.project.name,
         context: row.department?.name ?? "Published projects", select: () => choose("project:" + row.project.id) }))}>
-      <div className="exec-content intel-workspace" tabIndex={-1} ref={page}>
-        {(nativeClient || legacyMonth || view !== "overview") && <div className="mi-report-top">
+      <div className="exec-content intel-workspace mi-v4-client" tabIndex={-1} ref={page}>
+        {(nativeClient || legacyMonth || view !== "overview") && <div className="mi-report-top" data-preview={Boolean(previewToolbar)}>{previewToolbar}
           {nativeClient ? periodToolbar(presentationButton) : <>{legacyMonth}{view !== "overview" && presentationButton}</>}
         </div>}
         {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose} effortUnit={effortUnit}
@@ -314,7 +335,11 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
         {view !== "overview" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
           <button type="button" className="exec-text-button" onClick={() => choose("overview")}><ChevronLeft size={16} /> Leadership summary</button>
           {(project || engagement) && <><ChevronRight size={14} aria-hidden="true" /><button type="button" className="exec-text-button"
-            onClick={() => choose(project && kind !== "project" ? "project:" + project.id : "projects")}>{project && kind !== "project" ? project.name : "Projects"}</button></>}
+            onClick={() => {
+              const prior = explorerReturn.current;
+              if (project && kind === "project" && prior?.project === project.id) navigatePlatform(prior.url);
+              else choose(project && kind !== "project" ? "project:" + project.id : "projects");
+            }}>{project && kind !== "project" ? project.name : "Projects"}</button></>}
           {contact && <><ChevronRight size={14} aria-hidden="true" /><button type="button" className="exec-text-button" onClick={() => choose("directory")}>MI Directory</button></>}
           {selectedArea && <><ChevronRight size={14} aria-hidden="true" /><button type="button" className="exec-text-button" onClick={() => choose("areas")}>Departments</button></>}
           <ChevronRight size={14} aria-hidden="true" />
@@ -329,13 +354,15 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
           </div>
         </section>}
         {unavailable && <p className="intel-empty" role="status">This link is unavailable for your approved report.</p>}
-        {(view === "engagements" || view === "projects") && delivery.parentRows.length > 0 && <section className="mi-exec-panel" aria-label="Parent engagements">
+        {(view === "engagements" || (view === "projects" && !useExplorer)) && delivery.parentRows.length > 0 && <section className="mi-exec-panel" aria-label="Parent engagements">
           <div className="mi-exec-heading"><div><h3>Parent engagements</h3><p>Open an engagement or select a count to see its delivery projects.</p></div></div>
           <div className="mi-engagement-grid">{delivery.parentRows.map(group => <ParentEngagementCard key={group.id} engagement={group} period={period}
             onOpen={() => choose("group:" + group.id)} onFilter={filter => choose("group:" + group.id, undefined, filter)} />)}</div>
         </section>}
         {view === "engagements" && !delivery.parentRows.length && <p className="intel-empty">There are no approved parent engagements.</p>}
-        {view === "areas" && <section className="mi-exec-panel" aria-label="Published departments">
+        {view === "areas" && nativeClient && <DepartmentAnalytics report={report} delivery={delivery} unit={effortUnit}
+          onLink={choose} showDirectoryLink={false} onUnit={unit => portalNavigate({ "effort-unit": unit === "hours" ? unit : null }, true)} />}
+        {view === "areas" && !nativeClient && <section className="mi-exec-panel" aria-label="Published departments">
           <div className="mi-exec-heading"><div><h3>Delivery by department</h3><p>{period} · Share of approved effort</p></div>
             {allowExport && visible.length > 0 && <CsvExport filename={csvPrefix + "_Departments"}
               label="Export approved department projects CSV" load={exportProjectRows(delivery.projects.filter(row => row.department).map(row => row.project))} onDenied={onDenied} />}
@@ -363,7 +390,13 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
         {activeEngagement && <ParentEngagementCard engagement={activeEngagement} period={period}
           onOpen={activeEngagement.project ? () => choose("project:" + activeEngagement.id) : undefined}
           onFilter={setStatus} />}
-        {isPortfolio && <section className="mi-client-projects" aria-labelledby="published-projects">
+        {useExplorer && <ClientProjectExplorer delivery={delivery} params={location} rows={scoped} scoped={view !== "projects"}
+          onOpen={openExplorerProject} managersFor={row => directoryFor(row.project.id).filter(person =>
+            row.placement?.managerIds?.includes(person.id) || row.placement?.leadId === person.id).map(person => person.name).join(", ")}
+          exportAction={allowExport ? rows => <CsvExport filename={csvPrefix + "_" + title + "_Projects"}
+            label="Export approved projects CSV" scope={JSON.stringify(rows.map(row => row.project.id))}
+            load={exportProjectRows(rows.map(row => row.project))} onDenied={onDenied} /> : undefined} />}
+        {isPortfolio && !useExplorer && <section className="mi-client-projects" aria-labelledby="published-projects">
           <div className="mi-exec-heading">
             <div><h2 id="published-projects">{activeDepartment || activeEngagement ? "Delivery projects" : "Published projects"}</h2>
               <p role="status">{matching.length} {matching.length === 1 ? "project" : "projects"}{status !== "all" ? " · " + (clientProjectFilters[status as ProjectFilter] ?? "Filtered") : ""}</p></div>
@@ -425,8 +458,13 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
       {view === "notes" && <article className="intel-detail"><h3>Delivery narrative</h3>
         <p>{portfolio?.narrative || "No executive narrative has been published for this period."}</p>
         {portfolio?.action && <><h3>Next decision</h3><p>{portfolio.action}</p></>}</article>}
-      {activeProject && project && kind === "project" && <article className="intel-detail">
+      {activeProject && project && kind === "project" && <article className="intel-detail mi-v4-project-detail">
         <div className="intel-detail-links">
+          {nativeClient && <button className="exec-text-button" type="button" onClick={() => {
+            const prior = explorerReturn.current;
+            if (prior?.project === project.id) navigatePlatform(prior.url);
+            else choose("projects");
+          }}><ChevronLeft size={16} aria-hidden="true" />Back to Project Explorer</button>}
           {activeProject.delivery?.kind === "engagement" && <button type="button" className="exec-text-button" onClick={() => choose("group:" + project.id)}>Open engagement</button>}
           <button className="exec-text-button" onClick={() => choose("timeline:" + project.id)}>Project timeline</button>
           {allowExport && <CsvExport filename={csvPrefix + "_" + project.name} label="Export project CSV"

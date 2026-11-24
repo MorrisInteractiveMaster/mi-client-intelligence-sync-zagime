@@ -1,6 +1,6 @@
 import { isBoardRole } from "../projects/directory-role";
 import { isOtherContact } from "../projects/other-contacts";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { capRollup, deliveryKindNames, MAX_DELIVERY_PROJECTS, measureDelivery, rollup } from "../projects/delivery";
 import type { Project, ProjectPage, StaffProjectSummary } from "../projects/model";
 import type { DirectoryEntry, Portfolio } from "../projects/portfolio";
@@ -137,14 +137,9 @@ export function DeliveryPreview({ client, tenant, month, standalone = false }: {
     }).catch(() => { if (!controller.signal.aborted) setError("Client access profiles are temporarily unavailable."); });
     return () => controller.abort();
   }, [client, tenant, standalone, requestedScope]);
+  const onPreviewDenied = useCallback(() => setError("This client access profile is no longer available."), []);
   const entitled = standalone || mode === "draft" || Boolean(scope);
-  return <section aria-label="Preview as client">
-    {!standalone && <div className="delivery-section-heading"><p>Published preview follows the selected client access profile. Draft preview includes saved changes and private projects.</p>
-      <button type="button" className="secure-secondary" onClick={() => portalNavigate({
-        staff: previewProject ? "projects" : "overview", editor: previewProject, previewProject: null, previewMode: null,
-        view: null, q: null, status: null, present: null, chart: null,
-      })}>{previewProject ? "Back to project" : "Back to overview"}</button></div>}
-    <div className="delivery-filters mi-preview-controls">
+  const controls = <div className="delivery-filters mi-preview-controls">
       {standalone && <PlatformLink href={periodHref("/workspace", month)}>Back to Morris Workspace</PlatformLink>}
       <label>Preview mode<select value={mode} onChange={e => { setError(""); portalNavigate({
         previewMode: e.target.value === "draft" ? "draft" : null,
@@ -153,11 +148,18 @@ export function DeliveryPreview({ client, tenant, month, standalone = false }: {
       {mode === "published" && !standalone && <label>Client access profile<select value={scope} onChange={e => { portalNavigate({ previewScope: e.target.value || null }); setError(""); }}><option value="">Select an approved profile</option>{profiles?.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>}
       {entitled && <p className="delivery-watermark" data-draft={mode === "draft"}>{mode === "draft" ? "DRAFT PREVIEW · MORRIS STAFF ONLY" : "LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW"}</p>}
       {standalone && <PlatformLink href={periodHref("/workspace/portfolio", month, { subsection: "notes" })}>Manage executive updates</PlatformLink>}
-    </div>
+    </div>;
+  return <section aria-label="Preview as client">
+    {!standalone && <div className="delivery-section-heading"><p>Published preview follows the selected client access profile. Draft preview includes saved changes and private projects.</p>
+      <button type="button" className="secure-secondary" onClick={() => portalNavigate({
+        staff: previewProject ? "projects" : "overview", editor: previewProject, previewProject: null, previewMode: null,
+        view: null, q: null, status: null, present: null, chart: null,
+      })}>{previewProject ? "Back to project" : "Back to overview"}</button></div>}
+    {!standalone && controls}
     {error && <p role="alert">{error}</p>}
     {entitled && <div className="delivery-preview-frame">
-      <ProjectClientReport client={client} tenant={tenant} month={month} preview={{ mode, ...(mode === "published" && (!standalone ? scope : requestedScope && scope === requestedScope) ? { scope } : {}) }}
-        onDenied={() => setError("This client access profile is no longer available.")} /></div>}
+      <ProjectClientReport client={client} tenant={tenant} month={month} previewToolbar={standalone ? controls : undefined} preview={{ mode, ...(mode === "published" && (!standalone ? scope : requestedScope && scope === requestedScope) ? { scope } : {}) }}
+        onDenied={onPreviewDenied} /></div>}
   </section>;
 }
 

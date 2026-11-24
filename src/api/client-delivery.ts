@@ -38,12 +38,12 @@ export function projectMeasures(project: PublishedProject, delivery: PublishedDe
 }
 
 export type ProjectFilter = "all" | "active" | "planned" | "upcoming" | "completed" | "paused" | "archived" |
-  "near" | "blocked" | "stalled" | "hours" | "other" | "unaffiliated" | "unassigned" | "unassigned-active" | "unassigned-completed" | "unassigned-upcoming" | "due-soon";
+  "near" | "blocked" | "stalled" | "hours" | "other" | "unaffiliated" | "unassigned" | "unassigned-active" | "unassigned-completed" | "unassigned-upcoming" | "unassigned-other" | "due-soon";
 export const clientProjectFilters: Record<ProjectFilter, string> = {
   all: "All delivery projects", active: "In progress", planned: "Planned", upcoming: "Upcoming", completed: "Completed",
   paused: "On hold", archived: "Archived", near: "Nearing completion", blocked: "Active blockers", stalled: "Blocked or overdue",
   hours: "With approved effort", "due-soon": "Deadlines approaching", unassigned: "No department",
-  "unassigned-active": "No department · In progress", "unassigned-completed": "No department · Completed", "unassigned-upcoming": "No department · Upcoming", other: "Other project statuses", unaffiliated: "Independent delivery projects",
+  "unassigned-active": "No department · In progress", "unassigned-completed": "No department · Completed", "unassigned-upcoming": "No department · Upcoming", "unassigned-other": "No department · Other statuses", other: "Other project statuses", unaffiliated: "Independent delivery projects",
 };
 
 export function forProjectFilter(project: ClientProject, filter: string, seconds: number): boolean {

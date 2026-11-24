@@ -78,6 +78,15 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
       <div><dt>Completion date</dt><dd>{delivery?.completedOn ? reportDay(delivery.completedOn) : "Not yet recorded"}</dd></div>
     </dl>}
     {project.description && <p className="secure-project-description">{project.description}</p>}
+    {detail && Boolean(project.milestones?.length) && (() => {
+      const approved = (project.milestones ?? []).filter(item => item.status !== "waived");
+      if (!approved.length) return null;
+      const complete = approved.filter(item => item.completed).length;
+      return <div className="mi-v4-detail-milestones">
+        <span><b>Milestone progress</b> · {complete} of {approved.length} approved milestones completed</span>
+        <progress value={complete} max={approved.length} aria-label="Completed approved milestones" />
+      </div>;
+    })()}
     {!detail && !detailsOpen && Boolean(project.milestones?.length) && <ol className="mi-card-milestones" aria-label="Approved milestone highlights">
       {[...(project.milestones ?? [])].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999")).slice(0, 3).map(item => <li
         key={item.id} data-complete={item.completed || undefined} data-blocked={item.status === "blocked" || undefined}>

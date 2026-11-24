@@ -144,3 +144,69 @@
   padding-block-start: var(--mi-space-1);
   border-block-start: 1px solid var(--mi-insight-edge);
 }
+
+.nordic.secure-shell.platform-shell:has(.mi-v4-client, .mi-access) { max-width: 2200px; padding-inline: clamp(12px,1.5vw,28px); }
+.nordic.secure-shell.platform-shell:has(.mi-v4-client) .secure-masthead { padding-block: 4px; }
+.mi-v4-client { --status-active: #236b9c; --status-completed: #187765; --status-upcoming: #946011; --status-other: #63758c; }
+.nordic.secure-shell .mi-v4-client .intel-page-hero { padding: clamp(12px,2vw,24px); margin-block: 8px 12px; }
+.nordic.secure-shell .mi-v4-client .mi-report-top { margin: 0 0 8px; align-items: center; gap: 4px 12px; }
+.nordic.secure-shell .mi-v4-client .mi-report-top[data-preview="true"] {
+  background: var(--mi-surface); border: 1px solid var(--mi-line); border-radius: 12px; padding: 4px 12px;
+}
+.nordic.secure-shell .mi-v4-client .mi-report-top .mi-preview-controls { flex: 0 1 auto; position: static; margin: 0; padding: 0; background: transparent; }
+.mi-v4-client .mi-report-top .reporting-period { flex: 1 1 auto; }
+.nordic.secure-shell .mi-v4-client .mi-cockpit-hero { padding: clamp(16px,2vw,28px); }
+.nordic.secure-shell .mi-v4-client .mi-cockpit-signals { grid-template-columns: repeat(6,minmax(0,1fr)); }
+.nordic.secure-shell .mi-v4-client .mi-cockpit-signals button { min-block-size: 68px; }
+.mi-v4-analytics-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; align-items: stretch; }
+.mi-v4-analytics-grid > section, .mi-v4-client .mi-exec-panel { min-width: 0; }
+.nordic.secure-shell .mi-v4-client .mi-exec-panel { margin: 0; padding: clamp(12px,1.4vw,20px); }
+.mi-v4-effort { display: grid; gap: 12px; min-width: 0; }
+.mi-v4-effort > h3 { margin: 0; }
+.mi-v4-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 0; margin: 0 0 12px; list-style: none; font-size: .83rem; }
+.mi-v4-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.mi-v4-legend i { width: 10px; height: 10px; border-radius: 3px; }
+.mi-v4-department-chart [data-state="active"], .mi-v4-stack [data-state="active"] { background: var(--status-active); }
+.mi-v4-department-chart [data-state="completed"], .mi-v4-stack [data-state="completed"] { background: var(--status-completed); }
+.mi-v4-department-chart [data-state="upcoming"], .mi-v4-stack [data-state="upcoming"] { background: var(--status-upcoming); }
+.mi-v4-department-chart [data-state="other"], .mi-v4-stack [data-state="other"] { background: var(--status-other); }
+.mi-v4-stack-list { display: grid; gap: 6px; padding: 0; list-style: none; margin: 0; }
+.mi-v4-stack-row { display: grid; grid-template-columns: minmax(90px, .75fr) minmax(0, 3fr) minmax(30px,auto); align-items: center; gap: 8px; }
+.mi-v4-stack-row > b { text-align: end; font-variant-numeric: tabular-nums; }
+.mi-v4-stack-rail { min-width: 0; border-radius: 8px; background: var(--mi-insight-track); }
+.mi-v4-stack { display: flex; min-height: 36px; max-width: 100%; }
+.nordic.secure-shell .mi-v4-stack button {
+  flex-basis: 0; min-width: 0; min-height: 36px; margin: 0; border: 0; border-radius: 0; padding: 0;
+  color: white; box-shadow: none; overflow: hidden; font-size: .75rem;
+}
+.nordic.secure-shell .mi-v4-stack button:first-child { border-radius: 6px 0 0 6px; }
+.nordic.secure-shell .mi-v4-stack button:last-child { border-radius: 0 6px 6px 0; }
+.nordic.secure-shell .mi-v4-stack button:only-child { border-radius: 6px; }
+.nordic.secure-shell .mi-v4-stack button:is(:hover,:focus-visible) { position: relative; z-index: 1; filter: brightness(.82); }
+.nordic.secure-shell .mi-v4-stack-label { min-height: 36px; max-width: 100%; overflow-wrap: anywhere; }
+.mi-v4-chart-detail { min-block-size: 1.5em; color: var(--mi-muted); font-size: .83rem; }
+.mi-v4-comparisons { display: grid; gap: 4px; }
+.nordic.secure-shell button.mi-v4-comparison { display: grid; grid-template-columns: minmax(78px,1fr) minmax(0,2fr) auto 16px; gap: 8px; align-items: center;
+  color: var(--mi-ink); background: var(--mi-surface); border: 1px solid var(--mi-line); min-height: 44px; padding: 6px 8px; text-align: start; white-space: normal; box-shadow: none; }
+.mi-v4-comparison-track { height: 7px; border-radius: 8px; background: var(--mi-insight-track); }
+.mi-v4-comparison-track i { display: block; height: 100%; border-radius: 8px; background: var(--mi-insight-fill); }
+.mi-v4-breakdown { margin-block-start: 12px; }
+.mi-v4-month-scroll { overflow-x: auto; }
+.mi-v4-columns { display: grid; gap: 8px; }
+.nordic.secure-shell .mi-v4-columns button { display: flex; flex-direction: column; justify-content: end; align-items: center; min-width: 0; min-height: 44px; gap: 4px; padding: 6px 4px; white-space: normal; box-shadow: none;
+  background: var(--mi-surface); color: var(--mi-ink); border: 1px solid var(--mi-line); font-size: .75rem; }
+.mi-v4-column { width: 60%; border-radius: 6px 6px 2px 2px; background: var(--mi-insight-fill); }
+.mi-v4-parent-list { display: grid; gap: 4px; }
+.mi-v4-parent-list p { margin: 0 0 8px; color: var(--mi-muted); font-size: .81rem; }
+.nordic.secure-shell .mi-v4-project-detail { padding: 0; border: none; background: transparent; }
+.mi-v4-project-detail .intel-detail-links { padding: 4px 0 8px; }
+@media (max-width: 1250px) { .nordic.secure-shell .mi-v4-client .mi-cockpit-signals { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media (max-width: 820px) { .mi-v4-analytics-grid { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 520px) {
+  .nordic.secure-shell .mi-v4-client .mi-cockpit-signals { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .mi-v4-stack-row { grid-template-columns: minmax(70px,.8fr) minmax(0,1.4fr) auto; gap: 5px; }
+}
+
+.mi-v4-detail-milestones { display: grid; grid-template-columns: minmax(0,auto) minmax(100px,1fr); align-items: center; gap: 12px; margin-block: 8px; }
+.mi-v4-detail-milestones progress { width: 100%; accent-color: var(--mi-insight-fill); }
+@media (max-width: 520px) { .mi-v4-detail-milestones { grid-template-columns: minmax(0,1fr); gap: 4px; } }

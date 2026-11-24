@@ -252,9 +252,14 @@ export function SecureDashboard() {
       </header>
       {!signedIn ? (
         <main className="mi-access" aria-labelledby="workspace-sign-in">
+          <div className="mi-access-story">
+            <p>{branding.partnerName} <span aria-hidden="true">/</span> {branding.clientName}</p>
+            <strong>Client Intelligence</strong>
+            <p>A shared view of project delivery, milestones and approved reporting.</p>
+          </div>
           <div className="mi-access-card">
             <span className="mi-access-mark"><LockKeyhole size={23} aria-hidden="true" /></span>
-            <p className="mi-access-product">Morris Interactive Client Intelligence</p>
+            <p className="mi-access-product">Client Intelligence Platform</p>
             <h2 id="workspace-sign-in">Sign in to your workspace</h2>
             <p id="workspace-provider-help">Use the account that has access to your workspace.</p>
             <div className="mi-access-providers" aria-describedby="workspace-provider-help">
