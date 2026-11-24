@@ -1,7 +1,7 @@
 export const clientBase = "/clients/zagime";
 export const staffSegments = {
   overview: "", clients: "clients", projects: "projects", management: "project-management", hours: "time", directory: "team",
-  milestones: "milestones", health: "delivery-health", preview: "preview", integrations: "integrations",
+  departments: "departments", milestones: "milestones", health: "delivery-health", preview: "preview", integrations: "integrations",
   time: "integrations/time", mapping: "time/mapping", portfolio: "portfolio", activity: "audit",
 } as const;
 export type StaffSection = keyof typeof staffSegments;
@@ -39,7 +39,7 @@ export function parsePlatformPath(path: string): Destination | undefined {
       return { kind: "staff", section: "milestones", id: detail, item: branch };
     if (parts.length === 3 && id(detail)) {
       const parent = staffSections.get(segment);
-      if (parent === "projects" || parent === "management" || parent === "directory" || parent === "milestones" || parent === "hours")
+      if (parent === "projects" || parent === "management" || parent === "directory" || parent === "departments" || parent === "milestones" || parent === "hours")
         return { kind: "staff", section: parent, id: detail };
     }
   }
@@ -80,7 +80,7 @@ export function clientPath(slug: string, view = "overview") {
   return segment ? root + "/" + segment + "/" + key : root;
 }
 
-const staffDetailKey = { projects: "editor", management: "managed", directory: "person", milestones: "milestone", hours: "source" } as const;
+const staffDetailKey = { projects: "editor", management: "managed", directory: "person", departments: "department", milestones: "milestone", hours: "source" } as const;
 
 export function routeParameters(url: URL) {
   const params = new URLSearchParams(url.search);

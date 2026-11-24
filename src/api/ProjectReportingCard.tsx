@@ -3,6 +3,7 @@ import { ArrowUpRight, CircleAlert } from "lucide-react";
 import { publicProject, type ProjectReport, type StaffProjectSummary } from "../projects/model";
 import type { PublishedPortfolio } from "../projects/portfolio";
 import { projectMeasures } from "./client-delivery";
+import { ProgressArc } from "./ClientCockpitVisuals";
 import { BudgetUtilization } from "./ClientDeliverySummary";
 import { projectStatus, reportDay, reportHours, reportMonth, today } from "./dashboard-format";
 import { PersonPhoto } from "./PersonPhoto";
@@ -28,23 +29,32 @@ export function ProjectReportPreview({ project, period }: { project: StaffProjec
     <summary>Preview approved content</summary>
     {open && <>
       <p className="secure-muted">Project card for an authorized client after publication.</p>
-      <ProjectReportingCard project={publicProject(project, project.seconds)} period={period}
+      <ProjectReportingCard project={publicProject({ ...project, lifetimeSeconds: project.lifetimeSeconds - (project.workOrderEffort?.lifetimeRemainingSeconds ?? 0) },
+        project.workOrderEffort?.assignedSeconds ?? project.seconds)} period={period}
         placement={project.reportPreview?.placement} team={project.reportPreview?.team ?? []} />
     </>}
   </details>;
 }
 
 export function ProjectReportingCard({ project, period, placement, team, onLink, detail, delivery, history, parent, department, descendantTotals }: Props) {
+  const [detailsOpen, setDetailsOpen] = useState(Boolean(detail));
   const { start, deadline, completion, active, upcoming, blocked, near, dueSoon, overdue, risk } = projectMeasures(project, delivery, placement, today());
   const isManager = (id: string) => placement?.managerIds?.includes(id) || placement?.leadId === id;
   const managers = team.filter(member => isManager(member.id));
-  const hours = project.workOrderEffort;
   const tone = blocked || overdue ? "risk" : project.status === "completed" ? "complete" : near ? "near" : dueSoon ? "warning" : undefined;
   return <article className="secure-card secure-published-project mi-project-card" data-progress-tone={tone}>
-    <p className="secure-badge" data-status={active ? "active" : project.status}>
-      {placement?.archived ? "Archived" : upcoming ? "Upcoming" : projectStatus[active ? "active" : project.status]}
-    </p>
-    <h3>{project.name}</h3>
+    <header className="mi-project-card-header">
+      <div><p className="secure-badge" data-status={active ? "active" : project.status}>
+        {placement?.archived ? "Archived" : upcoming ? "Upcoming" : projectStatus[active ? "active" : project.status]}
+      </p>
+      {!detail && <h3>{project.name}</h3>}</div>
+      <div className="mi-project-completion">
+        <ProgressArc value={completion} label={project.name + " work completion"}
+          detail="out of 100% of planned work" tone={blocked ? "risk" : project.status === "completed" ? "complete" : "active"} />
+        <span aria-hidden="true">Work completion</span>
+        <span className="exec-sr-only">{completion === undefined ? "Work completion not recorded" : completion + "% work completion"}</span>
+      </div>
+    </header>
     {(parent || department) && <div className="mi-project-lineage">
       {parent && (onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("group:" + parent.id)}>{parent.name}</button> : <span>{parent.name}</span>)}
       {department && (onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("area:" + department.id)}>{department.name}</button> : <span>{department.name}</span>)}
@@ -58,13 +68,15 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
       {start && <span>Start {reportDay(start)}</span>}{deadline && <span>Expected completion {reportDay(deadline)}</span>}
     </p>}
     {project.description && <p className="secure-project-description">{project.description}</p>}
-    <div className="secure-progress">
-      <span>{completion === undefined ? "Work completion not recorded" : completion + "% work completion"}</span>
-      {completion !== undefined && <progress aria-label={project.name + " work completion"} max={100} value={completion} />}
-    </div>
+    {!detail && !detailsOpen && Boolean(project.milestones?.length) && <ol className="mi-card-milestones" aria-label="Approved milestone highlights">
+      {[...(project.milestones ?? [])].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999")).slice(0, 3).map(item => <li
+        key={item.id} data-complete={item.completed || undefined} data-blocked={item.status === "blocked" || undefined}>
+        <span>{item.title} <small>· {milestoneStatus(item)}</small></span>
+      </li>)}
+    </ol>}
     <dl className="secure-project-hours">
-      <div><dt>{period} hours</dt><dd>{reportHours(descendantTotals?.monthly ?? project.seconds)} h</dd></div>
-      <div><dt>Whole-project effort</dt><dd>{reportHours(descendantTotals?.lifetime ?? project.lifetimeSeconds)} h</dd></div>
+      <div><dt>{period} approved effort</dt><dd>{reportHours(descendantTotals?.monthly ?? project.seconds)} h</dd></div>
+      <div><dt>Whole-project approved effort</dt><dd>{reportHours(descendantTotals?.lifetime ?? project.lifetimeSeconds)} h</dd></div>
     </dl>
     <BudgetUtilization budget={delivery} title={delivery?.kind === "engagement" ? "Parent engagement hour caps" : "Delivery project hour caps"} />
     {team.length > 0 && <div className="mi-project-people">
@@ -72,16 +84,12 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
         <PersonPhoto key={member.id} name={member.name} photo={member.photo} alt="" />)}</div>
       <span>{managers.length ? managers.map(member => member.name).join(", ") : team.length + (team.length === 1 ? " team member" : " team members")}</span>
     </div>}
-    <details className="mi-project-detail-panel" open={detail || undefined}>
+    <details className="mi-project-detail-panel" open={detail || undefined} onToggle={event => setDetailsOpen(event.currentTarget.open)}>
       <summary>Project details</summary>
-      <dl className="secure-project-hours">
-        {hours && <>
-          <div><dt>Work-order source recorded</dt><dd>{reportHours(hours.recordedSeconds)} h</dd></div>
-          <div><dt>Remaining at work order</dt><dd>{reportHours(hours.remainingSeconds)} h</dd></div>
-        </>}
-        <div><dt>Classified to this project in {period}</dt><dd>{reportHours(hours?.assignedSeconds ?? project.seconds)} h</dd></div>
+      {(Boolean(detail && descendantTotals) || project.plan.targetSeconds > 0) && <dl className="secure-project-hours">
+        {detail && descendantTotals && <div><dt>Approved effort on this project in {period}</dt><dd>{reportHours(project.seconds)} h</dd></div>}
         {project.plan.targetSeconds > 0 && <div><dt>{project.plan.basis === "monthly" ? "Monthly" : "Lifetime"} reporting target</dt><dd>{reportHours(project.plan.targetSeconds)} h</dd></div>}
-      </dl>
+      </dl>}
       <BudgetUtilization budget={parent?.budget} title="Parent engagement hour caps" />
       {Boolean(history?.length) && <div>
         <h4>Reported effort by month</h4>
@@ -103,7 +111,7 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
           {[...(project.milestones ?? [])].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999")).map(item => <li key={item.id}>
             {onLink ? <button type="button" className="exec-text-button" onClick={() => onLink("milestone:" + project.id + ":" + item.id)}>{item.title}</button> : <b>{item.title}</b>}
             <p>{item.date && <><time dateTime={item.date}>{reportDay(item.date)}</time>{" · "}</>}
-              {item.completed ? "Complete" : item.status === "waived" ? "Waived" : item.status === "blocked" ? "Blocked" : item.status === "in-progress" ? "In progress" : "Pending"}</p>
+              {milestoneStatus(item)}</p>
             {item.blocker?.message && <p className={item.blocker.resolvedOn ? undefined : "mi-project-risk"}>
               {item.blocker.resolvedOn ? "Resolved " + reportDay(item.blocker.resolvedOn) : "Blocked"} · {item.blocker.message}</p>}
           </li>)}
@@ -122,4 +130,8 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
       Open project <span className="exec-sr-only">{project.name}</span><ArrowUpRight size={16} aria-hidden="true" />
     </button>}
   </article>;
+}
+
+function milestoneStatus(item: NonNullable<ProjectReport["projects"][number]["milestones"]>[number]) {
+  return item.completed ? "Complete" : item.status === "waived" ? "Waived" : item.status === "blocked" ? "Blocked" : item.status === "in-progress" ? "In progress" : "Pending";
 }

@@ -9,7 +9,7 @@ import { SecuredApiClient } from "./client";
 import { branding, brandAsset } from "../config/branding";
 import { ProjectClientReport } from "./ProjectClientReport";
 import { today } from "./dashboard-format";
-import { portalNavigate, usePlatformRoute, useReportingMonth } from "./portal-location";
+import { usePlatformRoute, useReportingMonth } from "./portal-location";
 import { PlatformApplication } from "./PlatformApplication";
 import "./platform.css";
 import "./platform-theme.css";
@@ -31,13 +31,8 @@ export function SecureDashboard() {
   const [error, setError] = useState("");
   const [unsaved, setUnsaved] = useState(false);
   const route = usePlatformRoute();
+  const modernShell = Boolean(route || workspace);
   const month = useReportingMonth(today().slice(0, 7));
-  const setMonth = (value: string) => portalNavigate({ month: value });
-  const [nativeMonthPicker] = useState(() => {
-    const input = document.createElement("input");
-    input.type = "month";
-    return input.type === "month";
-  });
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     if (!unsaved || !route) return;
@@ -199,7 +194,14 @@ export function SecureDashboard() {
     }
   }
   return (
-    <section className={"nordic secure-shell" + (route ? " platform-shell" : "")} data-theme={appearance}>
+    <section className={"nordic secure-shell" + (modernShell ? " platform-shell" : "")} data-theme={appearance}>
+      {signedIn && workspace && <a className="mi-skip-link" href="#platform-content" onClick={event => {
+        const content = document.getElementById("platform-content");
+        if (!content) return;
+        event.preventDefault();
+        content.tabIndex = -1;
+        content.focus();
+      }}>Skip to content</a>}
       <header className="secure-masthead">
         <div className="secure-brandmarks">
           {branding.clientLogo && (
@@ -224,6 +226,7 @@ export function SecureDashboard() {
           {!signedIn && !production && <Link to="/">Synthetic demonstration</Link>}
         </div>
         <div className="mi-masthead-actions">
+          {modernShell && signedIn && <div id="mi-workspace-commands" />}
           <ThemeSelector theme={theme} onChange={change} />
           {signedIn && (
           <details className="mi-account">
@@ -293,29 +296,7 @@ export function SecureDashboard() {
             read-only access to approved publications.
           </p>}</div>
         </section>
-      ) : (
-        <form className="secure-period" hidden={Boolean(route && route.kind !== "control")} onSubmit={event => {
-          event.preventDefault();
-          const value = String(new FormData(event.currentTarget).get("month") ?? "");
-          if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value) &&
-              (!unsaved || window.confirm("Discard the unsaved changes and change reporting month?"))) setMonth(value);
-        }}>
-          <label>
-            Reporting month
-            {nativeMonthPicker ? <input
-              type="month"
-              value={month}
-              onChange={(e) => {
-                if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value) &&
-                    (!unsaved || window.confirm("Discard the unsaved changes and change reporting month?")))
-                  setMonth(e.target.value);
-              }}
-            /> : <input name="month" type="text" defaultValue={month} key={month}
-              placeholder="YYYY-MM" pattern="[0-9]{4}-(0[1-9]|1[0-2])" required />}
-          </label>
-          {!nativeMonthPicker && <button type="submit">Apply month</button>}
-        </form>
-      )}
+      ) : null}
       {loading && (
         <p className="secure-empty" role="status">
           Loading your protected workspace…
@@ -324,7 +305,7 @@ export function SecureDashboard() {
       {error && <p role="alert">{error}</p>}
       {route && workspace && client && <PlatformApplication client={client} workspace={workspace} month={month} unsaved={unsaved}
         onUnsavedChange={setUnsaved} onDenied={onDenied} />}
-      {!route && workspace && workspace.role !== "client" && client && (
+      {!route && workspace && workspace.role !== "client" && client && <main id="platform-content" className="platform-workspace">
         <ProjectStaffWorkspace
           key={subject}
           client={client}
@@ -334,8 +315,8 @@ export function SecureDashboard() {
           month={month}
           onDenied={onDenied}
         />
-      )}
-      {!route && workspace?.role === "client" && client && (
+      </main>}
+      {!route && workspace?.role === "client" && client && <main id="platform-content" className="platform-client-report">
         <ProjectClientReport
           key={subject}
           client={client}
@@ -343,7 +324,7 @@ export function SecureDashboard() {
           month={month}
           onDenied={onDenied}
         />
-      )}
+      </main>}
       {signedIn && !workspace && error && !loading && (
         <button onClick={() => setRetry((value) => value + 1)}>
           Retry workspace

@@ -1,4 +1,4 @@
-/* Native Morris and Zagimē application surfaces. Legacy hash routes keep their layout. */
+/* Shared shell for Morris and Zagimē application surfaces. */
 .nordic.secure-shell.platform-shell {
   --mi-ink: #112537;
   --mi-muted: #4c5f71;
@@ -11,15 +11,16 @@
   --mi-shadow: 0 10px 24px #142b4510;
   --mi-radius: 16px;
   --mi-space: 8px;
-  max-width: 1600px;
+  max-width: 1840px;
   color: var(--mi-ink);
   background: var(--mi-background);
   font-family: "DM Sans Variable", "DM Sans", system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
-  padding-inline: clamp(12px, 3vw, 46px);
+  padding-inline: clamp(10px, 1.6vw, 32px);
 }
 .platform-shell :is(button, input, select, textarea) { font: inherit; }
-.platform-shell :is(h1, h2, h3, h4, dt, dd, td, th, label) { overflow-wrap: anywhere; }
+.platform-shell :is(h1, h2, h3, h4, label) { overflow-wrap: break-word; }
+.platform-shell :is(dt, dd, td, th) { overflow-wrap: anywhere; }
 .nordic.secure-shell.platform-shell :is(a,button,input,select,textarea,summary):focus-visible {
   outline: 3px solid #276a9c;
   outline-offset: 3px;

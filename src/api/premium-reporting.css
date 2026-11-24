@@ -136,8 +136,24 @@
 }
 .mi-bar-series button > span:first-child { overflow-wrap: anywhere; }
 .nordic.secure-shell .mi-bar-series button:hover, .nordic.secure-shell .mi-bar-series button[aria-pressed="true"] { background: #edf4fb; border-color: #d2e0ec; }
-.mi-bar-track { display: block; grid-column: 1 / -1; min-inline-size: 0; inline-size: 100%; block-size: 6px; border-radius: 999px; background: #e3edf5; overflow: hidden; }
-.mi-bar-track > i { display: block; block-size: 100%; border-radius: inherit; background: linear-gradient(90deg,#2b5c90,#3d7eaa); transition: inline-size 200ms ease-out; }
+.mi-bar-track {
+  --mi-plot-dot-base: #cedce7;
+  --mi-plot-dot-fill: #2f6b9a;
+  display: block;
+  grid-column: 1 / -1;
+  min-inline-size: 0;
+  inline-size: 100%;
+  block-size: 8px;
+  background: radial-gradient(circle, var(--mi-plot-dot-base) 1.6px, transparent 2px) left center/8px 8px repeat-x;
+  overflow: hidden;
+}
+.mi-bar-track > i {
+  display: block;
+  block-size: 100%;
+  background: radial-gradient(circle, var(--mi-plot-dot-fill) 1.6px, transparent 2px) left center/8px 8px repeat-x;
+  transition: inline-size 240ms ease-out;
+}
+.mi-bar-track > i[data-positive="true"] { min-inline-size: 6px; }
 
 .nordic.secure-shell dialog.mi-live-presentation {
   width: min(1160px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); border-radius: clamp(14px, 2vw, 24px); color: #fff;
@@ -190,8 +206,7 @@
 .nordic.secure-shell .mi-presentation-data .mi-bar-series button { color: #f4f8ff; }
 .nordic.secure-shell .mi-presentation-data .mi-bar-series button:hover,
 .nordic.secure-shell .mi-presentation-data .mi-bar-series button[aria-pressed="true"] { background: #244867; border-color: #6286a4; }
-.mi-presentation-data .mi-bar-track { background: #486887; }
-.mi-presentation-data .mi-bar-track > i { background: linear-gradient(90deg,#74b0df,#a8d1ed); }
+.mi-presentation-data .mi-bar-track, .nordic.secure-shell[data-theme=dark] .mi-bar-track { --mi-plot-dot-base: #486887; --mi-plot-dot-fill: #9ed7f5; }
 .mi-presentation-detail { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding-block: 6px; border-block-start: 1px solid var(--mi-report-line); }
 .mi-presentation-detail p { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; margin: 0; font-size: .88rem; }
 .nordic.secure-shell .mi-live-presentation .mi-presentation-detail strong { color: #f2f7fd; font-size: 1rem; font-weight: 710; line-height: 1.25; }

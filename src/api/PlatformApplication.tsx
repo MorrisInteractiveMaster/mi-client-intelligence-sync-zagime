@@ -1,5 +1,4 @@
-import "./premium-shell.css";
-import { ArrowLeft, Building2, Home } from "lucide-react";
+import { Home } from "lucide-react";
 import { lazy, Suspense, useEffect } from "react";
 import type { ProjectWorkspace } from "../projects/model";
 import type { SecuredApiClient } from "./client";
@@ -42,18 +41,14 @@ export function PlatformApplication({ client, workspace, month, unsaved, onUnsav
   </main>;
   const permit = () => !unsaved || window.confirm("Leave without saving your changes?");
   return <>
-    {staff && <nav className="platform-context" aria-label="Platform destinations">
-      <PlatformLink href={periodHref("/", month)} beforeNavigate={permit}><Home aria-hidden="true" size={17} /> Morris Home</PlatformLink>
-      {route.kind === "staff" && <PlatformLink href={periodHref(clientBase, month)} beforeNavigate={permit}><Building2 aria-hidden="true" size={17} /> View {workspace.tenant.name} Dashboard</PlatformLink>}
-      {route.kind === "client" && <PlatformLink href={periodHref("/workspace", month)} beforeNavigate={permit}><ArrowLeft aria-hidden="true" size={17} /> Back to Morris Workspace</PlatformLink>}
-    </nav>}
     {route.kind === "staff" && <main id="platform-content" className="platform-workspace">
       <ProjectStaffWorkspace client={client} tenant={tenant} workspace={workspace} month={month} onDenied={onDenied} onUnsavedChange={onUnsavedChange} />
     </main>}
     {route.kind === "control" && <Suspense fallback={<p role="status">Opening Control Panel…</p>}>
-      <Control client={client} workspace={workspace} month={month} section={route.section} onDenied={onDenied} onUnsavedChange={onUnsavedChange} />
+      <Control client={client} workspace={workspace} month={month} section={route.section} onDenied={onDenied} onUnsavedChange={onUnsavedChange}
+        homeLink={<PlatformLink href={periodHref("/", month)} beforeNavigate={permit}><Home aria-hidden="true" size={17} /> Morris Home</PlatformLink>} />
     </Suspense>}
-    {route.kind === "client" && <main id="platform-content" className={staff ? "platform-client-preview" : undefined}>
+    {route.kind === "client" && <main id="platform-content" className={staff ? "platform-client-preview" : "platform-client-report"}>
       {staff ? <DeliveryPreview client={client} tenant={tenant} month={month} standalone /> :
         <ProjectClientReport client={client} tenant={tenant} month={month} onDenied={onDenied} />}
     </main>}

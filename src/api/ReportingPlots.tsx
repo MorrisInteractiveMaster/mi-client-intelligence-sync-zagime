@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type CSSProperties, type KeyboardEvent } from "react";
+import { percentText } from "./insight-metrics";
 import { reportHours } from "./dashboard-format";
 import { axisMaximum, type PlotUnit } from "./reporting-chart-data";
 export type { PlotUnit } from "./reporting-chart-data";
@@ -10,7 +11,7 @@ const monthLabel = new Intl.DateTimeFormat("en-CA", {
 });
 const shortMonth = (month?: string) => month ? monthLabel.format(new Date(month + "-01")) : undefined;
 
-export const plotValue = (value: number, unit: PlotUnit) => unit === "percent" ? value + "%" : reportHours(value) + " h";
+export const plotValue = (value: number, unit: PlotUnit) => unit === "percent" ? percentText(value) : unit === "projects" ? String(value) : reportHours(value) + " h";
 
 function TrendShape({ rows, maximum, compact }: { rows: PlotRow[]; maximum: number; compact?: boolean }) {
   const gradient = useId();
@@ -30,7 +31,7 @@ function TrendShape({ rows, maximum, compact }: { rows: PlotRow[]; maximum: numb
     </linearGradient></defs>
     {points.length > 1 && <>
       <polygon points={points[0].x + ",200 " + series + " " + points.at(-1)!.x + ",200"} fill={"url(#" + gradient + ")"} />
-      <polyline points={series} fill="none" stroke="currentColor" strokeWidth={compact ? 2 : 2.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      <polyline points={series} fill="none" stroke="currentColor" strokeWidth={compact ? 2 : 2.5} strokeLinejoin="round" strokeLinecap="round" strokeDasharray=".01 7" vectorEffect="non-scaling-stroke" />
     </>}
   </svg>;
 }
@@ -49,7 +50,7 @@ type SeriesProps = {
   unit: PlotUnit;
   onSelect: (id: string) => void;
   onInspect?: (id?: string) => void;
-  spokenValue?: (value: number) => string;
+  spokenValue?: (value: number, row: PlotRow) => string;
 };
 
 export function TrendPlot({ rows, label, active, unit, onSelect, onInspect, spokenValue }: SeriesProps) {
@@ -92,7 +93,7 @@ export function TrendPlot({ rows, label, active, unit, onSelect, onInspect, spok
         <div className="mi-trend-controls" role="group" aria-label="Timeline points by month">
           {rows.map((row, index) => <button key={row.id} ref={node => { controls.current[index] = node; }}
             type="button" tabIndex={row.id === plot ? 0 : -1} aria-pressed={row.id === plot}
-            aria-label={row.label + ", " + (spokenValue ? spokenValue(row.value) : plotValue(row.value, unit))}
+            aria-label={row.label + ", " + (spokenValue ? spokenValue(row.value, row) : plotValue(row.value, unit))}
             onClick={() => onSelect(row.id)} onKeyDown={event => move(event, index)}
             onPointerEnter={() => onInspect?.(row.id)} onPointerLeave={() => onInspect?.()}
             onFocus={() => onInspect?.(row.id)} onBlur={() => onInspect?.()}
@@ -109,9 +110,9 @@ export function TrendPlot({ rows, label, active, unit, onSelect, onInspect, spok
 export function BarPlot({ rows, label, active, unit, onSelect, onInspect, spokenValue }: SeriesProps) {
   const maximum = axisMaximum(Math.max(...rows.map(row => row.value), 0), unit);
   return <div className="mi-bar-series" role="group" aria-label={label}>
-    <div className="mi-bar-axis" aria-hidden="true"><span>0 {unit === "hours" ? "h" : "%"}</span><span>{plotValue(maximum, unit)}</span></div>
+    <div className="mi-bar-axis" aria-hidden="true"><span>0 {unit === "hours" ? "h" : unit === "percent" ? "%" : "projects"}</span><span>{plotValue(maximum, unit)}</span></div>
     {rows.map(row => <button key={row.id} type="button" aria-pressed={row.id === active}
-      aria-label={row.label + ", " + (spokenValue ? spokenValue(row.value) : plotValue(row.value, unit))}
+      aria-label={row.label + ", " + (spokenValue ? spokenValue(row.value, row) : plotValue(row.value, unit))}
       onClick={() => onSelect(row.id)} onPointerEnter={() => onInspect?.(row.id)} onPointerLeave={() => onInspect?.()}
       onFocus={() => onInspect?.(row.id)} onBlur={() => onInspect?.()}>
       <span>{row.label}</span><b>{plotValue(row.value, unit)}</b>

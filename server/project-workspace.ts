@@ -1,8 +1,7 @@
-import { reportingAnchors } from "./time-attribution";
 import { clientDisplayName } from "../src/config/client-identity";
 import { reportingTimeMonth } from "../src/projects/time-history";
 import { readSourcePage } from "./source-page";
-import { readWorkOrderEffort, timeProjectTotal, type TimeTotals } from "./time-totals";
+import { readWorkOrderEffort } from "./time-totals";
 import { portfolioLimits, previousReportingMonth, type PortfolioSection, type PortfolioTotals, type WordPressProfile } from "../src/projects/portfolio";
 import { portfolioRef, publishedPortfolio, readPortfolio, savePortfolioRecord } from "./portfolio";
 import { mergeDirectory, wordpressProfiles } from "./wordpress-team";
@@ -43,6 +42,7 @@ import { sourceExportPageSize, type AllocationAnnotations, type PageQuery } from
 import type { Allocation } from "../src/reporting/model";
 import { portalSettings, type PlatformControl, type PortalSettings } from "../src/projects/control";
 import { calendarDate, capRollup, checkDeliveryStructure, deliveryDate, MAX_DELIVERY_PROJECTS, measureDelivery, type Delivery } from "../src/projects/delivery";
+import { applyDeliveryCapChange, deliveryCaps, parseDeliveryCapChange, type DeliveryCapChange } from "../src/projects/caps";
 
 /** Project operations require a verified named database and its tenant binding. */
 export class ProjectStore {
@@ -155,6 +155,7 @@ export class ProjectStore {
       publishOnCreate?: boolean;
       publishOnSave?: boolean;
       draftAction?: "publish" | "discard";
+      caps?: DeliveryCapChange;
     },
     now: number,
   ) {
@@ -163,10 +164,13 @@ export class ProjectStore {
       throw Error("Invalid publication");
     if (options.publishOnSave !== undefined && (!options.id || typeof options.publishOnSave !== "boolean" ||
       options.published !== undefined || options.draftAction)) throw Error("Invalid publication");
-    const requested = options.published === undefined && !options.draftAction ? managedProject(input) : undefined;
+    const capChange = options.caps === undefined ? undefined : parseDeliveryCapChange(options.caps);
+    if (capChange && (!options.id || options.published !== undefined || options.draftAction ||
+      options.publishOnCreate !== undefined || options.publishOnSave !== undefined)) throw Error("Invalid cap change");
+    const incoming = options.published === undefined && !options.draftAction && !capChange ? managedProject(input) : undefined;
     const idem = !options.id
       ? creationKey(options.idempotency ?? "", who.subject, now,
-        options.publishOnCreate ? { project: requested, publish: true } : requested)
+        options.publishOnCreate ? { project: incoming, publish: true } : incoming)
       : undefined;
     return this.db.runTransaction(
       async (tx) => {
@@ -207,9 +211,13 @@ export class ProjectStore {
         const pending = old?.published ? readProjectDraft(await tx.get(pendingRef), tenant) : undefined;
         if (options.draftAction && (!old?.published || !pending)) throw Error("Revision conflict");
         if (options.published === false && pending) throw Error("Project draft pending");
-        const base = old?.published && (requested || options.draftAction === "publish") ? contentFingerprint(old) : undefined;
+        const base = old?.published && (incoming || capChange || options.draftAction === "publish") ? contentFingerprint(old) : undefined;
         if (base && pending && pending.base !== base) throw Error("Revision conflict");
         const editBase = old && pending ? overlayProject(old, pending.content) : old;
+        if (capChange && !editBase?.delivery) throw Error("Invalid cap change for unconfigured delivery");
+        const requested = capChange
+          ? approvedContent({ ...editBase!, delivery: applyDeliveryCapChange(editBase!.delivery!, capChange) })
+          : incoming;
         const managed = old && requested
           ? approvedContent(overlayProject(editBase!, requested))
           : (options.draftAction === "publish" ? pending!.content : requested);
@@ -229,7 +237,7 @@ export class ProjectStore {
           : old.published === options.published))
           return { id, revision: a.meta.revision, changed: false,
             ...(pending && { draft: draftMetadata(pending) }) };
-        if (managed?.delivery || managed?.milestones?.some(m => m.ownerId)) {
+        if (!capChange && (managed?.delivery || managed?.milestones?.some(m => m.ownerId))) {
           const portfolio = await readPortfolio(tx, a.root);
           const delivery = managed.delivery;
           const people = new Set(portfolio.directory.map(person => person.id));
@@ -296,7 +304,7 @@ export class ProjectStore {
           { tenantId: tenant, projectId: id, revision, actor: who.subject, updatedAt: at };
         if (old?.published && requested && !options.publishOnSave) {
           tx.set(pendingRef, { ...draftRecord, state: "draft", base: base!, content: managed! });
-          advanceRevision("project-draft-saved");
+          advanceRevision(capChange ? "project-caps-draft-saved" : "project-draft-saved");
           auditActions();
           return { id, revision, changed: true, draft: { revision, updatedAt: at } };
         }
@@ -343,6 +351,7 @@ export class ProjectStore {
           tx.set(pendingRef, { ...draftRecord, state: "published" });
         advanceRevision(options.draftAction === "publish" ? "project-draft-published"
           : options.publishOnSave ? "project-edited-and-published"
+          : capChange ? "project-caps-edited"
           : old ? managed ? "project-edited" : "publication-changed" : options.publishOnCreate ? "project-created-and-published" : "project-created");
         auditActions();
         const result = { id, revision, changed: true };
@@ -479,9 +488,6 @@ export class ProjectStore {
         const draft = readProjectDraft(pending[i], tenant);
         return draft ? overlayProject(project, draft.content) : project;
       });
-      const anchors = await reportingAnchors(tx, a.root, visible.map(view => view.id));
-      const effort = await readWorkOrderEffort(tx, a.root, visible.map(v => v.id),
-        month, visible.map((v, i) => periodSeconds(periods[i], v.id, month)), anchors);
       const projects = visible.map((v, i) => {
         const view = v.data() as ProjectView;
         const project = projectDetails[i];
@@ -490,12 +496,9 @@ export class ProjectStore {
           : project.milestones?.some(m => !m.date && m.visible)
             ? { ...view, milestones: approvedProjectContent(project).milestones }
             : view;
-        const hours = effort[i];
-        return {
-          ...publicProject({ ...projected, lifetimeSeconds: projected.lifetimeSeconds + hours.lifetimeRemainingSeconds },
-            hours.assignedSeconds + hours.remainingSeconds),
-          ...(hours.lifetimeRecordedSeconds || hours.recordedSeconds ? { workOrderEffort: hours } : {}),
-        };
+        // Publication is project-scoped. Only Time already allocated to this approved
+        // project is eligible for client reporting, even if the ledger anchor is published.
+        return publicProject(projected, periodSeconds(periods[i], view.id, month));
       });
       // The trend uses a rolling reporting window independent of the selected detail month.
       // Tenant-wide month documents locate potential buckets only. Returned amounts come
@@ -512,27 +515,17 @@ export class ProjectStore {
       const history: { month: string; seconds: number }[] = [];
       const projectHistory = new Map(projects.map(project =>
         [project.id, project.seconds > 0 ? [{ month, seconds: project.seconds }] : []]));
-      const refsPerMonth = visible.reduce((sum, view) => sum + 1 + (anchors.get(view.id)?.length ?? 0), 0);
+      const refsPerMonth = visible.length;
       const pageSize = Math.max(1, Math.floor(500 / Math.max(1, refsPerMonth)));
       for (let offset = 0; offset < months.length; offset += pageSize) {
         const page = months.slice(offset, offset + pageSize);
-        const documents = visible.length ? await tx.getAll(...page.flatMap(period => visible.flatMap(v => [
-          a.root.collection("projectPeriods").doc(key(period, v.id)),
-          ...(anchors.get(v.id) ?? []).map(anchor => timeProjectTotal(a.root, anchor, period)),
-        ]))) : [];
+        const documents = visible.length ? await tx.getAll(...page.flatMap(period =>
+          visible.map(view => a.root.collection("projectPeriods").doc(key(period, view.id))))) : [];
         page.forEach((period, pageIndex) => {
-          let position = pageIndex * refsPerMonth;
-          const seconds = visible.reduce((total, view) => {
-            const assigned = periodSeconds(documents[position++], view.id, period);
-            const remainder = (anchors.get(view.id) ?? []).reduce((sum) => {
-              const fact = (documents[position++].data() as TimeTotals | undefined) ?? { recorded: 0, allocated: 0 };
-              const available = fact.recorded - fact.allocated;
-              if (!Number.isSafeInteger(available) || available < 0) throw Error("Invalid reporting summary");
-              return sum + available;
-            }, 0);
-            const effort = assigned + remainder;
-            if (effort > 0) projectHistory.get(view.id)?.push({ month: period, seconds: effort });
-            return total + effort;
+          const seconds = visible.reduce((total, view, index) => {
+            const assigned = periodSeconds(documents[pageIndex * refsPerMonth + index], view.id, period);
+            if (assigned > 0) projectHistory.get(view.id)?.push({ month: period, seconds: assigned });
+            return total + assigned;
           }, 0);
           if (!Number.isSafeInteger(seconds)) throw Error("Invalid reporting summary");
           if (seconds || recent.has(period)) history.push({ month: period, seconds });
@@ -753,12 +746,14 @@ export class ProjectStore {
             throw Error("Invalid reporting summary");
           const project = d.data() as Project;
           const draft = drafts.get(d.id);
+          const draftCaps = draft?.content.delivery ? deliveryCaps(draft.content.delivery) : undefined;
           const milestones = draft?.content.milestones ?? project.milestones;
           return {
             ...projectView(project, views[i].data()!.lifetimeSeconds + effort[i].lifetimeRemainingSeconds),
             seconds: effort[i].assignedSeconds + effort[i].remainingSeconds,
             ...(effort[i].lifetimeRecordedSeconds || effort[i].recordedSeconds ? { workOrderEffort: effort[i] } : {}),
             ...(draft && { draft: draftMetadata(draft) }),
+            ...(draftCaps && !isDeepStrictEqual(draftCaps, project.delivery && deliveryCaps(project.delivery)) ? { draftCaps } : {}),
             ...(d.data().delivery ? { delivery: d.data().delivery as Delivery } : {}),
             ...(milestones && { deliveryMilestones: milestones }),
             ...(d.data().workOrderReference ? { workOrderReference: String(d.data().workOrderReference) } : {}),

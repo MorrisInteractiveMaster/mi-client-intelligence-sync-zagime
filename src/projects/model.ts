@@ -1,4 +1,5 @@
 import type { PublishedPortfolio } from "./portfolio";
+import type { DeliveryCaps } from "./caps";
 import { calendarDate, milestoneStatuses, parseDelivery, type Delivery, type MilestoneStatus } from "./delivery";
 
 export const MAX_PROJECT_TIMELINE_ITEMS = 8;
@@ -93,6 +94,7 @@ export type StaffProjectSummary = ProjectView & {
   seconds: number;
   workOrderEffort?: import("./effort").WorkOrderEffort;
   draft?: ProjectDraftMetadata;
+  draftCaps?: DeliveryCaps;
   delivery?: Delivery;
   deliveryMilestones?: ProjectMilestone[];
   workOrderReference?: string;
@@ -139,7 +141,6 @@ export interface ProjectReport {
     "published" | "tenantId" | "updates" | "milestones"
   > & {
     seconds: number;
-    workOrderEffort?: import("./effort").WorkOrderEffort;
     updates?: Omit<ProjectUpdate, "visible">[];
     milestones?: PublicMilestone[];
   })[];

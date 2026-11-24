@@ -15,7 +15,8 @@ import { TimeSync } from "../server/time-sync";
 import { timeTotalsWrite } from "../server/time-totals";
 import { clientDelivery } from "../src/api/client-delivery";
 import { deliveryDefaults, type Delivery } from "../src/projects/delivery";
-import { projectView, type ManagedProject, type Project, type ProjectReport } from "../src/projects/model";
+import { defaultPortalSettings } from "../src/projects/control";
+import { projectView, type ManagedProject, type Project, type ProjectPage, type ProjectReport, type StaffProjectDetail } from "../src/projects/model";
 import { newPortfolio } from "../src/projects/portfolio";
 import type { TimeStatus } from "../src/projects/time";
 
@@ -56,7 +57,7 @@ test("legacy and new delivery projects share approved department and budget repo
       const subject = token.slice(7);
       return {
         subject, issuer: "fixture", audience: "fixture", expiresAt: now + 60_000, revoked: false, disabled: false,
-        ...(subject === "time-owner" && { corporatePolicy: true, staffTenantId: tenant }),
+        ...(["time-owner", "staff-editor"].includes(subject) && { corporatePolicy: true, staffTenantId: tenant }),
       };
     },
   }, { issuer: "fixture", audience: "fixture", now: () => now });
@@ -162,19 +163,22 @@ test("legacy and new delivery projects share approved department and budget repo
     assert.equal(registry.recordedSeconds, 32_400);
     assert.equal(registry.mappings.find(mapping => mapping.jobcodeId === "7102")?.mappingState, "linked");
     assert.equal(registry.mappings.find(mapping => mapping.jobcodeId === "7104")?.canReview, false);
+    const withoutAllocations = await report();
+    assert.equal(withoutAllocations.totalSeconds, 0);
+    assert.ok(withoutAllocations.portfolio?.history.every(point => point.seconds === 0));
+    assert.ok(withoutAllocations.projects.every(project => !("workOrderEffort" in project) && project.seconds === 0));
 
     await allocate(orders[0], nested, 3_600);
     await allocate(orders[1], optedOut, 1_800);
     const before = await report();
-    assert.equal(before.totalSeconds, 32_400);
+    assert.equal(before.totalSeconds, 5_400);
     assert.equal(before.hierarchy?.[parent]?.kind, "engagement");
-    assert.equal(before.hierarchy?.[parent]?.monthlyCapUsed, 23_400);
-    assert.equal(before.hierarchy?.[parent]?.lifetimeCapUsed, 23_400);
+    assert.equal(before.hierarchy?.[parent]?.monthlyCapUsed, 3_600);
+    assert.equal(before.hierarchy?.[parent]?.lifetimeCapUsed, 3_600);
     assert.equal(before.hierarchy?.[department]?.monthlyCapUsed, 3_600);
-    assert.equal(clientDelivery(before).parentRows.find(row => row.id === parent)?.seconds, 25_200);
-    assert.equal(before.projects.find(project => project.id === parent)?.workOrderEffort?.recordedSeconds, 25_200);
-    assert.equal(before.projects.find(project => project.id === nested)?.workOrderEffort, undefined);
-    assert.equal(before.projects.find(project => project.id === selfMappedAnchor)?.workOrderEffort?.remainingSeconds, 7_200);
+    assert.equal(clientDelivery(before).parentRows.find(row => row.id === parent)?.seconds, 5_400);
+    assert.ok(before.projects.every(project => !("workOrderEffort" in project)));
+    assert.deepEqual(before.historyByProject?.[nested]?.find(point => point.month === month), { month, seconds: 3_600 });
 
     const delivery = settings({ structure: 3, parentId: parent, areaId: "hr", managerIds: [manager] });
     const created = await request<{ id: string }>("projects", "time-owner", "POST",
@@ -182,10 +186,10 @@ test("legacy and new delivery projects share approved department and budget repo
     await member.update({ projectIds: [...memberRecord.projectIds, created.id] });
     await allocate(orders[2], created.id, 2_700);
     const draft = await report();
-    assert.equal(draft.totalSeconds, 29_700);
+    assert.equal(draft.totalSeconds, 5_400);
     assert.equal(draft.hierarchy?.[created.id], undefined);
     assert.equal(draft.portfolio?.placements.some(item => item.id === created.id), false);
-    assert.equal(draft.hierarchy?.[parent]?.monthlyCapUsed, 20_700);
+    assert.equal(draft.hierarchy?.[parent]?.monthlyCapUsed, 3_600);
     const allocationHistory = async () => (await root.collection("allocationRevisions").get()).docs.map(doc => [doc.id, doc.data()]);
     const beforePublication = await allocationHistory();
     const monthlyTotal = root.collection("timeMonthlyTotals").doc(month);
@@ -195,14 +199,14 @@ test("legacy and new delivery projects share approved department and budget repo
       expectedRevision: await revision(), published: true,
     });
     const published = await report();
-    assert.equal(published.totalSeconds, before.totalSeconds);
-    assert.equal(published.hierarchy?.[parent]?.monthlyCapUsed, 23_400);
+    assert.equal(published.totalSeconds, 8_100);
+    assert.equal(published.hierarchy?.[parent]?.monthlyCapUsed, 6_300);
     assert.equal(published.hierarchy?.[department]?.monthlyCapUsed, 3_600);
     assert.equal(published.hierarchy?.[created.id]?.parentId, parent);
     assert.equal(published.portfolio?.placements.find(item => item.id === created.id)?.areaId, "hr");
     const overview = clientDelivery(published);
     assert.equal(overview.parentRows.find(row => row.id === parent)?.counts.all, 3);
-    assert.equal(overview.parentRows.find(row => row.id === parent)?.seconds, 25_200);
+    assert.equal(overview.parentRows.find(row => row.id === parent)?.seconds, 8_100);
     assert.equal(overview.departmentRows.find(row => row.id === "hr")?.counts.all, 2);
     assert.equal(overview.departmentRows.find(row => row.id === "hr")?.seconds, 6_300);
     assert.equal(published.projects.some(project => project.id === movedAnchor), false);
@@ -222,6 +226,54 @@ test("legacy and new delivery projects share approved department and budget repo
     assert.deepEqual(await allocationHistory(), beforePublication);
     assert.deepEqual((await root.collection("projects").doc(parent).get()).get("delivery"), projects[0].delivery);
     assert.deepEqual((await root.collection("projects").doc(nested).get()).get("delivery"), projects[2].delivery);
+
+    await root.update({ portalSettings: { ...defaultPortalSettings, ownerPublishes: true } });
+    const capPath = "projects/" + parent + "/caps";
+    const initialCapRevision = await revision();
+    const capChange = { expectedRevision: initialCapRevision, caps: { monthlyCap: 21_601, lifetimeCap: null } };
+    await request(capPath, "client", "PATCH", capChange, 403);
+    await request(capPath, "staff-editor", "PATCH", { ...capChange, published: true }, 400);
+    await request(capPath, "staff-editor", "PATCH", { ...capChange, caps: { ...capChange.caps, countAgainstParentCap: false } }, 400);
+    await request(capPath, "staff-editor", "PATCH", { ...capChange, caps: { monthlyCap: 1.25 } }, 400);
+    assert.equal(await revision(), initialCapRevision);
+
+    const approved = projects[0];
+    await request("projects/" + parent, "staff-editor", "PATCH", {
+      expectedRevision: initialCapRevision,
+      patch: { ...projectInput(approved.name, approved.delivery), internalNotes: "New staff-only planning note",
+        milestones: [{ id: "milestone", title: "Draft review", date: "", visible: false, completed: false }] },
+    });
+    await request(capPath, "staff-editor", "PATCH", capChange, 409);
+    const expectedRevision = await revision();
+    const outcomes = await Promise.all([21_601, 25_201].map(monthlyCap => fetch(endpoint + capPath, {
+      method: "PATCH", headers: { authorization: "Bearer staff-editor", "content-type": "application/json" },
+      body: JSON.stringify({ expectedRevision, caps: { monthlyCap, lifetimeCap: null } }),
+    })));
+    assert.deepEqual(outcomes.map(outcome => outcome.status).sort(), [200, 409]);
+    const savedLimit = outcomes[0].status === 200 ? 21_601 : 25_201;
+    const detail = await request<StaffProjectDetail>("projects/" + parent, "staff-editor");
+    assert.equal(detail.project.delivery?.monthlyCap, savedLimit);
+    assert.equal(detail.project.delivery?.lifetimeCap, undefined);
+    assert.equal(detail.project.internalNotes, "New staff-only planning note");
+    assert.equal(detail.project.milestones?.[0].id, "milestone");
+    assert.equal(detail.project.delivery?.kind, "engagement");
+    assert.deepEqual((await root.collection("projects").doc(parent).get()).get("delivery"), approved.delivery);
+    const projectsWithCaps = await request<ProjectPage>("projects?month=" + month, "staff-editor");
+    assert.deepEqual(projectsWithCaps.projects?.find(project => project.id === parent)?.draftCaps, { monthlyCap: savedLimit });
+    assert.equal((await report()).hierarchy?.[parent]?.monthlyCap, 28_800);
+    await request("projects/" + parent + "/draft", "staff-editor", "PATCH", { expectedRevision: await revision(), action: "publish" }, 403);
+    await request("projects/" + parent + "/draft", "time-owner", "PATCH", { expectedRevision: await revision(), action: "publish" });
+    const approvedCap = (await report()).hierarchy?.[parent];
+    assert.equal(approvedCap?.monthlyCap, savedLimit);
+    assert.equal(approvedCap?.monthlyCapUsed, 6_300);
+    assert.equal(approvedCap?.lifetimeCap, undefined);
+    assert.doesNotMatch(JSON.stringify(await report()), /New staff-only planning note|Draft review|draftCaps/);
+    const capAudits = await root.collection("audits").where("action", "==", "project-caps-draft-saved").get();
+    assert.equal(capAudits.size, 1);
+    assert.equal(capAudits.docs[0].get("actor"), "staff-editor");
+    assert.deepEqual(await originals(), immutableBefore);
+    assert.deepEqual(await allocationHistory(), beforePublication);
+    assert.equal((await report()).totalSeconds, published.totalSeconds);
   } finally {
     if (server.listening) {
       server.close();

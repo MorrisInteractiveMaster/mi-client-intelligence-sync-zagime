@@ -1,0 +1,352 @@
+.intel-workspace {
+  --mi-cockpit-blue: #246d9f;
+  --mi-cockpit-gold: #955d16;
+  --mi-cockpit-teal: #1b8069;
+  --mi-cockpit-neutral: #627d91;
+  --mi-cockpit-rose: #a63042;
+  --mi-cockpit-quiet: color-mix(in srgb, var(--mi-cockpit-blue) 17%, var(--mi-client-surface));
+}
+.intel-workspace [data-tone="active"] { --mi-status-color: var(--mi-cockpit-blue); }
+.intel-workspace [data-tone="upcoming"] { --mi-status-color: var(--mi-cockpit-gold); }
+.intel-workspace [data-tone="complete"] { --mi-status-color: var(--mi-cockpit-teal); }
+.intel-workspace [data-tone="neutral"] { --mi-status-color: var(--mi-cockpit-neutral); }
+.intel-workspace [data-tone="risk"] { --mi-status-color: var(--mi-cockpit-rose); }
+
+.mi-client-cockpit { display: grid; gap: 16px; min-inline-size: 0; }
+.mi-cockpit-hero {
+  --mi-cockpit-blue: #82c5ff;
+  --mi-cockpit-gold: #f3ca84;
+  --mi-cockpit-teal: #65d9b7;
+  --mi-cockpit-neutral: #b0bed9;
+  --mi-cockpit-rose: #ffc2c9;
+  --mi-cockpit-quiet: #38576e;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(16px, 3vw, 40px);
+  min-inline-size: 0;
+  padding: clamp(16px, 2.2vw, 32px);
+  border: 1px solid #285170;
+  border-radius: 14px;
+  color: #fff;
+  background: radial-gradient(ellipse at 90% -15%, #2e5b7a80, transparent 63%), linear-gradient(126deg, #0e2337, #133957);
+  box-shadow: 0 12px 28px #142c3e20;
+  isolation: isolate;
+  overflow: clip;
+  position: relative;
+}
+.mi-cockpit-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 35%;
+  z-index: -1;
+  background: radial-gradient(circle, #caeaff2b 1px, transparent 1.35px) 0 0/13px 13px;
+  mask-image: radial-gradient(ellipse 90% 95% at 93% 28%, #000, transparent 77%);
+  pointer-events: none;
+}
+.nordic.secure-shell .mi-cockpit-hero :is(h2, h3, b, strong) { color: #fff; }
+.mi-cockpit-intro { min-inline-size: 0; }
+.nordic.secure-shell .mi-cockpit-intro > p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0;
+  color: #cfe3ef;
+  font-size: .84rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.nordic.secure-shell .mi-cockpit-intro h2 {
+  margin: 8px 0;
+  font-size: clamp(1.85rem, 3vw, 3rem);
+  font-weight: 720;
+  line-height: 1.04;
+  letter-spacing: -.055em;
+  overflow-wrap: break-word;
+}
+.mi-cockpit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block-start: 16px; }
+.nordic.secure-shell .mi-cockpit-hero .mi-cockpit-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-block-size: 44px;
+  padding: 8px 12px;
+  margin: 0;
+  border: 1px solid #bbd8e5;
+  border-radius: 8px;
+  background: #eaf5f9;
+  color: #12354d;
+  box-shadow: none;
+  font-weight: 700;
+}
+.nordic.secure-shell .mi-cockpit-hero .mi-cockpit-actions button:hover { background: #fff; }
+.nordic.secure-shell .mi-cockpit-hero .mi-cockpit-actions .mi-cockpit-secondary { color: #fff; background: #2a506e; border-color: #5b83a0; }
+.nordic.secure-shell .mi-cockpit-hero .mi-cockpit-actions .mi-cockpit-secondary:hover { background: #356683; }
+.mi-cockpit-portfolio { min-inline-size: 0; border-inline-start: 1px solid #6b97b286; padding-inline-start: clamp(12px, 2vw, 24px); }
+.nordic.secure-shell .mi-cockpit-portfolio > p { margin: 0 0 4px; color: #cfdfeb; font-size: .78rem; font-weight: 640; }
+.mi-status-composition { display: grid; grid-template-columns: minmax(70px, 120px) minmax(0, 1fr); gap: 12px; align-items: center; min-inline-size: 0; }
+.mi-status-wheel { position: relative; display: grid; place-items: center; inline-size: 100%; aspect-ratio: 1; }
+.mi-status-wheel > div { position: absolute; inset: 0 9%; display: grid; justify-items: center; place-content: center; line-height: 1.1; text-align: center; }
+.mi-status-wheel strong { font-size: clamp(1.3rem, 1.9vw, 2.15rem); letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+.mi-status-wheel small { display: block; max-inline-size: 5.25rem; margin-block-start: 3px; color: var(--mi-client-muted); font-size: clamp(.58rem, .85vw, .7rem); line-height: 1.2; overflow-wrap: anywhere; }
+.mi-status-wheel circle { fill: var(--mi-status-color, var(--mi-cockpit-quiet)); transition: opacity .22s ease, fill .25s ease; animation: mi-cockpit-dot-in 300ms ease-out both; animation-delay: calc(var(--dot-order) * 6ms); }
+.mi-status-wheel circle[data-muted="true"] { opacity: .22; }
+.mi-status-composition-key { min-inline-size: 0; container: status-options / inline-size; }
+.mi-status-composition-key h3 { margin: 0 0 6px; font-size: .9rem; line-height: 1.25; letter-spacing: -.018em; }
+.mi-status-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+@container status-options (max-width: 252px) {
+  .mi-status-legend { grid-template-columns: minmax(0,1fr); }
+}
+.nordic.secure-shell .mi-status-legend button {
+  display: grid;
+  grid-template-columns: 6px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 5px;
+  min-block-size: 44px;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mi-client-ink);
+  text-align: start;
+  white-space: normal;
+  box-shadow: none;
+  font-size: .74rem;
+}
+.nordic.secure-shell .mi-status-legend button:hover,
+.nordic.secure-shell .mi-status-legend button[data-inspected="true"] { background: var(--mi-cockpit-quiet); border-color: var(--mi-client-line); }
+.nordic.secure-shell .mi-cockpit-hero .mi-status-legend button { color: #f1f7fc; background: #ffffff0d; border-color: #b8d7ec29; }
+.nordic.secure-shell .mi-cockpit-hero .mi-status-legend button[data-inspected="true"] { background: #5885a463; border-color: #b8d7ec75; }
+.nordic.secure-shell .mi-status-legend b { font-variant-numeric: tabular-nums; color: var(--mi-status-color); }
+.mi-status-legend i { display: block; inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--mi-status-color); }
+.mi-status-composition-key p { margin: 6px 0 0; min-block-size: 1.1em; color: var(--mi-client-muted); font-size: .73rem; }
+.nordic.secure-shell .mi-cockpit-hero :is(.mi-status-wheel small, .mi-status-composition-key p) { color: #cfe3ef; }
+.nordic.secure-shell .mi-cockpit-hero .mi-status-legend b { color: var(--mi-status-color); }
+
+.mi-cockpit-signals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.nordic.secure-shell .mi-cockpit-signals button {
+  display: grid;
+  grid-template-columns: 38px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-inline-size: 0;
+  min-block-size: 68px;
+  padding: 8px;
+  margin: 0;
+  border: 1px solid var(--mi-client-line);
+  border-radius: 9px;
+  background: var(--mi-client-surface);
+  color: var(--mi-client-ink);
+  text-align: start;
+  box-shadow: none;
+  overflow-wrap: anywhere;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.nordic.secure-shell .mi-cockpit-signals button:hover {
+  border-color: var(--mi-status-color);
+  box-shadow: 0 6px 18px #102f4414;
+}
+.mi-cockpit-signals :is(strong,small) { display: block; }
+.mi-cockpit-signals strong { font-size: clamp(1.25rem, 2.2vw, 1.75rem); letter-spacing: -.05em; line-height: 1; font-variant-numeric: tabular-nums; }
+.mi-cockpit-signals small { color: var(--mi-client-muted); font-size: .77rem; margin-block-end: 4px; }
+.mi-signal-glyph { display: grid; place-items: center; inline-size: 38px; block-size: 38px; border-radius: 8px; color: var(--mi-status-color); background: color-mix(in srgb, var(--mi-status-color) 12%, var(--mi-client-surface)); }
+.mi-cockpit-signals button > svg { color: var(--mi-status-color); }
+
+.mi-cockpit-analysis { display: grid; grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr); align-items: start; gap: 12px; min-inline-size: 0; }
+.mi-client-cockpit .mi-exec-panel, .mi-department-analysis .mi-exec-panel { box-shadow: 0 4px 18px #18324b0a; }
+.mi-client-cockpit .mi-exec-heading, .mi-department-analysis .mi-exec-heading { margin-block-end: 10px; }
+.mi-client-cockpit .mi-exec-heading p, .mi-department-analysis .mi-exec-heading p { font-size: .8rem; }
+.mi-client-cockpit .mi-exec-panel h3, .mi-department-analysis .mi-exec-panel h3 { font-size: 1.07rem; }
+.mi-cockpit-engagements .mi-engagement-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); }
+.mi-cockpit-engagements .mi-independent-projects { margin-block-start: 6px; }
+.mi-progress-arc {
+  position: relative;
+  display: inline-grid;
+  justify-items: center;
+  align-items: center;
+  inline-size: 68px;
+  max-inline-size: 100%;
+  aspect-ratio: 1;
+  color: var(--mi-status-color, var(--mi-cockpit-blue));
+}
+.nordic.secure-shell :is(.mi-status-wheel,.mi-progress-arc) svg { inline-size: 100%; block-size: auto; display: block; }
+.mi-progress-arc > span {
+  position: absolute;
+  inset: 0 10%;
+  display: grid;
+  place-content: center;
+  font-size: .82rem;
+  font-weight: 780;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.05em;
+}
+.mi-progress-arc circle { fill: var(--mi-cockpit-quiet); transition: fill .32s ease; }
+.mi-progress-arc circle[data-filled="true"] { fill: currentColor; animation: mi-cockpit-dot-in .35s ease-out both; animation-delay: calc(var(--dot-order) * 9ms); }
+
+.mi-trend-switch { display: flex; flex-wrap: wrap; gap: 4px; }
+.nordic.secure-shell .mi-trend-switch button {
+  margin: 0;
+  padding: 5px 8px;
+  min-block-size: 36px;
+  background: var(--mi-client-surface);
+  color: var(--mi-client-ink);
+  border: 1px solid var(--mi-client-line);
+  border-radius: 7px;
+  box-shadow: none;
+  font-size: .79rem;
+}
+.nordic.secure-shell .mi-trend-switch button[aria-pressed="true"], .nordic.secure-shell .mi-trend-switch button:hover {
+  background: var(--mi-cockpit-quiet);
+  border-color: var(--mi-cockpit-blue);
+  color: var(--mi-client-ink);
+}
+.mi-trend-snapshot .mi-trend-empty, .mi-cockpit-empty {
+  margin: 4px 0 0;
+  color: var(--mi-client-muted);
+  font-size: .85rem;
+  line-height: 1.5;
+}
+.mi-composition-rows, .mi-progress-rows, .mi-priority-list { list-style: none; margin: 0; padding: 0; min-inline-size: 0; }
+.mi-composition-rows li + li, .mi-progress-rows li + li, .mi-priority-list li + li { border-block-start: 1px solid var(--mi-client-line); }
+.nordic.secure-shell :is(.mi-trend-result, .mi-composition-rows button, .mi-progress-rows button, .mi-priority-list button) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-block-size: 44px;
+  margin: 0;
+  padding: 4px;
+  background: transparent;
+  color: var(--mi-client-ink);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  text-align: start;
+  box-shadow: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.nordic.secure-shell :is(.mi-trend-result, .mi-composition-rows button, .mi-progress-rows button, .mi-priority-list button):hover {
+  border-color: var(--mi-client-line);
+  background: color-mix(in srgb, var(--mi-cockpit-blue) 7%, var(--mi-client-surface));
+}
+.nordic.secure-shell .mi-composition-rows button { grid-template-columns: minmax(0,1fr) minmax(32px,.72fr) minmax(2.4rem,auto); }
+.mi-composition-rows b { text-align: end; font-variant-numeric: tabular-nums; color: var(--mi-cockpit-blue); }
+:is(.mi-trend-result, .mi-composition-rows, .mi-progress-rows, .mi-priority-list) small { display: block; font-size: .73rem; color: var(--mi-client-muted); margin-block-start: 2px; }
+.mi-cockpit-dot-track {
+  display: block;
+  block-size: 8px;
+  background: radial-gradient(circle, var(--mi-cockpit-quiet) 1.7px, transparent 2px) left center/8px 8px repeat-x;
+  overflow: hidden;
+}
+.mi-cockpit-dot-track i {
+  display: block;
+  block-size: 100%;
+  background: radial-gradient(circle, var(--mi-cockpit-blue) 1.65px, transparent 2px) left center/8px 8px repeat-x;
+  transform-origin: left;
+  animation: mi-cockpit-track-in 460ms cubic-bezier(.21,.7,.33,1) both;
+  transition: width .28s ease;
+}
+.mi-priority-list button > svg:first-child { color: var(--mi-cockpit-rose); }
+.mi-priority-calendar button > svg:first-child { color: var(--mi-cockpit-blue); }
+.mi-priority-calendar { margin-block-start: 8px; }
+.mi-department-analysis { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+.mi-department-analysis > .mi-cockpit-progress { grid-column: 1 / -1; }
+
+.mi-project-card-header { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; min-inline-size: 0; }
+.nordic.secure-shell .mi-project-card .mi-project-card-header h3 { margin: 4px 0; line-height: 1.15; }
+.mi-project-card-header .mi-progress-arc { inline-size: 72px; }
+.mi-project-card-header .secure-badge { max-inline-size: 100%; overflow-wrap: anywhere; }
+.mi-project-card-header .mi-project-completion { display: grid; justify-items: center; align-content: start; margin: 0; font-size: .67rem; line-height: 1.2; text-align: center; color: var(--mi-client-muted); }
+.mi-project-card-header .mi-project-completion > span:last-child { max-inline-size: 8ch; }
+.mi-card-milestones { display: grid; gap: 5px; margin: 2px 0; padding: 0; list-style: none; }
+.mi-card-milestones li { display: grid; grid-template-columns: 11px minmax(0,1fr); align-items: center; gap: 6px; font-size: .76rem; color: var(--mi-client-muted); }
+.mi-card-milestones li::before { content: ""; justify-self: center; inline-size: 6px; block-size: 6px; border: 1px solid currentColor; border-radius: 50%; }
+.mi-card-milestones li[data-complete="true"]::before { color: var(--mi-cockpit-teal); background: var(--mi-cockpit-teal); }
+.mi-card-milestones li[data-blocked="true"]::before { color: var(--mi-cockpit-rose); background: var(--mi-cockpit-rose); }
+.nordic.secure-shell .mi-card-milestones .exec-text-button { min-block-size: 24px; justify-content: start; padding: 0; text-align: start; font-size: inherit; white-space: normal; }
+
+.nordic.secure-shell[data-theme=dark] .intel-workspace {
+  --mi-cockpit-blue: #99cdf4;
+  --mi-cockpit-gold: #f0c579;
+  --mi-cockpit-teal: #78dbb4;
+  --mi-cockpit-neutral: #adbecd;
+  --mi-cockpit-rose: #ffaaba;
+}
+@keyframes mi-cockpit-dot-in { from { opacity: .15; } }
+@keyframes mi-cockpit-track-in { from { transform: scaleX(0); } }
+.intel-workspace.exec-content { container: client-report / inline-size; }
+@container client-report (max-width: 760px) {
+  .mi-cockpit-hero { grid-template-columns: minmax(0,1fr); gap: 12px; }
+  .mi-cockpit-portfolio { border-inline-start: 0; border-block-start: 1px solid #6b97b286; padding: 8px 0 0; }
+  .mi-status-composition { grid-template-columns: minmax(0,92px) minmax(0,1fr); }
+  .mi-client-cockpit { gap: 10px; }
+  .mi-cockpit-analysis { gap: 8px; }
+  .intel-workspace .mi-project-filters { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .mi-project-filters label:first-child { grid-column: 1 / -1; }
+}
+@container client-report (max-width: 600px) {
+  .mi-cockpit-signals { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .mi-cockpit-analysis, .mi-department-analysis { grid-template-columns: minmax(0,1fr); }
+  .mi-department-analysis > .mi-cockpit-progress { grid-column: auto; }
+}
+@container client-report (max-width: 420px) {
+  .intel-workspace .mi-project-filters { grid-template-columns: minmax(0,1fr); }
+}
+@container client-report (max-width: 350px) {
+  .nordic.secure-shell .mi-cockpit-signals button { grid-template-columns: 28px minmax(0,1fr); gap: 6px; min-block-size: 61px; }
+  .mi-cockpit-signals button > svg { display: none; }
+  .mi-signal-glyph { inline-size: 28px; block-size: 28px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.mi-status-wheel circle, .mi-progress-arc circle, .mi-cockpit-dot-track i, .mi-cockpit-signals button) { animation: none !important; transition: none !important; }
+}
+.mi-engagement-effort { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px; margin: 0; color: var(--mi-client-muted); font-size: .82rem; }
+.mi-engagement-effort strong { color: var(--mi-client-ink); font-variant-numeric: tabular-nums; }
+.mi-budget-warning { color: var(--mi-client-risk); }
+.mi-project-card .secure-project-hours dt { color: var(--mi-client-muted); font-size: .75rem; }
+.nordic.secure-shell .intel-workspace .mi-project-card .secure-project-hours {
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,7rem),1fr));
+}
+.nordic.secure-shell .mi-project-filters label { margin: 0; }
+.mi-project-card .secure-project-hours dd { font-variant-numeric: tabular-nums; }
+.nordic.secure-shell :is(.intel-workspace, .intel-analytics-dialog) svg.lucide {
+  inline-size: 1em;
+  block-size: 1em;
+  flex: none;
+}
+.nordic.secure-shell .mi-cockpit-intro .mi-cockpit-actions button { max-inline-size: 100%; line-height: 1.2; }
+
+.nordic.secure-shell .intel-workspace.exec-content { gap: 12px; }
+.nordic.secure-shell .intel-workspace .exec-breadcrumb { margin: 0; padding: 0; gap: 6px; }
+.mi-cockpit-column { display: grid; gap: 12px; align-content: start; min-inline-size: 0; }
+.nordic.secure-shell .mi-secondary-effort strong { font-size: 1rem; line-height: 1.3; font-weight: 720; font-variant-numeric: tabular-nums; }
+.nordic.secure-shell[data-theme=dark] .mi-trend-switch button[aria-pressed="true"] { outline: 1px solid var(--mi-cockpit-blue); outline-offset: -1px; }
+.nordic.secure-shell .mi-cockpit-hero button:focus-visible { outline-color: #ffdb93; }
+.nordic.secure-shell[data-theme="dark"] .intel-workspace :is(.mi-composition-rows,.mi-progress-rows,.mi-priority-list) button {
+  background: transparent;
+  color: var(--mi-client-ink);
+  border-color: transparent;
+}
+.nordic.secure-shell[data-theme="dark"] .intel-workspace :is(.mi-composition-rows,.mi-progress-rows,.mi-priority-list) button:hover {
+  background: color-mix(in srgb, var(--mi-cockpit-blue) 10%, var(--mi-client-surface));
+  border-color: var(--mi-client-line);
+}
+.mi-client-completion-history { display: grid; gap: 6px; min-inline-size: 0; padding-block-start: 6px; border-block-start: 1px solid var(--mi-client-line); }
+.mi-client-completion-history table { overflow-wrap: anywhere; }
+.mi-client-completion-history th { white-space: normal; }
+.mi-client-completion-history p { color: var(--mi-client-muted); font-size: .8rem; }
+.mi-client-completion-history summary { color: var(--mi-client-ink); cursor: pointer; min-block-size: 32px; }
+.mi-client-completion-history .mi-trend { --mi-trend-height: 108px; }
+.mi-client-completion-history {
+  --mi-report-blue: var(--mi-cockpit-blue);
+  --mi-report-muted: var(--mi-client-muted);
+  --mi-report-line: var(--mi-client-line);
+}
+@media (max-width: 390px) {
+  .nordic.secure-shell .intel-workspace :is(.reporting-period__options, .mi-present-button) { padding-inline: 8px; font-size: .82rem; min-block-size: 44px; }
+}

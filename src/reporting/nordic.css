@@ -97,7 +97,7 @@
 .nordic dialog::backdrop {
   background: #01264faa;
 }
-.nordic svg {
+.nordic svg:not(.lucide) {
   width: 100%;
 }
 .recap-dots circle {

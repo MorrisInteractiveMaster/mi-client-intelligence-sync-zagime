@@ -47,7 +47,6 @@
   color: #f6f7fa;
 }
 .nordic.secure-shell .platform-sign-in { min-height: min(76dvh, 780px); }
-.nordic.secure-shell .platform-hero-compact { min-height: min(32vh, 370px); padding-block: clamp(24px, 4vw, 56px); }
 .platform-hero > span { color: var(--platform-gold); font-weight: 720; display: inline-flex; gap: .5rem; align-items: center; }
 .nordic.secure-shell :is(.platform-hero, .platform-sign-in) h2 {
   color: #fff;
@@ -57,7 +56,6 @@
   letter-spacing: -.064em;
   margin: .35rem 0;
 }
-.nordic.secure-shell .platform-hero-compact h2 { font-size: clamp(2.1rem, 5vw, 4.5rem); }
 .nordic.secure-shell .platform-sign-in h2 { font-size: clamp(2.05rem, 6vw, 5.5rem); max-width: 17ch; }
 .platform-hero > p, .platform-sign-in > p { color:#e0e8f2; font-size: clamp(1rem, 2vw, 1.25rem); max-width: 58ch; }
 .nordic.secure-shell .platform-sign-in .secure-actions { gap: .85rem; margin: .9rem 0; }
@@ -99,12 +97,16 @@
 .platform-card-icon { background: #edf2f6; color: #0f2b4a; padding: .65rem; border-radius: 10px; }
 .platform-card-arrow { position: absolute; right: .8rem; top: 1.35rem; }
 .platform-home-wordmark { margin: 1.5rem 0 0; width: min(180px, 60vw); }
-.platform-control-layout { display: grid; grid-template-columns: minmax(167px, .25fr) minmax(0, 1fr); align-items: start; gap: 1rem; margin: 1.25rem 0; }
+.nordic.secure-shell.platform-shell > main.platform-control { max-width: none; min-width: 0; padding: 0; }
+.platform-control-layout { display: grid; grid-template-columns: clamp(204px,17vw,248px) minmax(0, 1fr); align-items: start; gap: clamp(12px,1.5vw,24px); margin-block: 10px 24px; }
+.platform-control-rail { position: sticky; inset-block-start: 10px; min-width: 0; max-height: calc(100dvh - 20px); overflow-y: auto; scrollbar-width: thin; }
+.platform-control-compact-nav { display: none; }
 .platform-control-nav { display: grid; gap: .2rem; background: #10273f; padding: .55rem; border-radius: 16px; }
-.nordic .platform-control-nav a { color: #f7fafc; border-radius: 9px; font-weight: 650; min-height: 44px; box-sizing: border-box; padding: .6rem .7rem; text-decoration: none; display: flex; align-items: center; }
+.nordic .platform-control-nav a { color: #f7fafc; border-radius: 9px; font-size: .9rem; font-weight: 650; min-height: 44px; box-sizing: border-box; padding: .6rem .7rem; text-decoration: none; display: flex; align-items: center; gap: 8px; }
 .nordic .platform-control-nav a:hover { background: #254765; }
 .nordic .platform-control-nav a[aria-current="page"] { background: var(--platform-gold); color: #091d31; }
 .platform-control-card, .platform-denied { background: #fcfbf7; border: 1px solid #d2dce3; border-radius: 16px; margin: 0; padding: clamp(16px, 3vw, 36px); }
+.platform-control-card { min-width: 0; padding: clamp(12px, 2vw, 24px); }
 .platform-denied { margin-top: 1rem; }
 .platform-control-card h3 { margin-block: .65rem !important; }
 .platform-control-shortcuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: .75rem; }
@@ -184,9 +186,21 @@
 .platform-scene-team li { display: flex; align-items: center; gap:.65rem; padding:.5rem; border:1px solid #6d8294; border-radius:10px; }
 .platform-scene-team img { object-fit: cover; width: 44px; height: 44px; border-radius: 50%; }
 .platform-shell :focus-visible { outline-color: #236597; }
+@media (max-width: 860px) {
+  .platform-control-layout { grid-template-columns: minmax(0,1fr); }
+  .platform-control-rail { position: static; max-height: none; overflow: visible; }
+  .platform-control-wide-nav { display: none; }
+  .platform-control-compact-nav { display: block; }
+  .nordic.secure-shell .platform-control-compact-nav > summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    min-height: 44px; padding: 8px 12px; border: 1px solid var(--mi-line); border-radius: 10px;
+    color: var(--mi-ink); background: var(--mi-surface); font-weight: 700; cursor: pointer;
+  }
+  .platform-control-compact-nav > summary::-webkit-details-marker { display: none; }
+  .platform-control-compact-nav[open] > summary svg { transform: rotate(180deg); }
+  .platform-control-compact-nav .platform-control-nav { margin-top: 6px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 123px),1fr)); }
+}
 @media (max-width: 650px) {
-  .platform-control-layout { grid-template-columns: 1fr; }
-  .platform-control-nav { grid-template-columns: repeat(auto-fit, minmax(min(100%, 123px),1fr)); }
   .platform-audit li { flex-direction: column; gap: .2rem; }
   .platform-destinations { margin-top: .85rem; margin-inline: 0; }
   .platform-context { justify-content: start; }

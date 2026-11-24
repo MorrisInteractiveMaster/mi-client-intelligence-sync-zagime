@@ -8,13 +8,18 @@ import {
   reportTimestamp,
 } from "./dashboard-format";
 
-import { ArrowUpRight, ChartNoAxesColumnIncreasing, ChevronLeft, ChevronRight, CircleAlert, FolderKanban, LayoutGrid, Layers3, PanelLeftClose, Presentation as PresentationIcon, UsersRound } from "lucide-react";
+import { ArrowUpRight, ChevronLeft, ChevronRight, CircleAlert, FolderKanban, LayoutGrid, Layers3, Presentation as PresentationIcon, UsersRound } from "lucide-react";
 import { ProjectReportingCard } from "./ProjectReportingCard";
-import { ExecutiveOverview } from "./ExecutiveOverview";
+import { ExecutiveOverview, WorkProgress } from "./ExecutiveOverview";
+import { DeliveryTrends, StatusComposition } from "./ClientCockpitVisuals";
+import { metricPercent, percentText } from "./insight-metrics";
 import { chartKinds, DotChart, DotChartDialog, type ChartKind } from "./DotAnalytics";
 import { closePortalOverlay, portalNavigate, usePlatformRoute, usePortalLocation } from "./portal-location";
 import { PersonPhoto } from "./PersonPhoto";
-import { ReportingPeriod } from "./ReportingPeriod";
+import { OtherContacts } from "./OtherContacts";
+import { isOtherContact } from "../projects/other-contacts";
+import { WorkspaceNavigation, type WorkspaceGroup } from "./WorkspaceNavigation";
+import { ReportingMonthField, ReportingPeriod } from "./ReportingPeriod";
 import { readReportingRange } from "./reporting-period";
 import { reportingTimeMonth } from "../projects/time-history";
 import { CsvExport } from "./CsvExport";
@@ -68,8 +73,6 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   const setSearch = (value: string) => portalNavigate({ q: value }, true);
   const setStatus = (value: string) => portalNavigate({ status: value === "all" ? null : value });
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const mobileToggle = useRef<HTMLButtonElement>(null);
   const chart = chartKinds.find(kind => kind === location.get("chart"));
   const presenting = location.get("present") === "1";
   const overlayTrigger = useRef<HTMLElement | null>(null);
@@ -93,7 +96,6 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
     hadOverlay.current = Boolean(chart || presenting);
   }, [chart, presenting]);
   const choose = (destination: string, selectedMonth?: string, filter?: ProjectFilter) => {
-    setMobileOpen(false);
     const projectFilter = destination.startsWith("projects:");
     const next = projectFilter ? "projects" : destination;
     if (next !== view) revealView.current = true;
@@ -101,8 +103,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
       status: projectFilter ? destination.slice(9) : filter && filter !== "all" ? filter : null, "project-sort": null, chart: null, present: null,
       ...(selectedMonth && { month: selectedMonth }) }, Boolean(chart || presenting));
   };
-  const openOverlay = (key: "chart" | "present", value: string, trigger: HTMLElement) => {
-    overlayTrigger.current = trigger;
+  const openOverlay = (key: "chart" | "present", value: string, trigger = document.activeElement instanceof HTMLElement ? document.activeElement : undefined) => {
+    overlayTrigger.current = trigger ?? null;
     portalNavigate({ [key]: value }, false, key);
   };
   const scopedResult = result?.client === client ? result : undefined;
@@ -163,6 +165,9 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
       "from-month": range.preset === "custom" ? range.from ?? null : null,
       "through-month": range.preset === "custom" ? range.through ?? null : null, chart: null })} />;
 
+  const legacyMonth = !nativeClient && !preview && <ReportingMonthField month={month}
+    onMonth={selected => portalNavigate({ month: selected })} />;
+
   const [kind, id, itemId] = view.split(":");
   const area = kind === "area" ? report?.portfolio?.areas.find(a => a.id === id) : undefined;
   const engagementProject = kind === "group" && report?.hierarchy?.[id]?.kind === "engagement" ? report.projects.find(p => p.id === id) : undefined;
@@ -183,7 +188,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   if (current && !current.report)
     return (
       <section className="secure-empty">
-        {nativeClient && periodToolbar()}
+        {nativeClient ? periodToolbar() : legacyMonth}
         <h2>Reporting is temporarily unavailable</h2>
         <p role="alert">
           The published report could not be loaded. Try again in a moment.
@@ -201,7 +206,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   if (!report)
     return (
       <div>
-        {nativeClient && scopedResult && periodToolbar()}
+        {nativeClient ? scopedResult && periodToolbar() : legacyMonth}
         <p className="intel-empty intel-loading" role="status">Loading approved reporting…</p>
       </div>
     );
@@ -221,33 +226,31 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   const scoped = activeDepartment?.projects ?? activeEngagement?.projects ?? delivery.projects;
   const matching = scoped.filter(item =>
     searchText([item.project.name, item.parent?.name, item.department?.name].filter(Boolean).join(" ")).includes(searchText(search)) &&
-    forProjectFilter(item, status, activeDepartment ? item.classifiedSeconds : item.project.seconds),
+    (status === "unaffiliated" ? !item.parent : forProjectFilter(item, status, item.project.seconds)),
   ).sort((a, b) => {
     const byName = a.project.name.localeCompare(b.project.name, "en-CA");
     if (sort === "start" || sort === "deadline") return (a[sort] || "9999").localeCompare(b[sort] || "9999") || byName;
     if (sort === "completion") return (b.completion ?? -1) - (a.completion ?? -1) || byName;
-    if (sort === "hours") return (activeDepartment ? b.classifiedSeconds - a.classifiedSeconds : b.project.seconds - a.project.seconds) || byName;
+    if (sort === "hours") return b.project.seconds - a.project.seconds || byName;
     return byName;
   });
-  const groups = new Map<string, { label: string; projects: typeof matching }>();
+  const projectGroups = new Map<string, { label: string; projects: typeof matching }>();
   for (const row of matching) {
     const group = activeDepartment ? "" : activeEngagement ? row.department?.id ?? "" : row.parent?.id ?? "";
     const label = activeDepartment ? "Delivery projects" : activeEngagement ? row.department?.name ?? "Direct delivery projects" : row.parent?.name ?? "Independent delivery projects";
-    const bucket = groups.get(group) ?? { label, projects: [] };
+    const bucket = projectGroups.get(group) ?? { label, projects: [] };
     bucket.projects.push(row);
-    groups.set(group, bucket);
+    projectGroups.set(group, bucket);
   }
-  const directory = (portfolio?.directory ?? []).filter(p => searchText(p.name + " " + p.role).includes(searchText(search)));
+  const directory = (portfolio?.directory ?? []).filter(p => !isOtherContact({ url: p.profileUrl }) &&
+    searchText(p.name + " " + p.role).includes(searchText(search)));
   const period = reportMonth(report.month);
   const directoryFor = (projectId: string) => (portfolio?.directory ?? []).filter(member => member.projectIds.includes(projectId));
   const isPortfolio = (!nativeClient && view === "overview") || view === "projects" || Boolean(selectedArea || engagement);
   const unavailable = !standardTitle && !selectedArea && !engagement && !contact && (!project || (kind === "milestone" && !milestone));
   const presentReport = {
     ...report,
-    projects: activeDepartment ? scoped.map(({project: item, classifiedSeconds}) => ({
-      ...item, seconds: classifiedSeconds, workOrderEffort: undefined,
-      lifetimeSeconds: item.lifetimeSeconds - (item.workOrderEffort?.lifetimeRemainingSeconds ?? 0),
-    })) : activeEngagement ? delivery.projectRows.filter(item => item.project.id === activeEngagement.id ||
+    projects: activeDepartment ? activeDepartment.effortProjects.map(item => item.project) : activeEngagement ? delivery.projectRows.filter(item => item.project.id === activeEngagement.id ||
       item.parentIds.has(activeEngagement.id) || item.parent?.id === activeEngagement.id).map(item => item.project) :
       project ? [project] : contact ? visible.filter(p => contact.projectIds.includes(p.id)) : report.projects,
   };
@@ -285,30 +288,24 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   ];
   const presentationButton = !unavailable && <button type="button" className="mi-present-button" onClick={event => openOverlay("present", "1", event.currentTarget)}>
     <PresentationIcon size={17} aria-hidden="true" />{view === "overview" ? "Presentation" : "Present this view"}</button>;
+  const groups: WorkspaceGroup[] = [{ label: "Client reporting", destinations: [
+    { id: "leadership", label: "Leadership summary", icon: LayoutGrid, active: view === "overview", select: () => choose("overview") },
+    { id: "projects", label: "Projects", icon: FolderKanban, active: view === "projects" || ["project", "group", "timeline"].includes(kind), select: () => choose("projects") },
+    { id: "departments", label: "Departments", icon: Layers3, active: view === "areas", select: () => choose("areas"),
+      children: (portfolio?.areas ?? []).map(area => ({ id: "client-department-" + area.id, label: area.name, icon: Layers3,
+        active: selectedArea?.id === area.id, select: () => choose("area:" + area.id) })) },
+    { id: "directory", label: "MI Directory", icon: UsersRound, active: view === "directory" || Boolean(contact), select: () => choose("directory") },
+    { id: "presentation", label: "Presentation", icon: PresentationIcon, active: presenting, select: () => openOverlay("present", "1") },
+  ] }];
   return (
-    <div className="exec-frame intel-workspace" data-platform={nativeClient} data-collapsed={collapsed}>
-      <aside className="exec-sidebar" data-mobile-open={mobileOpen} onKeyDown={event => {
-        if (event.key === "Escape" && mobileOpen) { setMobileOpen(false); mobileToggle.current?.focus(); }
-      }}>
-        <button ref={mobileToggle} type="button" className="intel-mobile-nav" aria-expanded={mobileOpen} aria-controls="client-portal-nav"
-          onClick={() => setMobileOpen(value => !value)}>{mobileOpen ? "Close workspace navigation" : "Workspace navigation"}</button>
-        <div className="exec-sidebar-title"><span>Client workspace</span>
-          <button className="exec-icon exec-collapse" type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => setCollapsed(!collapsed)}><PanelLeftClose size={18} /></button>
-        </div>
-        <nav aria-label="Client workspace" id="client-portal-nav">
-          <div className="mi-client-nav-group">
-            <p>Client reporting</p>
-            <button type="button" aria-label="Leadership summary" aria-current={view === "overview" ? "page" : undefined} onClick={() => choose("overview")}><LayoutGrid size={18} aria-hidden="true" /><span>Leadership summary</span></button>
-            <button type="button" aria-label="Projects" aria-current={view === "projects" || ["project", "group", "timeline"].includes(kind) ? "page" : undefined} onClick={() => choose("projects")}><FolderKanban size={18} aria-hidden="true" /><span>Projects</span></button>
-            <button type="button" aria-label="Departments" aria-current={view === "areas" || selectedArea ? "page" : undefined} onClick={() => choose("areas")}><Layers3 size={18} aria-hidden="true" /><span>Departments</span></button>
-            <button type="button" aria-label="Reporting history" aria-current={view === "history" ? "page" : undefined} onClick={() => choose("history")}><ChartNoAxesColumnIncreasing size={18} aria-hidden="true" /><span>Reporting history</span></button>
-            <button type="button" aria-label="MI Directory" aria-current={view === "directory" ? "page" : undefined} onClick={() => choose("directory")}><UsersRound size={18} aria-hidden="true" /><span>MI Directory</span></button>
-          </div>
-        </nav>
-      </aside>
-      <div className="exec-content" tabIndex={-1} ref={page}>
-        {(nativeClient || view !== "overview") && <div className="mi-report-top">
-          {nativeClient ? periodToolbar(presentationButton) : presentationButton}
+    <WorkspaceNavigation groups={groups} heading="Client workspace" navigationLabel="Client workspace" embedded={Boolean(preview && !nativeClient)}
+      mobileLabel={preview && !nativeClient ? "Browse client preview" : "Workspace navigation"}
+      collapseLabel="sidebar" collapsed={collapsed} busy={false} onCollapse={() => setCollapsed(value => !value)}
+      searchResults={delivery.projects.map(row => ({ id: "client-project-" + row.project.id, label: row.project.name,
+        context: row.department?.name ?? "Published projects", select: () => choose("project:" + row.project.id) }))}>
+      <div className="exec-content intel-workspace" tabIndex={-1} ref={page}>
+        {(nativeClient || legacyMonth || view !== "overview") && <div className="mi-report-top">
+          {nativeClient ? periodToolbar(presentationButton) : <>{legacyMonth}{view !== "overview" && presentationButton}</>}
         </div>}
         {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose}
           onChart={(type, trigger) => openOverlay("chart", type, trigger)} onPresentation={trigger => openOverlay("present", "1", trigger)} />}
@@ -337,20 +334,30 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
         </section>}
         {view === "engagements" && !delivery.parentRows.length && <p className="intel-empty">There are no approved parent engagements.</p>}
         {view === "areas" && <section className="mi-exec-panel" aria-label="Published departments">
-          <div className="mi-exec-heading"><div><h3>Delivery by department</h3><p>{period} · Attributable hours and approved work</p></div>
+          <div className="mi-exec-heading"><div><h3>Delivery by department</h3><p>{period} · Share of approved effort</p></div>
             {allowExport && visible.length > 0 && <CsvExport filename={csvPrefix + "_Departments"}
-              label="Export approved service area projects CSV" load={exportProjectRows(delivery.projects.filter(row => row.department).map(row => row.project))} onDenied={onDenied} />}
+              label="Export approved department projects CSV" load={exportProjectRows(delivery.projects.filter(row => row.department).map(row => row.project))} onDenied={onDenied} />}
           </div>
-          {delivery.departmentRows.length > 0 ? <div className="mi-department-index">{delivery.departmentRows.map(dept =>
-            <button type="button" key={dept.id} className="mi-department-link" data-attention={dept.counts.blocked > 0 || undefined} onClick={() => choose("area:" + dept.id)}>
-              <span><b>{dept.name}</b><small>{dept.counts.all} {dept.counts.all === 1 ? "delivery project" : "delivery projects"} · {reportHours(dept.seconds)} h</small>
+          {delivery.departmentRows.length > 0 ? <div className="mi-department-index">{delivery.departmentRows.map(dept => {
+            const share = dept.seconds > 0 ? metricPercent(dept.seconds, report.totalSeconds) : undefined;
+            return <button type="button" key={dept.id} className="mi-department-link" data-attention={dept.counts.blocked > 0 || undefined} onClick={() => choose("area:" + dept.id)}>
+              <span><b>{dept.name}</b><small>{dept.counts.all} {dept.counts.all === 1 ? "delivery project" : "delivery projects"}</small>
+                <small>{share === undefined ? "No approved effort in this period" : percentText(share) + " of approved effort · " + reportHours(dept.seconds) + " h"}</small>
                 {dept.counts.blocked > 0 && <small className="mi-engagement-risk"><CircleAlert size={14} aria-hidden="true" />{dept.counts.blocked} active {dept.counts.blocked === 1 ? "blocker" : "blockers"}</small>}</span>
               <ArrowUpRight aria-hidden="true" size={18} />
-            </button>)}</div> : <p className="intel-empty">There are no approved departments.</p>}
+            </button>})}</div> : <p className="intel-empty">There are no approved departments.</p>}
         </section>}
-        {activeDepartment && <section className="mi-exec-panel" aria-label={activeDepartment.name + " delivery metrics"}>
-          <DeliveryMetrics counts={activeDepartment.counts} seconds={activeDepartment.seconds} period={period} active={status} more onFilter={setStatus} />
-        </section>}
+        {activeDepartment && activeDepartment.counts.all > 0 && <>
+          <section className="mi-exec-panel" aria-label={activeDepartment.name + " delivery metrics"}>
+            <DeliveryMetrics counts={activeDepartment.counts} seconds={activeDepartment.seconds} period={period} active={status} onFilter={setStatus} />
+          </section>
+          <div className="mi-cockpit-analysis mi-department-analysis">
+            <div className="mi-exec-panel"><StatusComposition counts={activeDepartment.counts} onFilter={setStatus} label="Department status composition" /></div>
+            <DeliveryTrends counts={activeDepartment.counts} projects={activeDepartment.projects} onFilter={setStatus}
+              onProject={id => choose("project:" + id)} />
+            <WorkProgress projects={activeDepartment.projects} onProject={id => choose("project:" + id)} />
+          </div>
+        </>}
         {activeEngagement && <ParentEngagementCard engagement={activeEngagement} period={period}
           onOpen={activeEngagement.project ? () => choose("project:" + activeEngagement.id) : undefined}
           onFilter={setStatus} />}
@@ -373,12 +380,14 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
               {Object.entries(projectSorts).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select></label>
           </div>}
-          {!scoped.length && <p className="secure-empty">No approved delivery projects are available in this view.</p>}
+          {!scoped.length && <p className="secure-empty">No approved delivery projects are available in {activeDepartment?.name ?? "this view"}.
+            {activeDepartment && activeDepartment.seconds > 0 && " " + reportHours(activeDepartment.seconds) + " h of approved effort were reported directly against this department in " + period + "."}
+          </p>}
           {scoped.length > 0 && !matching.length && <div className="secure-empty">
             <p>No published projects match.</p>
             <button type="button" onClick={() => portalNavigate({ q: null, status: null })}>Clear filters</button>
           </div>}
-          {[...groups].map(([id, group]) => <section className="mi-project-group" key={id}>
+          {[...projectGroups].map(([id, group]) => <section className="mi-project-group" key={id}>
             {!activeDepartment && <h3>{group.label}</h3>}
             {view === "projects" && id ? [...new Set(group.projects.map(item => item.department?.id ?? ""))].map(dept => {
               const items = group.projects.filter(item => (item.department?.id ?? "") === dept);
@@ -406,9 +415,11 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
           <ul>{member.projectIds.map(id => visible.find(p => p.id === id)).filter(p => p !== undefined).map(p => <li key={p.id}><button className="exec-text-button" onClick={() => choose("project:" + p.id)}>{p.name}</button></li>)}</ul>
           </div>
         </article>)}</div></section>) : <p className="secure-empty">{search && view === "directory" ? "No approved contacts match." : "No approved contacts are available for these projects."}</p>}
+        {view === "directory" && <OtherContacts />}
       </section>}
       {view === "history" && <DotChart report={report} kind="trend" expanded monthRange={monthRange} draft={preview?.mode === "draft"} onLink={choose} onOpen={trigger => openOverlay("chart", "trend", trigger)} />}
-      {(selectedArea || engagement) && <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"} onLink={choose} onOpen={trigger => openOverlay("chart", "plan", trigger)} />}
+      {(selectedArea || engagement) && presentReport.projects.length > 0 && <DotChart report={presentReport} kind="plan" draft={preview?.mode === "draft"}
+        onLink={choose} onOpen={trigger => openOverlay("chart", "plan", trigger)} />}
       {view === "notes" && <article className="intel-detail"><h3>Delivery narrative</h3>
         <p>{portfolio?.narrative || "No executive narrative has been published for this period."}</p>
         {portfolio?.action && <><h3>Next decision</h3><p>{portfolio.action}</p></>}</article>}
@@ -455,6 +466,6 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
         <Presentation report={presentReport} scope={view} scopeTitle={title} onLink={choose} onClose={() => closePortalOverlay("present")}
           draft={preview?.mode === "draft"} linked={nativeClient} />
       </Suspense>}
-    </div>
+    </WorkspaceNavigation>
   );
 }

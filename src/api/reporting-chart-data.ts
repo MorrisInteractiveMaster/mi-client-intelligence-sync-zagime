@@ -5,9 +5,10 @@ export type ChartKind = "distribution" | "trend" | "plan";
 export const chartKinds: ChartKind[] = ["trend", "distribution", "plan"];
 export type Row = { id: string; label: string; seconds: number; projectIds: string[]; destination?: string; month?: string };
 export type MonthRange = { from?: string; through?: string };
-export type PlotUnit = "hours" | "percent";
+export type PlotUnit = "hours" | "percent" | "projects";
 
 export function axisMaximum(value: number, unit: PlotUnit = "hours") {
+  if (unit === "projects") return Math.max(2, Math.ceil(value / 2) * 2);
   const minimum = unit === "hours" ? 3600 : 100;
   if (value <= minimum) return minimum;
   const normalized = unit === "hours" ? value / 3600 : value;
@@ -49,10 +50,8 @@ export function chartRows(report: ProjectReport, kind: ChartKind, monthRange?: M
   for (const project of projects) {
     const area = placements.get(project.id);
     const label = area ? areaLabels.get(area) : undefined;
-    add(area && label ? area : "unassigned", label ?? "No published service area",
-      project.workOrderEffort?.assignedSeconds ?? project.seconds, project.id, label ? "area:" + area : undefined);
-    add("recorded-remainder", "Work-order time awaiting classification",
-      project.workOrderEffort?.remainingSeconds ?? 0, project.id);
+    add(area && label ? area : "unassigned", label ?? "No department",
+      project.seconds, project.id, label ? "area:" + area : undefined);
   }
   return [...groups.values()].sort((a, b) => b.seconds - a.seconds || a.label.localeCompare(b.label));
 }

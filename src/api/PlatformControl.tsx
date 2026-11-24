@@ -1,6 +1,6 @@
 import { isZagimeClient } from "../config/client-identity";
-import { ArrowLeft, ArrowUpRight, ShieldCheck } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { ArrowLeft, ArrowUpRight, ChevronDown } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { ProjectPage, ProjectWorkspace, StaffProjectSummary } from "../projects/model";
 import type { Portfolio } from "../projects/portfolio";
 import type { PlatformControl as ControlData } from "../projects/control";
@@ -9,10 +9,10 @@ import { DeliveryDirectory, projectCatalog } from "./DeliveryOperations";
 import { reportTimestamp } from "./dashboard-format";
 import { PlatformLink } from "./PlatformHome";
 import { clientBase, controlSections, type ControlSection } from "./platform-routes";
-import { periodHref } from "./portal-location";
+import { navigatePlatform, periodHref, portalNavigate } from "./portal-location";
 import { TimeConnectionPanel } from "./TimeConnectionPanel";
 import { EmployeeMapping } from "./EmployeeMapping";
-import { navigatePlatform } from "./portal-location";
+import { ReportingMonthField } from "./ReportingPeriod";
 
 type Props = {
   client: SecuredApiClient;
@@ -21,9 +21,10 @@ type Props = {
   month: string;
   onDenied: () => void;
   onUnsavedChange: (dirty: boolean) => void;
+  homeLink: ReactNode;
 };
 
-export function PlatformControl({ client, workspace, section, month, onDenied, onUnsavedChange }: Props) {
+export function PlatformControl({ client, workspace, section, month, onDenied, onUnsavedChange, homeLink }: Props) {
   const tenant = workspace.tenant.id;
   const [control, setControl] = useState<ControlData>();
   const [portfolio, setPortfolio] = useState<Portfolio>();
@@ -36,6 +37,7 @@ export function PlatformControl({ client, workspace, section, month, onDenied, o
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const sectionMenu = useRef<HTMLDetailsElement>(null);
   const refresh = () => setVersion(v => v + 1);
   const permit = () => !dirty || window.confirm("Leave without saving these settings?");
   const title = section ? controlSections[section] : "Control Panel";
@@ -56,8 +58,8 @@ export function PlatformControl({ client, workspace, section, month, onDenied, o
           if (!signal.aborted) setScopes(result);
         });
       if (section === "team")
-        return client.call<Portfolio>(tenant, "portfolio?month=" + month, { signal }).then(result => {
-          if (!signal.aborted) setPortfolio(result);
+        return client.call<{ portfolio: Portfolio }>(tenant, "portfolio?month=" + month, { signal }).then(result => {
+          if (!signal.aborted) setPortfolio(result.portfolio);
         });
       if (section === "time" || section === "work-orders")
         return projectCatalog(client, tenant, month, signal).then(result => {
@@ -93,20 +95,41 @@ export function PlatformControl({ client, workspace, section, month, onDenied, o
       setControl(updated); setDirty(false); setNotice("Settings saved.");
     });
   }
+  function sectionLinks(compact = false) {
+    const beforeNavigate = () => {
+      if (!permit()) return false;
+      const menu = sectionMenu.current;
+      if (compact && menu) {
+        menu.open = false;
+        menu.querySelector("summary")?.focus();
+      }
+      return true;
+    };
+    return <nav aria-label="Control Panel sections" className="platform-control-nav">
+      <PlatformLink href={periodHref("/control", month)} beforeNavigate={beforeNavigate} aria-current={!section ? "page" : undefined}>Control Panel home</PlatformLink>
+      {Object.entries(controlSections).map(([key, label]) =>
+        <PlatformLink key={key} href={periodHref("/control/" + key, month)} aria-current={key === section ? "page" : undefined} beforeNavigate={beforeNavigate}>{label}</PlatformLink>)}
+      {homeLink}
+    </nav>;
+  }
   return <main id="platform-content" className="platform-control">
-    <header className="platform-hero platform-hero-compact">
-      <span><ShieldCheck aria-hidden="true" size={18} /> Morris Interactive</span>
-      <h2>{title}</h2>
-      <p>{workspace.tenant.name}</p>
-    </header>
     <div className="platform-control-layout">
-      <nav aria-label="Control Panel sections" className="platform-control-nav">
-        <PlatformLink href={periodHref("/control", month)} beforeNavigate={permit} aria-current={!section ? "page" : undefined}>Control Panel home</PlatformLink>
-        {Object.entries(controlSections).map(([key, label]) =>
-          <PlatformLink key={key} href={periodHref("/control/" + key, month)} aria-current={key === section ? "page" : undefined} beforeNavigate={permit}>{label}</PlatformLink>)}
-      </nav>
+      <aside className="platform-control-rail">
+        <div className="platform-control-wide-nav">{sectionLinks()}</div>
+        <details className="platform-control-compact-nav" ref={sectionMenu} onKeyDown={event => {
+          if (event.key !== "Escape" || !event.currentTarget.open) return;
+          event.stopPropagation();
+          event.currentTarget.open = false;
+          event.currentTarget.querySelector("summary")?.focus();
+        }}>
+          <summary>Control Panel sections <ChevronDown size={16} aria-hidden="true" /></summary>
+          {sectionLinks(true)}
+        </details>
+      </aside>
       <section className="platform-control-card" aria-label={title}>
+        <header className="mi-page-heading"><p className="mi-kicker">{workspace.tenant.name}</p><h2>{title}</h2></header>
         <PlatformLink href={periodHref("/workspace", month)} beforeNavigate={permit} className="platform-back"><ArrowLeft size={16} aria-hidden="true" /> Back to Morris Workspace</PlatformLink>
+        <ReportingMonthField month={month} onMonth={selected => { if (permit()) portalNavigate({ month: selected }); }} />
         {error && <p role="alert" className="secure-message secure-error">{error} <button type="button" className="secure-secondary" disabled={busy} onClick={() => { if (permit()) refresh(); }}>Reload</button></p>}
         {notice && <p role="status" className="secure-message">{notice}</p>}
         {!control && !error && <p role="status">Checking Control Panel access…</p>}
