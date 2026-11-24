@@ -827,7 +827,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await creationForm.getByLabel("Program length in days").fill("2");
       await creationForm.getByRole("button", { name: "Continue", exact: true }).click();
       await creationForm.getByRole("alert").filter({ hasText: "Choose exactly one distinct calendar date per program day." }).waitFor();
-      await arrangement.selectOption("workshop");
+      assert.equal(await creationForm.getByLabel(/hour cap|budgeted hours/i).count(), 0);
       await creationForm.getByRole("button", { name: /Program dates/ }).click();
       const programCalendar = creationForm.getByRole("dialog", { name: "Program dates", exact: true });
       const currentMonthDays = programCalendar.locator('button[data-other-month="false"]');
@@ -1281,7 +1281,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         await page.getByText("Approved delivery group", { exact: true }).waitFor();
         const departmentMetrics = page.getByRole("region", { name: "Health delivery metrics" });
         await departmentMetrics.getByRole("button", { name: /November 2026 hours/ }).click();
-        await page.getByText(/With attributable hours/).filter({ hasText: /project/ }).waitFor();
+        await page.getByText(/With approved effort/).filter({ hasText: /project/ }).waitFor();
         await page.getByLabel("Sort by").selectOption("completion");
         assert.match(page.url(), /project-sort=completion/);
         await page.screenshot({ path: join(evidence, "area-" + width + ".png"), fullPage: true });
@@ -1857,8 +1857,12 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       assert.equal(await compactWizard.getByRole("group", { name: /Facilitators/ }).count(), 0);
       await compactWizard.getByRole("group", { name: /Project Managers/ }).getByRole("checkbox", { name: /Example delivery facilitator/ }).check();
       await compactNext.click();
-      compactCreation.page.once("dialog", dialog => void dialog.accept());
       await compactWizard.getByRole("button", { name: "Create & Publish", exact: true }).click();
+      const createDialog = compactCreation.page.getByRole("dialog", { name: "Publish new project?" });
+      await createDialog.waitFor();
+      await createDialog.getByText("Miscellaneous planning fixture", { exact: true }).waitFor();
+      await createDialog.screenshot({ path: join(evidence, "wizard-mobile-publication-confirmation.png"), animations: "disabled" });
+      await createDialog.getByRole("button", { name: "Publish", exact: true }).click();
       await compactCreation.page.getByText("Project created and published.", { exact: true }).waitFor();
       await compactCreation.context.close();
       await hierarchyBrowser.context.close();

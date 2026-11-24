@@ -179,12 +179,14 @@ export function publishedPortfolio(config: Portfolio, projects: ProjectReport["p
   const areas = config.areas.filter(a => a.visible).sort(byOrder);
   const engagements = config.engagements.filter(e => e.visible).sort(byOrder);
   const approvedContacts = config.directory.filter(p => p.active && p.visible).sort(byOrder);
+  const approvedIds = new Set(approvedContacts.map(contact => contact.id));
   const safeArea = (id: string) => areas.some(x => x.id === id) ? id : "";
   const placements = effective.filter(p => ids.has(p.id)).map(p => ({
     id: p.id, areaId: safeArea(p.areaId), engagementId: engagements.some(e => e.id === p.engagementId) ? p.engagementId : "",
     start: p.publishDates ? p.start : "", target: p.publishDates ? p.target : "", archived: p.archived,
-    ...(approvedContacts.some(contact => contact.id === p.leadId) ? { leadId: p.leadId } : {}),
-    ...(delivery.has(p.id) ? { managerIds: delivery.get(p.id)!.managerIds.filter(id => approvedContacts.some(contact => contact.id === id)) } : {}),
+    ...(approvedIds.has(p.leadId) ? { leadId: p.leadId } : {}),
+    ...(delivery.has(p.id) ? { managerIds: delivery.get(p.id)!.managerIds.filter(id => approvedIds.has(id)) } : {}),
+    ...(delivery.get(p.id)?.training ? { facilitatorIds: delivery.get(p.id)!.training!.facilitatorIds.filter(id => approvedIds.has(id)) } : {}),
   }));
   const used = new Set(placements.map(p => p.engagementId));
   const directory = approvedContacts.flatMap(p => {

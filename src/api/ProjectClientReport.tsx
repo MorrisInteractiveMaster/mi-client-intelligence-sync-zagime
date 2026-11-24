@@ -69,6 +69,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   const view = location.get("view") || "overview";
   const search = location.get("q")?.slice(0, 120) || "";
   const status = location.get("status") || "all";
+  const effortUnit = location.get("effort-unit") === "hours" ? "hours" : "percentage";
   const sort = location.get("project-sort") || "name";
   const setSearch = (value: string) => portalNavigate({ q: value }, true);
   const setStatus = (value: string) => portalNavigate({ status: value === "all" ? null : value });
@@ -160,13 +161,13 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   const periodToolbar = (action?: ReactNode) => <ReportingPeriod month={month} currentMonth={currentMonth} action={action}
     availableMonths={availableMonths} latestMonth={latestMonth} empty={report?.totalSeconds === 0}
     range={monthRange} pending={!report && !current}
-    onMonth={selected => portalNavigate({ month: selected, "period-scope": null, "from-month": null, "through-month": null })}
+    onMonth={selected => portalNavigate({ month: selected, "effort-point": null, "period-scope": null, "from-month": null, "through-month": null })}
     onRange={range => portalNavigate({ view: "history", "period-scope": range.preset,
       "from-month": range.preset === "custom" ? range.from ?? null : null,
       "through-month": range.preset === "custom" ? range.through ?? null : null, chart: null })} />;
 
   const legacyMonth = !nativeClient && !preview && <ReportingMonthField month={month}
-    onMonth={selected => portalNavigate({ month: selected })} />;
+    onMonth={selected => portalNavigate({ month: selected, "effort-point": null })} />;
 
   const [kind, id, itemId] = view.split(":");
   const area = kind === "area" ? report?.portfolio?.areas.find(a => a.id === id) : undefined;
@@ -307,7 +308,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
         {(nativeClient || legacyMonth || view !== "overview") && <div className="mi-report-top">
           {nativeClient ? periodToolbar(presentationButton) : <>{legacyMonth}{view !== "overview" && presentationButton}</>}
         </div>}
-        {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose}
+        {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose} effortUnit={effortUnit}
+          onEffortUnit={unit => portalNavigate({ "effort-unit": unit === "hours" ? unit : null }, true)}
           onChart={(type, trigger) => openOverlay("chart", type, trigger)} onPresentation={trigger => openOverlay("present", "1", trigger)} />}
         {view !== "overview" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
           <button type="button" className="exec-text-button" onClick={() => choose("overview")}><ChevronLeft size={16} /> Leadership summary</button>
@@ -374,7 +376,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
               <input type="search" maxLength={120} value={search} onChange={event => setSearch(event.target.value)} />
             </label>
             <label>Status<select value={Object.hasOwn(clientProjectFilters, status) ? status : "all"} onChange={event => setStatus(event.target.value)}>
-              {Object.entries(clientProjectFilters).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              {Object.entries(clientProjectFilters).filter(([key]) => !key.startsWith("unassigned-") || key === status).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select></label>
             <label>Sort by<select value={Object.hasOwn(projectSorts, sort) ? sort : "name"} onChange={event => portalNavigate({ "project-sort": event.target.value === "name" ? null : event.target.value })}>
               {Object.entries(projectSorts).map(([key, label]) => <option key={key} value={key}>{label}</option>)}

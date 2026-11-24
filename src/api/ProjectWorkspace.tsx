@@ -607,7 +607,7 @@ export function ProjectStaffWorkspace({
                 result.draft ? "Draft saved. Clients still see the last approved version." : "No project changes to save.");
             } else {
               portalNavigate(nativeWorkspace ? { staff: "management", managed: editing.id, editor: null } : { editor: null }, true);
-              setNotice(result.changed ? "Project changes saved." : "No project changes to save.");
+              setNotice(result.changed ? publish ? "Project changes published." : "Project changes saved." : "No project changes to save.");
             }
           })} />
         {editing !== "new" && <div className="secure-actions creation-related" aria-label="Project actions">

@@ -200,7 +200,7 @@ async function observe(context, page) {
           }
           await page.evaluate(() => document.fonts.ready);
           if (item.protected) {
-            const contrast = await page.locator(".mi-sign-in-panel > p").first().evaluate(paragraph => {
+            const contrast = await page.locator(".mi-access-card > p").first().evaluate(paragraph => {
               const luminosity = color => {
                 const srgb = color.match(/[0-9.]+/g).slice(0, 3).map(value => Number(value) / 255);
                 const linear = srgb.map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);

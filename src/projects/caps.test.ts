@@ -22,3 +22,14 @@ test("cap changes have a bounded shape and respect delivery compatibility", () =
   assert.throws(() => applyDeliveryCapChange(fixed, { monthlyCap: 3_600 }), /Invalid monthly cap/);
   assert.deepEqual(deliveryCaps(applyDeliveryCapChange(fixed, { lifetimeCap: MAX_CAP_SECONDS })), { lifetimeCap: MAX_CAP_SECONDS });
 });
+
+test("training and workshop retain historical caps but reject newly assigned caps", () => {
+  for (const type of ["training", "workshop"] as const) {
+    const before = { ...deliveryDefaults, type, monthlyCap: 3600, lifetimeCap: 7200 };
+    assert.equal(canEditMonthlyCap(before), false);
+    assert.throws(() => applyDeliveryCapChange(before, { monthlyCap: 0 }), /Training & Workshops/);
+    assert.throws(() => applyDeliveryCapChange(before, { lifetimeCap: 3600 }), /Training & Workshops/);
+    assert.deepEqual(deliveryCaps(before), { monthlyCap: 3600, lifetimeCap: 7200 });
+    assert.deepEqual(deliveryCaps(applyDeliveryCapChange(before, { lifetimeCap: null })), { monthlyCap: 3600 });
+  }
+});

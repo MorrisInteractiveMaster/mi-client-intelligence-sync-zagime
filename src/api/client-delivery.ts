@@ -38,15 +38,22 @@ export function projectMeasures(project: PublishedProject, delivery: PublishedDe
 }
 
 export type ProjectFilter = "all" | "active" | "planned" | "upcoming" | "completed" | "paused" | "archived" |
-  "near" | "blocked" | "stalled" | "hours" | "other" | "unaffiliated";
+  "near" | "blocked" | "stalled" | "hours" | "other" | "unaffiliated" | "unassigned" | "unassigned-active" | "unassigned-completed" | "unassigned-upcoming" | "due-soon";
 export const clientProjectFilters: Record<ProjectFilter, string> = {
   all: "All delivery projects", active: "In progress", planned: "Planned", upcoming: "Upcoming", completed: "Completed",
   paused: "On hold", archived: "Archived", near: "Nearing completion", blocked: "Active blockers", stalled: "Blocked or overdue",
-  hours: "With attributable hours", other: "Other project statuses", unaffiliated: "Independent delivery projects",
+  hours: "With approved effort", "due-soon": "Deadlines approaching", unassigned: "No department",
+  "unassigned-active": "No department · In progress", "unassigned-completed": "No department · Completed", "unassigned-upcoming": "No department · Upcoming", other: "Other project statuses", unaffiliated: "Independent delivery projects",
 };
 
-export function forProjectFilter(project: ClientProject, filter: string, seconds: number) {
+export function forProjectFilter(project: ClientProject, filter: string, seconds: number): boolean {
   if (filter === "all") return true;
+  if (filter.startsWith("unassigned")) {
+    const state = filter.slice("unassigned-".length);
+    return !("department" in project && project.department) &&
+      (filter === "unassigned" || forProjectFilter(project, state, seconds));
+  }
+  if (filter === "due-soon") return project.dueSoon;
   if (filter === "stalled") return Boolean(project.risk);
   if (filter === "hours") return seconds > 0;
   if (filter === "other") return !project.active && !project.upcoming && !project.completed;
@@ -133,4 +140,37 @@ export function projectCompletionHistory(
   return [...matches].sort(([a], [b]) => a.localeCompare(b)).map(([month, records]) => ({
     id: month, month, projects: records.sort((a, b) => a.name.localeCompare(b.name, "en-CA")),
   }));
+}
+
+export const deadlineHorizons = [3, 6, 9, 12] as const;
+export type DeadlineHorizon = typeof deadlineHorizons[number];
+
+export function deadlineWindow(projects: ReturnType<typeof clientDelivery>["projects"], date: string, months: DeadlineHorizon) {
+  const start = new Date(date + "T00:00:00Z");
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months, 1));
+  const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+  end.setUTCDate(Math.min(start.getUTCDate(), lastDay));
+  const through = end.toISOString().slice(0, 10);
+  const days = (deadline: string) => (Date.parse(deadline) - start.getTime()) / 86_400_000;
+  const current = projects.filter(item => !item.archived && !["completed", "closed", "cancelled"].includes(item.project.status));
+  return {
+    through,
+    unscheduled: current.filter(item => !item.deadline).length,
+    rows: current.flatMap(item => item.deadline && item.deadline <= through
+      ? [{ ...item, due: item.deadline, days: days(item.deadline) }] : [])
+      .sort((a, b) => a.days - b.days || a.project.name.localeCompare(b.project.name, "en-CA")),
+    completed: projects.flatMap(item => item.completed && item.deadline && item.delivery?.completedOn && item.delivery.completedOn <= date
+      ? [{ id: item.project.id, name: item.project.name, late: item.delivery.completedOn > item.deadline }] : []),
+  };
+}
+
+export function publishedMonthlyCap(delivery: ReturnType<typeof clientDelivery>) {
+  const eligible = delivery.projectRows.filter(row => row.delivery?.monthlyCap !== undefined && row.delivery.monthlyCapUsed !== undefined);
+  const capped = new Set(eligible.map(row => row.project.id));
+  const independent = eligible.filter(row => ![...row.parentIds].some(id => capped.has(id)));
+  return {
+    count: independent.length,
+    cap: independent.reduce((sum, row) => sum + row.delivery!.monthlyCap!, 0),
+    used: independent.reduce((sum, row) => sum + row.delivery!.monthlyCapUsed!, 0),
+  };
 }

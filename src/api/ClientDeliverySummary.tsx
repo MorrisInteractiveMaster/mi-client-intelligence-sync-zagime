@@ -9,7 +9,7 @@ import { reportHours } from "./dashboard-format";
 type DeliveryPortfolio = ReturnType<typeof clientDelivery>;
 type Budget = NonNullable<ProjectReport["hierarchy"]>[string];
 
-export function BudgetUtilization({ budget, title = "Hour caps" }: { budget?: Budget; title?: string }) {
+export function BudgetUtilization({ budget, title = "Hour caps", showHours = false }: { budget?: Budget; title?: string; showHours?: boolean }) {
   const caps = [
     { label: "Monthly hours used", cap: budget?.monthlyCap, used: budget?.monthlyCapUsed },
     { label: "Whole-project hours used", cap: budget?.lifetimeCap, used: budget?.lifetimeCapUsed },
@@ -21,6 +21,8 @@ export function BudgetUtilization({ budget, title = "Hour caps" }: { budget?: Bu
       const percentage = used === undefined ? undefined : metricPercent(used, cap);
       const exact = used === undefined ? reportHours(cap) + " h limit" : reportHours(used) + " of " + reportHours(cap) + " hours";
       return <div className="mi-budget-cap" key={label}>
+        {showHours && <p className="mi-budget-exact">{exact}</p>}
+        {cap === 0 && <p className="mi-budget-exact">Zero-hour cap · percentage does not apply.</p>}
         <DottedTrack value={percentage} label={label} tone={percentage !== undefined && percentage >= 90 ? "gold" : "blue"} detail={exact} />
         {used !== undefined && used > cap && <small className="mi-budget-warning">Over cap by {reportHours(used - cap)} h</small>}
         {percentage !== undefined && percentage >= 90 && percentage <= 100 && <small>{percentage === 100 ? "Cap reached" : "Approaching cap"}</small>}
@@ -49,8 +51,8 @@ export function DeliveryMetrics({ counts, seconds, period, onFilter, active, mor
     </button>)}</div>;
 }
 
-export function ParentEngagementCard({ engagement, period, reportSeconds, onOpen, onFilter }: {
-  engagement: DeliveryPortfolio["parentRows"][number]; period: string; reportSeconds?: number; onOpen?: () => void; onFilter: (filter: ProjectFilter) => void;
+export function ParentEngagementCard({ engagement, period, reportSeconds, exactEffort, onOpen, onFilter }: {
+  engagement: DeliveryPortfolio["parentRows"][number]; period: string; reportSeconds?: number; exactEffort?: boolean; onOpen?: () => void; onFilter: (filter: ProjectFilter) => void;
 }) {
   const share = reportSeconds === undefined ? undefined : metricPercent(engagement.seconds, reportSeconds);
   const blockers = engagement.counts.blocked;
@@ -67,7 +69,7 @@ export function ParentEngagementCard({ engagement, period, reportSeconds, onOpen
         <small>{engagement.counts.active} in progress · {engagement.counts.upcoming} upcoming</small></span>
       <ArrowUpRight size={15} aria-hidden="true" />
     </button>
-    {share === undefined
+    {share === undefined || exactEffort
       ? <p className="mi-engagement-effort">{period} approved effort <strong>{reportHours(engagement.seconds)} h</strong></p>
       : <DottedTrack value={share} label="Share of approved portfolio effort"
         detail={period + " · " + reportHours(engagement.seconds) + " of " + reportHours(reportSeconds!) + " approved hours"} />}

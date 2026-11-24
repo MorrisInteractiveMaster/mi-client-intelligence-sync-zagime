@@ -1,8 +1,9 @@
 import { ArrowUpRight, CalendarClock, CircleAlert, ClipboardCheck, FolderKanban, Presentation } from "lucide-react";
 import type { ProjectReport } from "../projects/model";
-import { clientDelivery, type ProjectFilter } from "./client-delivery";
+import { clientDelivery, publishedMonthlyCap, type ProjectFilter } from "./client-delivery";
 import { ParentEngagementCard } from "./ClientDeliverySummary";
 import { DeliveryTrends, ProgressArc, StatusComposition } from "./ClientCockpitVisuals";
+import { DepartmentAnalytics, EffortToggle, MonthlyEffort, UpcomingDeadlines, type EffortUnit } from "./ClientIntelligence";
 import { ContextHelp } from "./ContextHelp";
 import { DotChart, type ChartKind } from "./DotAnalytics";
 import { metricPercent, percentText } from "./insight-metrics";
@@ -11,7 +12,7 @@ import { reportDay, reportHours, reportMonth, reportTimestamp, today } from "./d
 type Delivery = ReturnType<typeof clientDelivery>;
 type OpenView = (view: string, month?: string, filter?: ProjectFilter) => void;
 
-export function ExecutiveOverview({ report, delivery, onPresentation, onLink, onChart, platform, draft }: {
+export function ExecutiveOverview({ report, delivery, onPresentation, onLink, onChart, platform, draft, effortUnit, onEffortUnit }: {
   report: ProjectReport;
   delivery: Delivery;
   onPresentation: (trigger: HTMLButtonElement) => void;
@@ -19,18 +20,24 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
   onChart: (kind: ChartKind, trigger: HTMLButtonElement) => void;
   platform?: boolean;
   draft?: boolean;
+  effortUnit: EffortUnit;
+  onEffortUnit: (unit: EffortUnit) => void;
 }) {
   const { portfolio, projects } = report;
   const { counts, parentRows, progress, risks, unaffiliated } = delivery;
   const period = reportMonth(report.month);
+  const monthlyCap = publishedMonthlyCap(delivery);
+  const utilization = metricPercent(monthlyCap.used, monthlyCap.cap);
   const displayDate = today();
   const milestones = projects.flatMap(p => (p.milestones ?? []).filter(m => !m.completed && m.status !== "waived" && m.date >= displayDate)
     .map(m => ({ ...m, project: p.name, projectId: p.id }))).sort((a, b) => a.date.localeCompare(b.date));
   const signals = [
+    { label: "Approved projects", value: counts.all, icon: FolderKanban, filter: "all", tone: "active" },
     { label: "In progress", value: counts.active, icon: FolderKanban, filter: "active", tone: "active" },
     { label: "Upcoming", value: counts.upcoming, icon: CalendarClock, filter: "upcoming", tone: "upcoming" },
     { label: "Completed", value: counts.completed, icon: ClipboardCheck, filter: "completed", tone: "complete" },
     { label: "Blocked", value: counts.blocked, icon: CircleAlert, filter: "blocked", tone: "risk" },
+    { label: "Deadlines approaching", value: delivery.projects.filter(item => item.dueSoon).length, icon: CalendarClock, filter: "due-soon", tone: "upcoming" },
   ] as const;
   const openFilter = (filter: ProjectFilter) => onLink("projects", undefined, filter);
   const narrative = portfolio?.narrative || portfolio?.action;
@@ -63,9 +70,28 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
       </button>)}
     </section>
 
-    <div className="mi-cockpit-analysis">
-      <div className="mi-cockpit-column">
-        <DeliveryTrends counts={counts} projects={delivery.projects} onFilter={openFilter} onProject={id => onLink("project:" + id)} />
+    <div className="mi-effort-pair">
+    <section className="mi-exec-panel mi-effort-summary" aria-label="Published portfolio summary">
+      <div><span>Reported effort · {period} <ContextHelp label="How are reported hours calculated?">Approved project allocations in this period are counted once across the departments and projects you can see.</ContextHelp></span>
+        <strong>{reportHours(report.totalSeconds)} h</strong>
+        {report.sourceUpdatedAt && <small>Source updated <time dateTime={report.sourceUpdatedAt}>{reportTimestamp(report.sourceUpdatedAt)}</time></small>}
+      </div>
+      <EffortToggle unit={effortUnit} onChange={onEffortUnit} />
+      {report.totalSeconds > 0 && <button type="button" className="exec-text-button" onClick={event => onChart("distribution", event.currentTarget)}>Explore reported hours<span className="exec-sr-only"> by department</span><ArrowUpRight size={16} aria-hidden="true" /></button>}
+    </section>
+    <section className="mi-exec-panel mi-effort-summary" aria-label="Monthly cap utilization">
+      <div><span>Monthly cap utilization · {period} <ContextHelp label="How is monthly cap utilization calculated?">Approved cap-consumed seconds divided by published caps. When a parent has a cap, nested caps are omitted from this portfolio comparison.</ContextHelp></span>
+        <strong>{!monthlyCap.count ? "No published cap" : effortUnit === "hours" ? reportHours(monthlyCap.used) + " of " + reportHours(monthlyCap.cap) + " h" :
+          utilization === undefined ? "Not applicable" : percentText(utilization)}</strong>
+        {monthlyCap.count > 0 && <small>{monthlyCap.count} {monthlyCap.count === 1 ? "published limit" : "published limits"} · Uncapped work is excluded</small>}
+      </div>
+      <button type="button" className="exec-text-button" onClick={event => onChart("plan", event.currentTarget)}>Review hours and caps <ArrowUpRight size={16} aria-hidden="true" /></button>
+    </section>
+    </div>
+    <div className="mi-cockpit-analysis mi-insight-grid">
+      <DeliveryTrends counts={counts} projects={delivery.projects} onFilter={openFilter} onProject={id => onLink("project:" + id)} />
+      <DepartmentAnalytics report={report} delivery={delivery} unit={effortUnit} onLink={onLink} />
+      <UpcomingDeadlines delivery={delivery} report={report} onLink={onLink} />
         <section className="mi-exec-panel mi-cockpit-priorities" aria-labelledby="priority-heading">
           <div className="mi-exec-heading"><div><h3 id="priority-heading">Decision priorities</h3><p>Open blockers and overdue work</p></div></div>
           {risks.length ? <ul className="mi-priority-list">{risks.slice(0, 4).map(item => <li key={item.project.id}>
@@ -79,19 +105,15 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
             </button>
           </li>)}</ul>}
         </section>
-      </div>
-      <div className="mi-cockpit-column">
-        <DepartmentComposition report={report} delivery={delivery} period={period} onLink={onLink}
-          onOpen={trigger => onChart("distribution", trigger)} />
-        <WorkProgress projects={progress} onProject={id => onLink("project:" + id)} />
-      </div>
+      <WorkProgress projects={progress} onProject={id => onLink("project:" + id)} />
+      <MonthlyEffort report={report} delivery={delivery} unit={effortUnit} onLink={onLink} />
     </div>
 
     {(parentRows.length > 0 || unaffiliated.length > 0) && <section className="mi-exec-panel mi-cockpit-engagements" aria-labelledby="parent-delivery-title">
       <div className="mi-exec-heading"><div><h3 id="parent-delivery-title">Parent engagements</h3><p>Approved delivery projects and effort grouped by parent.</p></div>
         <button type="button" className="exec-text-button" onClick={() => onLink("projects")}>View portfolio <ArrowUpRight size={16} aria-hidden="true" /></button>
       </div>
-      {parentRows.length > 0 && <div className="mi-engagement-grid">{parentRows.map(engagement => <ParentEngagementCard key={engagement.id} engagement={engagement} period={period} reportSeconds={report.totalSeconds}
+      {parentRows.length > 0 && <div className="mi-engagement-grid">{parentRows.map(engagement => <ParentEngagementCard key={engagement.id} engagement={engagement} period={period} reportSeconds={report.totalSeconds} exactEffort={effortUnit === "hours"}
         onOpen={() => onLink("group:" + engagement.id)} onFilter={filter => onLink("group:" + engagement.id, undefined, filter)} />)}</div>}
       {unaffiliated.length > 0 && <button type="button" className="exec-text-button mi-independent-projects" onClick={() => openFilter("unaffiliated")}>
         {unaffiliated.length} {unaffiliated.length === 1 ? "independent delivery project" : "independent delivery projects"} <ArrowUpRight size={15} aria-hidden="true" />
@@ -104,41 +126,6 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
       <button type="button" className="exec-text-button" onClick={() => onLink("notes")}>Read executive notes</button>
     </section>}
   </div>;
-}
-
-function DepartmentComposition({ report, delivery, period, onLink, onOpen }: {
-  report: ProjectReport;
-  delivery: Delivery;
-  period: string;
-  onLink: OpenView;
-  onOpen: (trigger: HTMLButtonElement) => void;
-}) {
-  const slices = [
-    ...delivery.departmentRows.filter(row => row.seconds > 0).map(row => ({
-      id: row.id, label: row.name, seconds: row.seconds, target: "area:" + row.id,
-    })),
-    ...(delivery.ungroupedSeconds > 0 ? [{ id: "ungrouped", label: "No department", seconds: delivery.ungroupedSeconds, target: "projects" }] : []),
-  ];
-  return <section className="mi-exec-panel mi-department-composition" aria-labelledby="department-effort-title">
-    <div className="mi-exec-heading"><div><h3 id="department-effort-title">Department distribution</h3><p>{period} · Share of approved effort</p></div>
-      <button type="button" className="exec-text-button" onClick={() => onLink("areas")}>Browse departments <ArrowUpRight size={16} aria-hidden="true" /></button></div>
-    {slices.length > 0 && report.totalSeconds > 0 ? <ol className="mi-composition-rows">{slices.map(slice => {
-      const percentage = metricPercent(slice.seconds, report.totalSeconds);
-      const detail = reportHours(slice.seconds) + " of " + reportHours(report.totalSeconds) + " approved hours";
-      return <li key={slice.id}><button type="button" onClick={() => onLink(slice.target)}
-        aria-label={slice.label + ", " + (percentage === undefined ? "not yet measurable" : percentText(percentage)) + ", " + detail}>
-        <span>{slice.label}<small>{detail}</small></span>
-        <span className="mi-cockpit-dot-track" aria-hidden="true"><i style={{ width: Math.max(0, Math.min(100, percentage ?? 0)) + "%" }} /></span>
-        <b>{percentage === undefined ? "—" : percentText(percentage)}</b>
-      </button></li>;
-    })}</ol> : <p className="mi-cockpit-empty">No approved effort yet for this period.</p>}
-    <div className="mi-secondary-effort" aria-label="Published portfolio summary">
-      <span>Reported effort · {period} <ContextHelp label="How are reported hours calculated?">Approved project allocations in this period are counted once across the departments and projects you can see.</ContextHelp></span>
-      <strong>{reportHours(report.totalSeconds)} h</strong>
-      {report.sourceUpdatedAt && <span>Source updated <time dateTime={report.sourceUpdatedAt}>{reportTimestamp(report.sourceUpdatedAt)}</time></span>}
-      {report.totalSeconds > 0 && <button type="button" className="exec-text-button" onClick={event => onOpen(event.currentTarget)}>Explore reported hours<span className="exec-sr-only"> by department</span></button>}
-    </div>
-  </section>;
 }
 
 export function WorkProgress({ projects, onProject, title = "Work completion by project" }: {

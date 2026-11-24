@@ -1,4 +1,4 @@
-import { Fingerprint, LockKeyhole, UserRound } from "lucide-react";
+import { ArrowRight, LockKeyhole, UserRound } from "lucide-react";
 import { ProjectStaffWorkspace } from "./ProjectWorkspace";
 import type { ProjectWorkspace } from "../projects/model";
 import "./secure.css";
@@ -15,6 +15,7 @@ import "./platform.css";
 import "./platform-theme.css";
 import { ThemeSelector, usePlatformTheme } from "./PlatformTheme";
 import "../reporting/nordic.css";
+import "./workspace-sign-in.css";
 const enabled = import.meta.env.VITE_ENABLE_SECURE_API === "true";
 const production = import.meta.env.VITE_DASHBOARD_DEPLOYMENT === "production";
 export function SecureDashboard() {
@@ -250,59 +251,60 @@ export function SecureDashboard() {
         </div>
       </header>
       {!signedIn ? (
-        <section className={"secure-sign-in" + (route ? " platform-sign-in" : "")} aria-label="Sign in">
-          {route && <div className="mi-sign-in-story"><p><LockKeyhole size={16} aria-hidden="true" /> Protected reporting</p>
-            <strong>Client Intelligence Platform</strong><span>Morris Interactive</span></div>}
-          <div className={route ? "mi-sign-in-panel" : "mi-legacy-sign-in"}>
-          {route && <Fingerprint size={28} aria-hidden="true" />}
-          <h2>Sign in to your workspace</h2>
-          <p>Clients use their approved Google account. Morris staff use their work Microsoft account.</p>
-          <div className="secure-actions"><button disabled={!auth} onClick={() => void signIn("google")}>
-            Sign in with Google
-          </button>
-          <button disabled={!auth} onClick={() => void signIn("microsoft")}>
-            Sign in with Microsoft
-          </button></div>
-          {import.meta.env.VITE_AUTH_EMULATOR === "true" && (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget);
-                try {
-                  const sdk = await import("firebase/auth");
-                  await sdk.signInWithEmailAndPassword(
-                    auth!,
-                    String(f.get("email")),
-                    String(f.get("password")),
-                  );
-                } catch {
-                  setError("Synthetic emulator sign-in failed.");
-                }
-              }}
-            >
-              <label>
-                Synthetic email
-                <input name="email" type="email" required />
-              </label>
-              <label>
-                Synthetic password
-                <input name="password" type="password" required />
-              </label>
-              <button disabled={!auth}>Sign in to local emulator</button>
-            </form>
-          )}
-          {!route && <p>
-            Morris staff use their Microsoft work account. Client accounts have
-            read-only access to approved publications.
-          </p>}</div>
-        </section>
+        <main className="mi-access" aria-labelledby="workspace-sign-in">
+          <div className="mi-access-card">
+            <span className="mi-access-mark"><LockKeyhole size={23} aria-hidden="true" /></span>
+            <p className="mi-access-product">Morris Interactive Client Intelligence</p>
+            <h2 id="workspace-sign-in">Sign in to your workspace</h2>
+            <p id="workspace-provider-help">Use the account that has access to your workspace.</p>
+            <div className="mi-access-providers" aria-describedby="workspace-provider-help">
+              <button type="button" disabled={!auth} aria-label="Sign in with Google" onClick={() => void signIn("google")}>
+                <span><strong>Sign in with Google</strong><small>For approved client accounts</small></span>
+                <ArrowRight size={19} aria-hidden="true" />
+              </button>
+              <button type="button" disabled={!auth} aria-label="Sign in with Microsoft" onClick={() => void signIn("microsoft")}>
+                <span><strong>Sign in with Microsoft</strong><small>For Morris work accounts</small></span>
+                <ArrowRight size={19} aria-hidden="true" />
+              </button>
+            </div>
+            {import.meta.env.VITE_AUTH_EMULATOR === "true" && (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const f = new FormData(e.currentTarget);
+                  try {
+                    const sdk = await import("firebase/auth");
+                    await sdk.signInWithEmailAndPassword(
+                      auth!,
+                      String(f.get("email")),
+                      String(f.get("password")),
+                    );
+                  } catch {
+                    setError("Synthetic emulator sign-in failed.");
+                  }
+                }}
+              >
+                <label>
+                  Synthetic email
+                  <input name="email" type="email" required />
+                </label>
+                <label>
+                  Synthetic password
+                  <input name="password" type="password" required />
+                </label>
+                <button disabled={!auth}>Sign in to local emulator</button>
+              </form>
+            )}
+            {error && <p className="mi-access-error" role="alert">{error}</p>}
+          </div>
+        </main>
       ) : null}
       {loading && (
         <p className="secure-empty" role="status">
           Loading your protected workspace…
         </p>
       )}
-      {error && <p role="alert">{error}</p>}
+      {signedIn && error && <p role="alert">{error}</p>}
       {route && workspace && client && <PlatformApplication client={client} workspace={workspace} month={month} unsaved={unsaved}
         onUnsavedChange={setUnsaved} onDenied={onDenied} />}
       {!route && workspace && workspace.role !== "client" && client && <main id="platform-content" className="platform-workspace">

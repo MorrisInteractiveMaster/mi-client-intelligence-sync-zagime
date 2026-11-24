@@ -48,6 +48,12 @@ section.nordic.secure-shell[data-theme="dark"] {
 
 section.nordic.secure-shell[data-theme="dark"] .mi-theme-selector { color: var(--mi-ink); }
 
+section.nordic.secure-shell[data-theme="dark"] .delivery-allocation tbody tr:nth-child(even) { background: var(--mi-dark-layer); }
+section.nordic.secure-shell[data-theme="dark"] :is(.delivery-allocation,.delivery-directory,.delivery-people,.delivery-milestones,.intel-table-scroll) small {
+  color: var(--mi-muted);
+}
+
+
 section.nordic.secure-shell[data-theme="dark"] :is(.secure-brandmarks img, .platform-home-wordmark) {
   background: #f8fbfd;
   border-radius: 6px;
@@ -58,7 +64,8 @@ section.nordic.secure-shell[data-theme="dark"] :is(
   .mi-account summary, .mi-account-menu, .secure-card, .secure-empty, .secure-form, .secure-metrics > div,
   .secure-table, .secure-table :is(thead,tbody,tr,th,td), .secure-list, .secure-timeline li, .platform-control-card,
   a.platform-card, .platform-report-directory li, .mi-workspace-tools, .mi-search-dialog,
-  .delivery-person, .delivery-project-card, .delivery-filter-bar, .mi-operation-metrics > div:not([data-featured="true"]),
+  .delivery-person, .delivery-project-card, .delivery-filter-bar, .delivery-filters, .delivery-details,
+  .delivery-allocation-editor, .mi-operation-metrics > div:not([data-featured="true"]),
   .mi-operations-trend li button, .exec-panel, .exec-card, .exec-tile, .exec-drawer,
   .exec-workspace-grid article, .mi-report-period-menu, .mi-action-menu, .mi-sign-in-panel, .mi-mapping-order,
   .mi-theme-selector select, input:not([type="checkbox"],[type="radio"]), select, textarea

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mergeDirectory, wordpressProfiles } from "./wordpress-team";
 import { newPortfolio } from "../src/projects/portfolio";
+import { deliveryDefaults, type Delivery } from "../src/projects/delivery";
 import { publishedPortfolio } from "./portfolio";
 
 const host = "https://morrisinteractive.ca";
@@ -33,14 +34,18 @@ test("public WordPress post IDs join to professional titles and approved photos"
   assert.equal(refreshed[0].email, directory[0].email);
   assert.equal(refreshed[0].phone, directory[0].phone);
   assert.deepEqual(mergeDirectory(refreshed, []), refreshed);
-  const config = { ...newPortfolio(), directory: refreshed };
+  const invisible = { ...refreshed[0], id: "private-facilitator", visible: false };
+  const config = { ...newPortfolio(), directory: [...refreshed, invisible] };
   const row = { id: "approved", schemaVersion: 2 as const, name: "Example project", status: "active" as const, progress: 0,
     description: "", plan: { basis: "fixed" as const, targetSeconds: 0 }, seconds: 0, lifetimeSeconds: 0 };
-  const report = publishedPortfolio(config, [row], "2026-11", []);
+  const role: Delivery = { ...deliveryDefaults, type: "training",
+    training: { days: 1, dates: ["2026-11-20"], facilitatorIds: [refreshed[0].id, invisible.id] } };
+  const report = publishedPortfolio(config, [row], "2026-11", [], new Map([[row.id, role], ["hidden", role]]));
+  assert.deepEqual(report.placements.map(item => [item.id, item.facilitatorIds]), [["approved", [refreshed[0].id]]]);
   assert.deepEqual(report.directory[0].projectIds, ["approved"]);
   assert.equal(report.directory[0].phone, "555-0100");
   assert.equal(report.directory[0].email, undefined);
-  assert.doesNotMatch(JSON.stringify(report), /staffNotes|staff@example|hidden/);
+  assert.doesNotMatch(JSON.stringify(report), /staffNotes|staff@example|hidden|private-facilitator/);
 });
 
 test("WordPress outage and off-origin media are handled without trusting remote links", async () => {
