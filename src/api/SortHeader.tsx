@@ -12,7 +12,7 @@ export function SortHeader<Key extends string>({ field, sort, onSort, label, dis
 }) {
   const direction = field === sort?.key ? sort.direction : undefined;
   const Icon = direction === "asc" ? ArrowUp : direction === "desc" ? ArrowDown : ArrowUpDown;
-  return <th scope="col" aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : undefined}>
+  return <th scope="col" data-sort-field={field} aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : undefined}>
     <button type="button" className="exec-text-button mi-sort-header" disabled={disabled}
       onClick={() => onSort(nextSort(sort, field))}>{label}<Icon size={14} aria-hidden="true" /></button>
   </th>;

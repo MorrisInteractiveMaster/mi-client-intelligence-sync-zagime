@@ -344,6 +344,8 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
           await auditViewport(sample.page, "V4.1 Leadership " + theme, width, 900, { compactSidebar: true });
           await sample.page.screenshot({ path: join(scaleEvidence, "v41-leadership-" + theme + "-" + width + ".png"), animations: "disabled" });
         }
+        await sample.page.getByRole("region", { name: "Department distribution" })
+          .screenshot({ path: join(scaleEvidence, "v41-department-composition-" + theme + ".png"), animations: "disabled" });
       }
       await sample.page.setViewportSize({ width: 1440, height: 900 });
       await distribution.getByRole("button", { name: "Delivery status", exact: true }).click();
@@ -536,13 +538,22 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       const table = time.page.getByRole("region", { name: "Recorded time table" });
       await table.getByRole("button", { name: "Recorded", exact: true }).click();
       await table.locator('th[aria-sort="ascending"]').getByRole("button", {name: "Recorded", exact: true}).waitFor();
+      await table.locator("thead").screenshot({ path: join(scaleEvidence, "v41-time-ascending.png"), animations: "disabled" });
       await table.getByRole("checkbox", { name: /^Select entry/ }).first().check();
       await table.getByRole("button", { name: "Recorded", exact: true }).click();
       await table.locator('th[aria-sort="descending"]').getByRole("button", {name: "Recorded", exact: true}).waitFor();
       await time.page.getByLabel("Assign 1 unallocated entries").waitFor();
       await time.page.getByRole("button", { name: "More recorded time" }).click();
       await table.getByRole("row").nth(30).waitFor();
-      await time.page.getByLabel("Sort time distribution").selectOption("name-asc");
+      await time.page.getByLabel("Sort time distribution").selectOption("recorded-asc");
+      await time.page.getByRole("region", { name: "Recorded time distribution" }).getByRole("listitem").first().getByText("synthetic-job", { exact: true }).waitFor();
+      await time.page.getByText("Exact breakdowns and CSV exports", { exact: true }).click();
+      await time.page.getByText("Hours by work order", { exact: true }).click();
+      const breakdown = time.page.getByLabel("Hours by work order", { exact: true });
+      await breakdown.getByRole("button", { name: "Recorded", exact: true }).click();
+      await breakdown.locator('th[aria-sort="ascending"]').waitFor();
+      await time.page.getByText("Exact breakdowns and CSV exports", { exact: true }).click();
+      await auditViewport(time.page, "Sorted Time Allocation", 1440, 1000, { compactSidebar: true });
       await time.page.screenshot({ path: join(scaleEvidence, "v41-time-sorted-light.png"), fullPage: true, animations: "disabled" });
       await time.page.getByRole("combobox", { name: "Appearance" }).selectOption("dark");
       await time.page.screenshot({ path: join(scaleEvidence, "v41-time-sorted-dark.png"), fullPage: true, animations: "disabled" });

@@ -81,6 +81,18 @@
 .delivery-allocation .time-entries { margin-block: 16px; max-inline-size: 100%; }
 .delivery-allocation .time-entries table { min-width: 840px; }
 .delivery-allocation .time-entries th { overflow-wrap: normal; }
+.delivery-allocation :is(.time-entries,.time-summary-table) thead {
+  background: var(--mi-time-soft); color: var(--mi-time-ink);
+}
+.nordic.secure-shell .delivery-allocation .time-entries .mi-sort-header {
+  padding-inline: 6px; white-space: nowrap; overflow-wrap: normal;
+}
+.nordic.secure-shell .delivery-allocation .time-entries [data-sort-field="notes"] .mi-sort-header {
+  white-space: normal; min-inline-size: 116px;
+}
+.nordic.secure-shell .delivery-allocation th[aria-sort] .mi-sort-header {
+  background: var(--mi-time-soft); border-color: var(--mi-insight-fill, #497ca5);
+}
 .time-entries :is(th, td)[data-cell="Original provider notes"] { min-width: 144px; }
 .time-entries :is(th, td):last-child { position: sticky; inset-inline-end: 0; background: var(--mi-time-surface); box-shadow: -1px 0 var(--mi-time-line); }
 .time-entries [data-cell="Actions"] button { white-space: nowrap; min-height: 44px; }

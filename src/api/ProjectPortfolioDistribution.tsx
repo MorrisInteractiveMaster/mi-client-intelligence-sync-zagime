@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { DottedTrack } from "./EffortVisuals";
 import { ContextHelp } from "./ContextHelp";
@@ -7,6 +6,7 @@ import type { clientDelivery, ProjectFilter } from "./client-delivery";
 import { portfolioStatuses, segmentCount } from "./ClientProjectExplorer";
 import { compareValues } from "../projects/sort";
 import { percentText } from "./insight-metrics";
+import { portalNavigate, usePortalLocation } from "./portal-location";
 
 const dimensions = { department: "Departments", parent: "Parent engagements", status: "Delivery status" } as const;
 type Dimension = keyof typeof dimensions;
@@ -14,8 +14,9 @@ const orders = { most: "Most projects", least: "Fewest projects", name: "Name Aâ
 type Order = keyof typeof orders;
 
 export function ProjectPortfolioDistribution({ delivery, onLink }: { delivery: ReturnType<typeof clientDelivery>; onLink: OpenClientView }) {
-  const [group, setGroup] = useState<Dimension>("department");
-  const [order, setOrder] = useState<Order>();
+  const location = usePortalLocation();
+  const group = (Object.keys(dimensions) as Dimension[]).find(key => key === location.get("portfolio-group")) ?? "department";
+  const order = (Object.keys(orders) as Order[]).find(key => key === location.get("portfolio-order") && (key !== "configured" || group === "department"));
   const total = delivery.counts.all;
   const rows = group === "status" ? portfolioStatuses.map(([key, label]) => ({
     key, label, count: segmentCount(delivery.counts, key), open: () => onLink("projects", undefined, key),
@@ -37,9 +38,9 @@ export function ProjectPortfolioDistribution({ delivery, onLink }: { delivery: R
     <div className="mi-portfolio-controls">
       <div role="group" aria-label="Group approved projects" className="mi-insight-segments">
         {(Object.keys(dimensions) as Dimension[]).map(value => <button className="mi-v4-segment-control" key={value} type="button"
-          aria-pressed={group === value} onClick={() => { setGroup(value); setOrder(undefined); }}>{dimensions[value]}</button>)}
+          aria-pressed={group === value} onClick={() => portalNavigate({ "portfolio-group": value, "portfolio-order": null }, true)}>{dimensions[value]}</button>)}
       </div>
-      <label>Sort groups<select value={selectedOrder} onChange={e => setOrder(e.target.value as Order)}>
+      <label>Sort groups<select value={selectedOrder} onChange={e => portalNavigate({ "portfolio-order": e.target.value }, true)}>
         {(Object.keys(orders) as Order[]).filter(key => key !== "configured" || group === "department").map(key => <option key={key} value={key}>{orders[key]}</option>)}
       </select></label>
     </div>

@@ -11,7 +11,8 @@ export function ContextHelp({ label, children, watch }: { label: string; childre
   const [open, setOpen] = useState(false);
   const [pinned, pin] = useState(false);
   const [position, setPosition] = useState<{ top: number; left: number }>();
-  const close = () => { window.clearTimeout(delay.current); setOpen(false); pin(false); setPosition(undefined); };
+  const [positionAnchor, setPositionAnchor] = useState<Element>();
+  const close = () => { window.clearTimeout(delay.current); setOpen(false); pin(false); setPosition(undefined); setPositionAnchor(undefined); };
   const show = () => { window.clearTimeout(delay.current); window.dispatchEvent(new CustomEvent(eventName, { detail: id })); setOpen(true); };
   useEffect(() => {
     const trigger = watch && anchor.current?.parentElement?.querySelector(watch);
@@ -19,7 +20,7 @@ export function ContextHelp({ label, children, watch }: { label: string; childre
     const enter = (event: Event) => {
       if (event.type === "pointerenter" && (event as PointerEvent).pointerType === "touch") return;
       window.clearTimeout(delay.current);
-      delay.current = window.setTimeout(show, event.type === "focus" ? 0 : 180);
+      delay.current = window.setTimeout(() => { setPositionAnchor(trigger); show(); }, event.type === "focus" ? 0 : 180);
     };
     const leave = () => {
       window.clearTimeout(delay.current);
@@ -57,7 +58,7 @@ export function ContextHelp({ label, children, watch }: { label: string; childre
   useEffect(() => {
     if (!open) return;
     function update() {
-      const a = anchor.current?.getBoundingClientRect();
+      const a = (positionAnchor ?? anchor.current)?.getBoundingClientRect();
       const panel = tip.current?.getBoundingClientRect();
       if (!a || !panel || a.bottom < 0 || a.top > window.innerHeight) { close(); return; }
       const edge = 8;
@@ -70,14 +71,14 @@ export function ContextHelp({ label, children, watch }: { label: string; childre
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => { window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); };
-  }, [open]);
+  }, [open, positionAnchor]);
   const scheduleClose = () => { if (!pinned) delay.current = window.setTimeout(close, 160); };
   return <>
     <button ref={anchor} type="button" className="exec-help" aria-label={label} aria-describedby={open ? id : undefined}
-      onMouseEnter={() => { delay.current = window.setTimeout(show, 220); }}
+      onMouseEnter={() => { delay.current = window.setTimeout(() => { setPositionAnchor(undefined); show(); }, 220); }}
       onMouseLeave={() => { window.clearTimeout(delay.current); scheduleClose(); }}
-      onFocus={show} onBlur={close}
-      onClick={() => { if (pinned) close(); else { pin(true); show(); } }}><CircleHelp size={16} aria-hidden="true" /></button>
+      onFocus={() => { setPositionAnchor(undefined); show(); }} onBlur={close}
+      onClick={() => { if (pinned) close(); else { setPositionAnchor(undefined); pin(true); show(); } }}><CircleHelp size={16} aria-hidden="true" /></button>
     {open && createPortal(<div role="tooltip" ref={tip} id={id} className="exec-tooltip"
       onMouseEnter={() => window.clearTimeout(delay.current)} onMouseLeave={scheduleClose}
       style={position ? position : { visibility: "hidden", top: 0, left: 0 }}>{children}</div>, document.body)}

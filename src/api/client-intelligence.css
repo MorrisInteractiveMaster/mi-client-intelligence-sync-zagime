@@ -265,6 +265,7 @@
 .nordic.secure-shell .mi-signal-card .mi-signal-action { width: 100%; height: 100%; padding-inline-end: 28px; }
 .mi-signal-card .mi-signal-action > svg { display: none; }
 .nordic.secure-shell .mi-signal-card > .exec-help { position: absolute; inset: 5px 5px auto auto; }
+.nordic.secure-shell :is(.mi-signal-card,.mi-portfolio-distribution) .exec-help { color: var(--mi-ink); }
 .mi-portfolio-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 16px; margin-block: 8px 12px; }
 .mi-portfolio-controls label { display: grid; gap: 4px; font-size: .8rem; }
 .mi-portfolio-distribution-rows { list-style: none; padding: 0; margin: 0; }
