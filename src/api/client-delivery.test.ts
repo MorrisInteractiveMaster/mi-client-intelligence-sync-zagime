@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deliveryDate } from "../projects/delivery";
 import type { ProjectReport } from "../projects/model";
-import { clientDelivery, forProjectFilter, projectCompletionHistory, projectMeasures } from "./client-delivery";
+import { clientDelivery, deadlineWindow, forProjectFilter, projectCompletionHistory, projectMeasures, publishedMonthlyCap } from "./client-delivery";
 
 type Project = ProjectReport["projects"][number];
 type Placement = NonNullable<ProjectReport["portfolio"]>["placements"][number];
@@ -140,4 +140,34 @@ test("completion trends use published dated completions and never infer an activ
   assert.deepEqual(projectCompletionHistory(projects, "2026-11-23").map(bucket => [bucket.month, bucket.projects.map(entry => entry.id)]), [
     ["2026-09", ["Legacy closeout"]], ["2026-10", ["October completion"]],
   ]);
+});
+
+test("deadline horizons advance in Regina calendar months and keep private dates excluded", () => {
+  const now = deliveryDate(new Date("2027-02-01T05:30:00Z"));
+  assert.equal(now, "2027-01-31");
+  const view = clientDelivery(report([
+    project("january"), project("april"), project("may"), project("private"),
+    project("completed", 0, "completed"), project("engagement"),
+  ], {
+    january: { deadline: "2027-01-30" }, april: { deadline: "2027-04-30" }, may: { deadline: "2027-05-01" },
+    completed: { deadline: "2027-01-28", completedOn: "2027-01-29" },
+    engagement: { kind: "engagement", deadline: "2027-02-01" },
+  }), now);
+  assert.deepEqual(([3, 6, 9, 12] as const).map(months => deadlineWindow(view.projects, now, months).through),
+    ["2027-04-30", "2027-07-31", "2027-10-31", "2028-01-31"]);
+  const first = deadlineWindow(view.projects, now, 3);
+  assert.deepEqual(first.rows.map(row => [row.project.id, row.days]), [["january", -1], ["april", 89]]);
+  assert.equal(first.unscheduled, 1);
+  assert.deepEqual(first.completed.map(item => [item.id, item.late]), [["completed", true]]);
+  assert.equal(deadlineWindow(view.projects, now, 6).rows.at(-1)?.project.id, "may");
+});
+
+test("published cap aggregation keeps nested caps out and preserves zero and over-cap inputs", () => {
+  const view = clientDelivery(report([project("parent"), project("child"), project("uncapped"), project("zero")], {
+    parent: { kind: "engagement", monthlyCap: 3600, monthlyCapUsed: 4500 },
+    child: { parentId: "parent", monthlyCap: 1800, monthlyCapUsed: 1800 },
+    zero: { monthlyCap: 0, monthlyCapUsed: 0 },
+  }));
+  assert.deepEqual(publishedMonthlyCap(view), { count: 2, cap: 3600, used: 4500 });
+  assert.deepEqual(publishedMonthlyCap(clientDelivery(report([project("uncapped")], {}))), { count: 0, cap: 0, used: 0 });
 });

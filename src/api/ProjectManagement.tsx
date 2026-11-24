@@ -1,5 +1,6 @@
-import { Check, ClipboardList, ShieldAlert, X } from "lucide-react";
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { ManagementDialog } from "./ManagementDialog";
+import { Check, ClipboardList, ShieldAlert } from "lucide-react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { deliveryDefaults, measureDelivery, type Delivery } from "../projects/delivery";
 import { milestoneTemplates } from "../projects/milestone-templates";
 import {
@@ -86,6 +87,7 @@ function ProgressEditor({ id, path, client, tenant, areas, legacyArea, canPublis
   const [milestones, setMilestones] = useState<ProjectMilestone[]>([]);
   const [status, setStatus] = useState<Project["status"]>("planned");
   const [blocker, setBlocker] = useState<NonNullable<Delivery["blocker"]>>(emptyBlocker);
+  const [disclosure, setDisclosure] = useState<Pick<Delivery, "publishSummary" | "publishStartStatus">>({});
   const [manual, setManual] = useState<number>();
   const [completedOn, setCompletedOn] = useState("");
   const [rangePreview, setRangePreview] = useState<number>();
@@ -107,6 +109,7 @@ function ProgressEditor({ id, path, client, tenant, areas, legacyArea, canPublis
     setMilestones(p.milestones ?? []);
     setStatus(p.status);
     setBlocker(p.delivery?.blocker ?? emptyBlocker);
+    setDisclosure({ publishSummary: p.delivery?.publishSummary, publishStartStatus: p.delivery?.publishStartStatus });
     setManual(p.delivery?.manualCompletion);
     setCompletedOn(p.delivery?.completedOn ?? "");
     setPrivateNotes(p.internalNotes);
@@ -129,11 +132,12 @@ function ProgressEditor({ id, path, client, tenant, areas, legacyArea, canPublis
   const updates = project?.updates ?? [];
   const currentDelivery = project?.delivery;
   const delivery = currentDelivery || updatedBlocker || manual !== undefined || completedOn
-    ? { ...(currentDelivery ?? deliveryDefaults), blocker: updatedBlocker, manualCompletion: manual, completedOn: completedOn || undefined }
+    ? { ...(currentDelivery ?? deliveryDefaults), ...disclosure, blocker: updatedBlocker, manualCompletion: manual, completedOn: completedOn || undefined }
     : undefined;
   const dirty = Boolean(project && (status !== project.status || JSON.stringify(project.milestones ?? []) !== JSON.stringify(milestones) ||
     projectUpdate.trim() || project.internalNotes !== privateNotes ||
     JSON.stringify(currentDelivery?.blocker) !== JSON.stringify(updatedBlocker) ||
+    currentDelivery?.publishSummary !== disclosure.publishSummary || currentDelivery?.publishStartStatus !== disclosure.publishStartStatus ||
     currentDelivery?.manualCompletion !== manual || (currentDelivery?.completedOn ?? "") !== completedOn));
   useEffect(() => {
     onDirty(dirty);
@@ -252,8 +256,15 @@ function ProgressEditor({ id, path, client, tenant, areas, legacyArea, canPublis
       </div>
       {blocker.active ? <button type="button" className="secure-secondary" disabled={busy}
         onClick={() => setBlocker({ ...blocker, active: false, resolvedOn: today() })}>Resolve blocker</button> :
-        <button type="button" className="secure-secondary" disabled={busy} onClick={() => setAction({ type: "project-blocked" })}>Report blocker</button>}
+        <button type="button" className="secure-secondary mi-blocker-toggle" disabled={busy} onClick={() => setAction({ type: "project-blocked" })}><ShieldAlert size={17} aria-hidden="true" /> Report blocker</button>}
     </section>
+    {currentDelivery && canPublish && <details className="mi-publication-settings"><summary>Client visibility settings</summary>
+      <p>Changes remain private until they are published.</p>
+      <label><input type="checkbox" checked={disclosure.publishSummary ?? false} disabled={busy}
+        onChange={event => setDisclosure(value => ({ ...value, publishSummary: event.target.checked }))} /> Publish schedule dates and hour caps</label>
+      <label><input type="checkbox" checked={disclosure.publishStartStatus ?? false} disabled={busy}
+        onChange={event => setDisclosure(value => ({ ...value, publishStartStatus: event.target.checked }))} /> Publish the delivery phase when the start date is private</label>
+    </details>}
     {!misc && <section className="mi-management-checklist" aria-label="Milestones">
       <div className="mi-management-heading"><div><h4>Milestones</h4><p>Check off delivery steps and flag blocked work.</p></div></div>
       {milestones.length ? <ul>
@@ -399,32 +410,4 @@ function ManagementAction({ action, close, defaultDate, onComplete, onBlock, onP
         }}>{publish ? "Publish" : "Confirm"}</button>
     </footer>
   </ManagementDialog>;
-}
-
-function ManagementDialog({ title, close, children }: { title: string; close: () => void; children: ReactNode }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const id = useId();
-  useEffect(() => {
-    const node = dialog.current;
-    if (!node) return;
-    const opener = document.activeElement;
-    node.showModal();
-    return () => {
-      if (node.open) node.close();
-      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
-    };
-  }, []);
-  function dismiss() {
-    dialog.current?.close();
-    close();
-  }
-  return <dialog ref={dialog} className="mi-picker-dialog mi-management-dialog" aria-labelledby={id}
-    onCancel={event => {
-      if (event.target !== event.currentTarget) return;
-      event.preventDefault();
-      dismiss();
-    }}>
-    <header><h3 id={id}>{title}</h3><button type="button" className="secure-secondary" onClick={dismiss} aria-label="Close dialog"><X size={19} /></button></header>
-    {children}
-  </dialog>;
 }

@@ -1,3 +1,4 @@
+import { isProgramType } from "../projects/delivery";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ArrowUpRight, PencilLine } from "lucide-react";
 import { applyDeliveryCapChange, canEditMonthlyCap, deliveryCaps, type DeliveryCapChange, type DeliveryCaps } from "../projects/caps";
@@ -88,7 +89,7 @@ export function BudgetHealthBoard({ rows, asOf, client, tenant, editing, onEditi
               <DottedTrack label="Work completion" value={result.completion} tone="teal" />}
             <small>{result.health}{result.upcoming ? " · " + reportDay(result.upcoming) : ""}</small>
           </div>
-          {client && tenant && project.delivery && <button type="button" className="secure-secondary mi-cap-open"
+          {client && tenant && project.delivery && !isProgramType(project.delivery.type) && <button type="button" className="secure-secondary mi-cap-open"
             aria-label={`Edit cap for ${project.name}`} aria-expanded={selected} disabled={Boolean(editing)}
             onClick={event => {
               launch.current = event.currentTarget;

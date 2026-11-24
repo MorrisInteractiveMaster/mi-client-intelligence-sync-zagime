@@ -69,6 +69,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   const view = location.get("view") || "overview";
   const search = location.get("q")?.slice(0, 120) || "";
   const status = location.get("status") || "all";
+  const effortUnit = location.get("effort-unit") === "hours" ? "hours" : "percentage";
   const sort = location.get("project-sort") || "name";
   const setSearch = (value: string) => portalNavigate({ q: value }, true);
   const setStatus = (value: string) => portalNavigate({ status: value === "all" ? null : value });
@@ -307,7 +308,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
         {(nativeClient || legacyMonth || view !== "overview") && <div className="mi-report-top">
           {nativeClient ? periodToolbar(presentationButton) : <>{legacyMonth}{view !== "overview" && presentationButton}</>}
         </div>}
-        {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose}
+        {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose} effortUnit={effortUnit}
+          onEffortUnit={unit => portalNavigate({ "effort-unit": unit === "hours" ? unit : null }, true)}
           onChart={(type, trigger) => openOverlay("chart", type, trigger)} onPresentation={trigger => openOverlay("present", "1", trigger)} />}
         {view !== "overview" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
           <button type="button" className="exec-text-button" onClick={() => choose("overview")}><ChevronLeft size={16} /> Leadership summary</button>

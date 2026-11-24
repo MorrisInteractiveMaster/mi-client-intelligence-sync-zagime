@@ -30,6 +30,8 @@ export interface Delivery {
   training?: { days: number; dates: string[]; preparation?: string; followUp?: string; completion?: string; venue?: string; facilitatorIds: string[] };
 }
 
+export const isProgramType = (type: Delivery["type"]) => type === "training" || type === "workshop";
+
 export const deliveryDefaults: Delivery = { kind: "project", type: "hourly", managerIds: [], teamIds: [] };
 const reginaCalendar = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Regina", year: "numeric", month: "2-digit", day: "2-digit" });
 export const deliveryDate = (date = new Date()) => reginaCalendar.format(date);

@@ -41,7 +41,7 @@ import {
 import { sourceExportPageSize, type AllocationAnnotations, type PageQuery } from "../src/api/types";
 import type { Allocation } from "../src/reporting/model";
 import { portalSettings, type PlatformControl, type PortalSettings } from "../src/projects/control";
-import { calendarDate, capRollup, checkDeliveryStructure, deliveryDate, MAX_DELIVERY_PROJECTS, measureDelivery, type Delivery } from "../src/projects/delivery";
+import { calendarDate, capRollup, checkDeliveryStructure, deliveryDate, isProgramType, MAX_DELIVERY_PROJECTS, measureDelivery, type Delivery } from "../src/projects/delivery";
 import { applyDeliveryCapChange, deliveryCaps, parseDeliveryCapChange, type DeliveryCapChange } from "../src/projects/caps";
 
 /** Project operations require a verified named database and its tenant binding. */
@@ -221,6 +221,13 @@ export class ProjectStore {
         const managed = old && requested
           ? approvedContent(overlayProject(editBase!, requested))
           : (options.draftAction === "publish" ? pending!.content : requested);
+        if (requested && managed?.delivery && isProgramType(managed.delivery.type)) {
+          const prior = editBase?.delivery;
+          for (const cap of ["monthlyCap", "lifetimeCap"] as const) {
+            if (managed.delivery[cap] !== undefined && (!prior || !isProgramType(prior.type) || managed.delivery[cap] !== prior[cap]))
+              throw Error("Invalid cap change for Training & Workshops");
+          }
+        }
         if (options.publishOnSave !== undefined && managed) {
           const today = deliveryDate(new Date(now));
           const before = new Map((editBase?.milestones ?? []).map(item => [item.id, item]));

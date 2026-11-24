@@ -1,3 +1,4 @@
+import { followingTimeMonth } from "./reporting-period";
 import { useState, type CSSProperties } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { projectCompletionHistory, type clientDelivery, type ProjectFilter } from "./client-delivery";
@@ -103,10 +104,16 @@ export function DeliveryTrends({ counts, projects, onFilter, onProject, label = 
   label?: string;
 }) {
   const [metric, setMetric] = useState<"completed" | "active">("completed");
+  const [historyUnit, setHistoryUnit] = useState<"count" | "share">("count");
   const [chosenMonth, setMonth] = useState<string>();
   const [hoveredMonth, inspect] = useState<string>();
-  const history = metric === "completed" ? projectCompletionHistory(projects) : [];
-  const selected = history.find(bucket => bucket.month === chosenMonth) ?? history.at(-1);
+  const datedHistory = metric === "completed" ? projectCompletionHistory(projects) : [];
+  const history = completionMonths(datedHistory);
+  const dated = datedHistory.reduce((total, bucket) => total + bucket.projects.length, 0);
+  const undated = projects.filter(item => item.completed || item.project.status === "closed" && item.delivery?.completedOn).length - dated;
+  const showingShare = historyUnit === "share" && counts.all > 0;
+  const shareOfPortfolio = (count: number) => metricPercent(count, counts.all) ?? 0;
+  const selected = history.find(bucket => bucket.month === chosenMonth) ?? datedHistory.at(-1);
   const shown = history.find(bucket => bucket.month === hoveredMonth) ?? selected;
   const current = counts[metric];
   const percent = metricPercent(current, counts.all);
@@ -126,18 +133,38 @@ export function DeliveryTrends({ counts, projects, onFilter, onProject, label = 
     </button>
     {selected && shown ? <div className="mi-client-completion-history">
       <p>Monthly counts include projects with a published completion date.</p>
-      <TrendPlot label="Dated project completions" unit="projects" rows={history.map(bucket => ({
-        id: bucket.id, month: bucket.month, label: reportMonth(bucket.month), value: bucket.projects.length,
+      <div className="mi-insight-segments" role="group" aria-label="Completion display">
+        <button type="button" aria-pressed={!showingShare} onClick={() => setHistoryUnit("count")}>Count</button>
+        <button type="button" disabled={!counts.all} aria-pressed={showingShare} onClick={() => setHistoryUnit("share")}>Portfolio share</button>
+      </div>
+      <TrendPlot label="Dated project completions" unit={showingShare ? "percent" : "projects"} rows={history.map(bucket => ({
+        id: bucket.id, month: bucket.month, label: reportMonth(bucket.month), value: showingShare ? shareOfPortfolio(bucket.projects.length) : bucket.projects.length,
       }))} active={selected.id} onSelect={setMonth} onInspect={inspect}
-        spokenValue={count => count + (count === 1 ? " completion" : " completions")} />
-      <p aria-live="polite"><strong>{reportMonth(shown.month)}</strong> · {shown.projects.length} {shown.projects.length === 1 ? "project completed" : "projects completed"}</p>
-      <details><summary>See projects completed in {reportMonth(selected.month)}</summary><ul>{selected.projects.map(project => <li key={project.id}>
+        spokenValue={value => showingShare ? percentText(value) + " of the current approved portfolio" : value + (value === 1 ? " completion" : " completions")} />
+      <p aria-live="polite"><strong>{reportMonth(shown.month)}</strong> · {shown.projects.length} {shown.projects.length === 1 ? "project completed" : "projects completed"}{showingShare && " · " + percentText(shareOfPortfolio(shown.projects.length)) + " of the current approved portfolio"}</p>
+      <details key={selected.month} open><summary>See projects completed in {reportMonth(selected.month)}</summary>{selected.projects.length === 0 && <p>No dated completions in this month.</p>}<ul>{selected.projects.map(project => <li key={project.id}>
         <button type="button" className="exec-text-button" onClick={() => onProject(project.id)}>{project.name} <ArrowUpRight size={14} aria-hidden="true" /></button>
       </li>)}</ul></details>
       <details><summary>Show completion data table</summary><table>
         <caption>Published project completions by month</caption><thead><tr><th scope="col">Month</th><th scope="col">Projects completed</th></tr></thead>
         <tbody>{history.map(bucket => <tr key={bucket.id}><th scope="row">{reportMonth(bucket.month)}</th><td>{bucket.projects.length}</td></tr>)}</tbody>
       </table></details>
-    </div> : <p className="mi-trend-empty">Trend tracking begins from the first verified historical snapshot.</p>}
+    </div> : <p className="mi-trend-empty">{metric === "active" ? "Trend tracking begins from the first verified historical snapshot." :
+      "No dated project completions have been published."}</p>}
+    {metric === "completed" && undated > 0 && <p className="mi-trend-empty">{undated} {undated === 1 ? "completed project is" : "completed projects are"} excluded from history because a verified completion date has not been published.</p>}
   </section>;
+}
+
+function completionMonths(dated: ReturnType<typeof projectCompletionHistory>) {
+  if (!dated.length) return [];
+  const known = new Map(dated.map(bucket => [bucket.month, bucket]));
+  const last = dated.at(-1)!.month;
+  const first = dated[0].month;
+  const floor = String(Math.max(1000, Number(last.slice(0, 4)) - 10)).padStart(4, "0") + last.slice(4);
+  const months = [];
+  for (let month = first < floor ? floor : first; month <= last; month = followingTimeMonth(month)) {
+    months.push(known.get(month) ?? { id: month, month, projects: [] });
+    if (month === last) break;
+  }
+  return months;
 }

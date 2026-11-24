@@ -201,11 +201,12 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       [clientBase + "?previewMode=draft"]: [["02-client-preview", 1731, 948]],
       [clientBase + "?month=2026-08"]: [["03-department-zero-allocated", 1293, 723]],
       [clientBase + "/projects"]: [["05-client-projects", 1622, 881]],
-      "/workspace": [["06-staff-overview", 1684, 877]],
+      "/workspace": [["06-staff-overview", 1684, 877], ["v3-05-staff-overview", 1066, 909]],
       [clientBase + "/team"]: [["07-directory", 1684, 868]],
       "/workspace/projects/new": [["08-project-wizard", 1415, 888]],
       "/workspace/time": [["09-time-allocation", 926, 889]],
-      [staffPath("management", projectId)]: [["10-contextual-milestones", 1276, 784]],
+      [staffPath("management", projectId)]: [["10-contextual-milestones", 1276, 784], ["v3-08-project-blocker", 1265, 945]],
+      [staffPath("health")]: [["v3-09-budget-light", 1206, 922], ["v3-10-masthead", 1158, 420]],
     };
     for (const [role, paths] of [
       ["owner", ["/", ...Object.keys(staffSegments).map(key => staffPath(key as StaffSection)), staffPath("departments", "health"),
@@ -242,6 +243,13 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
               await review.page.getByRole("navigation", { name: "Control Panel sections" }).getByRole("link", { name: "Branding", exact: true }).waitFor();
               await review.page.keyboard.press("Escape");
               assert.equal(await controlMenu.evaluate(element => document.activeElement === element), true);
+            }
+            if (path === staffPath("health")) {
+              const appearance = review.page.getByRole("combobox", { name: "Appearance" });
+              await appearance.selectOption("dark");
+              probes.push(await auditViewport(review.page, "Dark budget board", 1365, 801, { compactSidebar }));
+              await review.page.screenshot({ path: join(referenceEvidence, "v3-11-budget-dark-1365x801.png"), animations: "disabled" });
+              await appearance.selectOption("system");
             }
             if (role === "client" || !path.startsWith(clientBase) || path.includes("previewMode")) {
               for (const [name, width, height] of references[path] ?? []) {
@@ -499,6 +507,48 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.getByLabel("All-time delivery projects", { exact: true }).getByText("All-time approved portfolio").waitFor();
     await client.page.screenshot({ path: join(evidence, "client-dashboard-native-overview.png"), fullPage: true, animations: "disabled" });
     await captureExperience(client.page, "client-leadership");
+    const referenceEvidence = join(evidence, "v3-reference-sizes");
+    await mkdir(referenceEvidence, { recursive: true });
+    async function captureReference(page: Page, name: string, width: number, height: number, compactSidebar = true) {
+      await auditViewport(page, name, width, height, { compactSidebar });
+      await page.screenshot({ path: join(referenceEvidence, name + ".png"), animations: "disabled" });
+    }
+    await captureReference(client.page, "04-leadership-layout-1649x844", 1649, 844);
+    await auditViewport(client.page, "Leadership engagement section", 1647, 868, { compactSidebar: true });
+    const engagements = client.page.getByRole("region", { name: "Parent engagements" }).first();
+    await engagements.scrollIntoViewIfNeeded();
+    await client.page.screenshot({ path: join(referenceEvidence, "03-leadership-engagements-1647x868.png"), animations: "disabled" });
+    const effort = client.page.getByRole("group", { name: "Effort display", exact: true });
+    assert.equal(await effort.getByRole("button", { name: "Percentage", exact: true }).getAttribute("aria-pressed"), "true");
+    let reportRequests = 0;
+    const countRequests = (request: import("playwright").Request) => {
+      if (new URL(request.url()).pathname.endsWith("/report")) reportRequests++;
+    };
+    client.page.on("request", countRequests);
+    await effort.getByRole("button", { name: "Hours", exact: true }).click();
+    await client.page.waitForURL(route("/clients/zagime", "&effort-unit=hours"));
+    const departmentChart = client.page.getByRole("region", { name: "Department distribution" });
+    await departmentChart.getByRole("button", { name: "Project count", exact: true }).click();
+    await departmentChart.getByRole("combobox", { name: "Project status" }).selectOption("active");
+    const deadlines = client.page.getByRole("group", { name: "Deadline horizon" });
+    for (const value of [6, 9, 12, 3]) {
+      const choice = deadlines.getByRole("button", { name: value + " months", exact: true });
+      await choice.click();
+      assert.equal(await choice.getAttribute("aria-pressed"), "true");
+    }
+    const monthlyEffort = client.page.getByRole("region", { name: "Monthly approved effort", exact: true });
+    await monthlyEffort.getByRole("combobox", { name: "Effort project" }).selectOption(projectId);
+    await monthlyEffort.getByText("Show approved monthly effort table").click();
+    await monthlyEffort.getByRole("table").getByRole("row", { name: /November 2026.*2.*2.*100%/ }).waitFor();
+    assert.equal(reportRequests, 0, "Visual controls use the same authorized report");
+    client.page.off("request", countRequests);
+    await departmentChart.getByRole("button", { name: /No department.*approved delivery project/ }).click();
+    await client.page.waitForURL(route("/clients/zagime/projects", "&effort-unit=hours&status=unassigned-active"));
+    await captureReference(client.page, "01-client-projects-1740x907", 1740, 907);
+    await client.page.goBack();
+    await effort.getByRole("button", { name: "Hours", exact: true }).waitFor();
+    await effort.getByRole("button", { name: "Percentage", exact: true }).click();
+    await client.page.setViewportSize({ width: 1440, height: 900 });
     const clientNav = client.page.getByRole("navigation", { name: "Client workspace" });
     assert.equal(await clientNav.getByRole("button", { name: "Reporting history", exact: true }).count(), 0);
     assert.equal(await client.page.getByText("LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW").count(), 0);
@@ -518,6 +568,12 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await clientNav.getByRole("button", { name: "Health", exact: true }).click();
     await client.page.waitForURL(route("/clients/zagime/departments/health"));
     assert.equal(await clientNav.getByRole("button", { name: "Health", exact: true }).getAttribute("aria-current"), "page");
+    await clientNav.getByRole("button", { name: "HR", exact: true }).click();
+    await client.page.waitForURL(route("/clients/zagime/departments/hr"));
+    await client.page.getByRole("heading", { name: "HR", level: 2 }).waitFor();
+    await captureReference(client.page, "02-hr-department-1674x887", 1674, 887);
+    await clientNav.getByRole("button", { name: "Health", exact: true }).click();
+    await client.page.waitForURL(route("/clients/zagime/departments/health"));
     await client.page.screenshot({ path: join(evidence, "client-empty-department.png"), fullPage: true, animations: "disabled" });
     await clientNav.getByRole("button", { name: "Leadership summary", exact: true }).click();
     await client.page.getByRole("heading", { name: /Leadership\s*summary/i }).waitFor();
@@ -628,6 +684,16 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await timeOwner.context.close();
 
     const publisher = await session(mainBrowser, "owner");
+    await publisher.page.goto(route("/workspace/projects/new"));
+    const newWizard = publisher.page.getByRole("form", { name: "Create a project" });
+    await newWizard.getByRole("textbox", { name: "Project name", exact: true }).fill("Training candidate fixture");
+    await newWizard.getByRole("button", { name: "Continue", exact: true }).click();
+    await newWizard.getByRole("button", { name: "Continue", exact: true }).click();
+    const arrangement = newWizard.getByRole("combobox", { name: "Arrangement" });
+    await arrangement.selectOption("training");
+    assert.equal(await arrangement.getByRole("option", { name: "Training & Workshops", exact: true }).count(), 1);
+    assert.equal(await newWizard.getByLabel(/hour cap|budgeted hours/i).count(), 0);
+    await captureReference(publisher.page, "06-training-schedule-1209x907", 1209, 907);
     const staleEdit = await reviewProjectEdit(publisher.page, "This outdated edit should stay private.");
     const openedRevision = (await root.get()).get("revision");
     const concurrentSave = await publisher.context.request.patch(projectApi, {
@@ -637,8 +703,8 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     assert.equal(concurrentSave.status(), 200);
     const newerDraft = (await pendingRef.get()).data();
     const submittedEdit = publisher.page.waitForRequest(request => request.method() === "PATCH" && request.url() === projectApi);
-    publisher.page.once("dialog", confirmation => confirmation.accept());
     await staleEdit.getByRole("button", { name: "Save & Publish", exact: true }).click();
+    await publisher.page.getByRole("dialog", { name: "Publish project changes?" }).getByRole("button", { name: "Publish", exact: true }).click();
     assert.equal((await submittedEdit).postDataJSON().expectedRevision, openedRevision);
     await publisher.page.getByText("This record changed. Refresh before saving again.", { exact: true }).waitFor();
     assert.deepEqual((await pendingRef.get()).data(), newerDraft);
@@ -651,10 +717,19 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     const publishWizard = await reviewProjectEdit(publisher.page, approvedDescription);
     const publishEdit = publishWizard.getByRole("button", { name: "Save & Publish", exact: true });
     await publishEdit.waitFor();
+    assert.equal(await publishWizard.getByRole("checkbox", { name: /start date is private|share schedule and hours caps/i }).count(), 0);
+    await captureReference(publisher.page, "07-wizard-review-1274x876", 1274, 876);
     const beforeWizardPublish = (await root.get()).get("revision");
     await publishWizard.screenshot({ path: join(evidence, "edit-project-save-and-publish.png"), animations: "disabled" });
-    publisher.page.once("dialog", confirmation => confirmation.accept());
     await publishEdit.click();
+    const publishDialog = publisher.page.getByRole("dialog", { name: "Publish project changes?" });
+    await publishDialog.screenshot({ path: join(evidence, "wizard-publication-confirmation.png"), animations: "disabled" });
+    await publisher.page.keyboard.press("Escape");
+    await publishDialog.waitFor({ state: "hidden" });
+    assert.equal(await publishEdit.evaluate(element => document.activeElement === element), true);
+    assert.equal((await root.get()).get("revision"), beforeWizardPublish);
+    await publishEdit.click();
+    await publishDialog.getByRole("button", { name: "Publish", exact: true }).click();
     await publisher.page.getByText("Project changes published.", { exact: true }).waitFor();
     const approvedEdit = (await projectRef.get()).data()!;
     assert.equal(approvedEdit.description, approvedDescription);

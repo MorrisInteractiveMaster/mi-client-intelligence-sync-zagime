@@ -1,0 +1,96 @@
+.nordic.secure-shell .mi-access {
+  --access-ink: #152b40;
+  --access-muted: #46596b;
+  --access-panel: #fff;
+  --access-edge: #91a1b1;
+  --access-hover: #eef5fb;
+  --access-emblem: #e8f0f8;
+  --access-focus: #1e619b;
+  display: grid;
+  place-items: start center;
+  width: 100%;
+  max-width: none;
+  padding: clamp(24px, 7vh, 96px) 0 clamp(24px, 6vh, 64px);
+  margin: 0;
+}
+
+.nordic.secure-shell[data-theme="dark"] .mi-access {
+  --access-ink: #eef5fc;
+  --access-muted: #bfd0df;
+  --access-panel: #14263a;
+  --access-edge: #7690a7;
+  --access-hover: #203a52;
+  --access-emblem: #243c54;
+  --access-focus: #a6d4ff;
+}
+
+.mi-access-card {
+  box-sizing: border-box;
+  width: min(100%, 33rem);
+  padding: clamp(20px, 5vw, 48px);
+  text-align: center;
+  color: var(--access-ink);
+  background: var(--access-panel);
+  border: 1px solid var(--access-edge);
+  border-radius: 24px;
+}
+
+.mi-access-mark {
+  display: inline-grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 16px;
+  background: var(--access-emblem);
+  color: var(--access-ink);
+}
+
+.nordic.secure-shell .mi-access-card h2 {
+  margin: 8px 0 12px;
+  color: var(--access-ink);
+  font-size: clamp(1.6rem, 4vw, 2.3rem);
+  letter-spacing: -.035em;
+  line-height: 1.14;
+  text-wrap: balance;
+}
+
+.nordic.secure-shell .mi-access-card p { color: var(--access-muted); margin: 0; line-height: 1.5; }
+.nordic.secure-shell .mi-access-card .mi-access-product { margin-top: 16px; font-size: .875rem; font-weight: 700; }
+.mi-access-providers { display: grid; gap: 8px; margin-top: 24px; }
+
+.nordic.secure-shell .mi-access-providers button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  margin: 0;
+  padding: 10px 14px;
+  color: var(--access-ink);
+  background: var(--access-panel);
+  border: 1px solid var(--access-edge);
+  border-radius: 12px;
+  box-shadow: none;
+  text-align: start;
+  white-space: normal;
+}
+
+.nordic.secure-shell .mi-access-providers button strong, .mi-access-providers button small { display: block; line-height: 1.4; }
+.nordic.secure-shell .mi-access-providers button strong { font-size: 1rem; font-weight: 680; letter-spacing: 0; }
+.nordic.secure-shell[data-theme="dark"] .mi-access-providers button {
+  background: var(--access-panel);
+  color: var(--access-ink);
+  border-color: var(--access-edge);
+}
+.mi-access-providers button small { color: var(--access-muted); font-size: .78rem; font-weight: 500; }
+.nordic.secure-shell .mi-access-providers button:not(:disabled):is(:hover, :active) { background: var(--access-hover); }
+.nordic.secure-shell .mi-access-providers button:focus-visible { outline: 3px solid var(--access-focus); outline-offset: 3px; }
+.nordic.secure-shell .mi-access-card form { padding: 16px 0 0; margin: 16px 0 0; background: transparent; text-align: start; }
+.nordic.secure-shell .mi-access-card .mi-access-error { margin-block-start: 16px; }
+
+@media (max-width: 480px), (max-height: 630px) {
+  .nordic.secure-shell .mi-access { padding-block: 16px 24px; }
+  .mi-access-card { border-radius: 18px; }
+  .mi-access-providers { margin-top: 16px; }
+}

@@ -827,7 +827,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await creationForm.getByLabel("Program length in days").fill("2");
       await creationForm.getByRole("button", { name: "Continue", exact: true }).click();
       await creationForm.getByRole("alert").filter({ hasText: "Choose exactly one distinct calendar date per program day." }).waitFor();
-      await arrangement.selectOption("workshop");
+      assert.equal(await creationForm.getByLabel(/hour cap|budgeted hours/i).count(), 0);
       await creationForm.getByRole("button", { name: /Program dates/ }).click();
       const programCalendar = creationForm.getByRole("dialog", { name: "Program dates", exact: true });
       const currentMonthDays = programCalendar.locator('button[data-other-month="false"]');

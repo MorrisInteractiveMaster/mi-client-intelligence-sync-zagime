@@ -1,0 +1,130 @@
+.nordic.secure-shell {
+  --mi-space-1: 8px;
+  --mi-space-2: 16px;
+  --mi-space-3: 24px;
+  --mi-space-4: 32px;
+  --mi-panel-radius: 14px;
+  --mi-interaction-duration: 160ms;
+  --mi-interaction-ease: ease-out;
+  --mi-insight-edge: #a0b3c5;
+  --mi-insight-track: #e0ebf3;
+  --mi-insight-fill: #3879a7;
+  --mi-insight-selected: #dcecf9;
+  --mi-insight-alert: #9c2f33;
+}
+.nordic.secure-shell[data-theme="dark"] {
+  --mi-insight-edge: #70879b;
+  --mi-insight-track: #2c465e;
+  --mi-insight-fill: #83bdf0;
+  --mi-insight-selected: #263f5a;
+  --mi-insight-alert: #ffb4b6;
+}
+
+.nordic.secure-shell .mi-insight-grid { align-items: stretch; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--mi-space-2); }
+.mi-insight-grid > section { min-width: 0; margin: 0; align-content: start; }
+.mi-cockpit-signals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.nordic.secure-shell .mi-cockpit-signals button { min-width: 0; }
+.mi-cockpit-signals button small { overflow-wrap: anywhere; }
+.nordic.secure-shell .mi-cockpit-analysis .mi-exec-panel { border-radius: var(--mi-panel-radius); }
+.mi-effort-summary, .mi-insight-controls, .mi-insight-segments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mi-space-1);
+  min-width: 0;
+}
+.mi-effort-summary { justify-content: space-between; gap: var(--mi-space-2); }
+.mi-effort-summary > div:first-child { display: grid; gap: 4px; }
+.mi-effort-summary strong { font-variant-numeric: tabular-nums; font-size: 1.28rem; }
+.mi-effort-summary small { color: var(--mi-client-muted); }
+.mi-insight-controls { align-items: end; margin-block: var(--mi-space-1) var(--mi-space-2); }
+.mi-insight-controls label { min-width: 0; max-width: 100%; display: grid; gap: 4px; }
+.mi-insight-controls select { min-width: 0; max-width: 100%; min-height: 44px; }
+.mi-insight-segments { gap: 4px; }
+.nordic.secure-shell .mi-insight-segments button {
+  min-height: 44px;
+  padding: 6px 10px;
+  background: var(--mi-surface, #fff);
+  color: var(--mi-ink, #112537);
+  border: 1px solid var(--mi-insight-edge);
+  border-radius: 8px;
+  box-shadow: none;
+  white-space: normal;
+}
+.nordic.secure-shell .mi-insight-segments button[aria-pressed="true"] {
+  background: var(--mi-insight-selected);
+  border-color: var(--mi-insight-fill);
+}
+.mi-insight-bar { display: block; height: 7px; border-radius: 20px; background: var(--mi-insight-track); }
+.mi-insight-bar i { display: block; height: 100%; background: var(--mi-insight-fill); border-radius: inherit; transition: inline-size var(--mi-interaction-duration) var(--mi-interaction-ease); }
+.mi-deadline-panel h3 { display: flex; align-items: center; gap: 8px; }
+.mi-deadline-panel [data-alert="true"] { color: var(--mi-insight-alert); }
+.mi-deadline-panel details, .mi-monthly-effort details { margin-block-start: var(--mi-space-2); }
+.mi-monthly-effort table { table-layout: fixed; inline-size: 100%; }
+.mi-monthly-effort :is(td,th) { overflow-wrap: anywhere; }
+.nordic.secure-shell .mi-blocker-toggle { border-color: var(--mi-insight-alert); color: var(--mi-insight-alert); display: inline-flex; align-items: center; gap: 8px; }
+.nordic.secure-shell .mi-project-card > .intel-open-project { margin-block-start: auto; align-self: start; }
+.nordic.secure-shell .mi-project-card { display: flex; flex-direction: column; min-width: 0; }
+.mi-project-card-header { min-block-size: 76px; }
+.mi-project-card-header h3 { overflow-wrap: anywhere; }
+.nordic.secure-shell .mi-report-month { background: transparent; padding: 0; margin: 0; }
+.nordic.secure-shell .exec-text-button:has(svg), .nordic.secure-shell .mi-preview-controls a {
+  text-decoration: none;
+}
+.nordic.secure-shell .exec-text-button:has(svg):hover, .nordic.secure-shell .mi-preview-controls a:hover { text-decoration: underline; text-underline-offset: 3px; }
+@media (min-width: 961px) {
+  .nordic.secure-shell .mi-workspace-sidebar {
+    min-height: calc(100svh - 116px);
+    background-image: radial-gradient(circle, #b1d0ed28 1px, transparent 1px);
+    background-size: 15px 15px;
+  }
+}
+@media (max-width: 900px) {
+  .nordic.secure-shell .mi-insight-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 620px) {
+  .mi-cockpit-signals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mi-insight-bar i { transition: none; }
+}
+
+.nordic.secure-shell .secure-masthead { background: transparent; }
+.nordic.secure-shell .reporting-period__stepper {
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--mi-insight-edge);
+  border-radius: 12px;
+  background: var(--mi-surface);
+}
+.nordic.secure-shell .reporting-period__stepper :is(button,select) { border: 0; background: transparent; box-shadow: none; }
+.nordic.secure-shell .reporting-period__stepper button:not(:disabled):hover { background: var(--mi-insight-selected); }
+.nordic.secure-shell .reporting-period__stepper .reporting-period__month { margin: 0; }
+.nordic.secure-shell .mi-department-analysis { align-items: stretch; }
+.mi-publication-settings { border: 1px solid var(--mi-insight-edge); border-radius: 10px; padding: 12px 16px; margin-block: 8px; }
+.mi-publication-settings label { display: flex; align-items: center; gap: 8px; }
+.nordic.secure-shell .mi-publication-settings input { inline-size: 20px; block-size: 20px; flex-shrink: 0; }
+.nordic.secure-shell[data-theme="dark"] .mi-budget-health-row {
+  --cap-edge: #617991;
+  --cap-muted: #becfdf;
+  background: #162a3d;
+}
+.nordic.secure-shell[data-theme="dark"] .mi-budget-health-row[data-editing] { border-color: #9bc3ea; }
+.nordic.secure-shell[data-theme="dark"] :is(.mi-budget-health-row, .mi-insight-grid) :is(input,select)::placeholder { color: #acbfd1; opacity: 1; }
+
+.mi-project-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: var(--mi-space-2);
+  margin-block: var(--mi-space-2);
+}
+.mi-project-facts div { min-width: 0; padding: var(--mi-space-2); background: var(--mi-insight-track); border-radius: 10px; }
+.mi-project-facts dt { color: var(--mi-muted); font-size: .86rem; }
+.mi-project-facts dd { margin: 4px 0 0; font-weight: 680; overflow-wrap: anywhere; }
+.mi-project-document {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--mi-space-2);
+  align-items: stretch;
+}
+.mi-project-document > div { padding: var(--mi-space-2); border: 1px solid var(--mi-insight-edge); border-radius: var(--mi-panel-radius); min-width: 0; }

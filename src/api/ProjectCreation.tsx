@@ -1,11 +1,12 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Check, ChevronRight, FolderKanban, Layers3 } from "lucide-react";
-import type { Delivery } from "../projects/delivery";
+import { isProgramType, type Delivery } from "../projects/delivery";
 import { hoursToSeconds } from "../projects/duration";
 import type { ManagedProject, Project, StaffProjectSummary } from "../projects/model";
 import { byOrder, type Portfolio } from "../projects/portfolio";
 import { CalendarMultiPicker, CalendarPicker } from "./CalendarPicker";
 import { PeoplePicker } from "./DeliveryOperations";
+import { ManagementDialog } from "./ManagementDialog";
 import { SearchableCombobox } from "./SearchableCombobox";
 import "./project-creation.css";
 
@@ -16,8 +17,7 @@ const projectKinds = [
 const arrangements = [
   { value: "hourly", label: "Hourly" },
   { value: "fixed-fee", label: "Fixed Fee" },
-  { value: "training", label: "Training" },
-  { value: "workshop", label: "Workshop" },
+  { value: "training", label: "Training & Workshops" },
 ] as const;
 
 const titles = {
@@ -46,7 +46,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
 }) {
   const saved = project?.delivery;
   const legacy = Boolean(project && saved?.structure !== 3);
-  const canPublishNow = canPublish && (!project || project.published);
+  const canPublishNow = canPublish;
   const [step, setStep] = useState<Step>("identity");
   const [kind, setKind] = useState<Delivery["kind"]>(saved?.kind ?? (project ? "project" : "engagement"));
   const [name, setName] = useState(project?.name ?? "");
@@ -66,8 +66,9 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
   const [managers, setManagers] = useState(saved?.managerIds ?? []);
   const [team, setTeam] = useState(saved?.teamIds ?? []);
   const [facilitators, setFacilitators] = useState(saved?.training?.facilitatorIds ?? []);
-  const [publishSummary, setPublishSummary] = useState(saved?.publishSummary ?? false);
-  const [publishStartStatus, setPublishStartStatus] = useState(saved?.publishStartStatus ?? !project);
+  const publishSummary = saved?.publishSummary ?? false;
+  const publishStartStatus = saved?.publishStartStatus ?? !project;
+  const [pendingPublication, setPendingPublication] = useState<ManagedProject>();
   const [error, setError] = useState("");
   const [invalidStep, setInvalidStep] = useState<Step>();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -82,7 +83,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
   const selectedDepartment = departments.find(item => item.id === (area || legacyDepartment?.delivery?.areaId));
   const miscellaneous = kind === "project" && (selectedDepartment?.id === "miscellaneous" ||
     selectedDepartment?.name.trim().toLowerCase() === "miscellaneous");
-  const program = !miscellaneous && (type === "training" || type === "workshop");
+  const program = isProgramType(type);
   const daysCount = Number(days);
   const validDays = Number.isSafeInteger(daysCount) && daysCount >= 1 && daysCount <= 60;
   const requiresCompleteProgram = !legacy || type !== saved?.type;
@@ -113,8 +114,10 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         throw Error("Choose exactly one distinct calendar date per program day.");
       if (!program && start && deadline && start > deadline)
         throw Error("Choose an expected end date on or after the start date.");
-      if (type === "hourly" || miscellaneous) amount(monthly, saved?.monthlyCap);
-      amount(lifetime, saved?.lifetimeCap);
+      if (!program) {
+        if (type === "hourly" || miscellaneous) amount(monthly, saved?.monthlyCap);
+        amount(lifetime, saved?.lifetimeCap);
+      }
     }
     if (part === "people") {
       if (!legacy && !managers.length) throw Error("Choose at least one project manager.");
@@ -144,15 +147,15 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         validate(part);
       }
       const publish = canPublishNow && (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "publish";
-      if (publish && !window.confirm(project ? "Save these changes and publish them to authorized clients?" :
-        "Create this project and publish its client-facing information to authorized clients?")) return;
       const {
         start: _start, deadline: _deadline,
         monthlyCap: _monthly, lifetimeCap: _lifetime, training: sourceProgram, ...unchanged
       } = saved ?? {};
-      const monthlyCap = type === "hourly" || miscellaneous ? amount(monthly, saved?.monthlyCap) :
-        legacy && type === saved?.type ? saved?.monthlyCap : undefined;
-      const lifetimeCap = amount(lifetime, saved?.lifetimeCap);
+      const existingProgram = saved && isProgramType(saved.type);
+      const monthlyCap = program ? existingProgram ? saved?.monthlyCap : undefined :
+        type === "hourly" || miscellaneous ? amount(monthly, saved?.monthlyCap) :
+          legacy && type === saved?.type ? saved?.monthlyCap : undefined;
+      const lifetimeCap = program ? existingProgram ? saved?.lifetimeCap : undefined : amount(lifetime, saved?.lifetimeCap);
       const schedule = program && (!legacy || dates.length > 0)
         ? { start: [...dates].sort()[0], deadline: latest }
         : { start: start || undefined, deadline: deadline || undefined };
@@ -164,11 +167,11 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         ...(legacy ? {} : { structure: 3, parentId: kind === "project" ? parent : undefined, areaId: kind === "project" ? area : undefined }),
         kind, type, managerIds: managers, teamIds: team,
         ...(!miscellaneous && kind === "project" && type === "hourly" ? { countAgainstParentCap: countForParent } : {}),
-        ...(!miscellaneous && (publishSummary || saved?.publishSummary !== undefined) ? { publishSummary } : {}),
+        ...(publishSummary || saved?.publishSummary !== undefined ? { publishSummary } : {}),
         ...(publishStartStatus || saved?.publishStartStatus !== undefined ? { publishStartStatus } : {}),
         monthlyCap, lifetimeCap, training, ...schedule,
       };
-      onSave({
+      const candidate: ManagedProject = {
         name: name.trim(),
         status: project?.status ?? "planned",
         progress: project?.progress ?? 0,
@@ -177,7 +180,9 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         workOrderReference: reference,
         plan: project?.plan ?? { basis: "fixed", targetSeconds: 0 },
         delivery,
-      }, publish);
+      };
+      if (publish) setPendingPublication(candidate);
+      else onSave(candidate, false);
     } catch (problem) {
       setStep(checking);
       setError(problem instanceof Error ? problem.message : "The project could not be saved.");
@@ -185,7 +190,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
     }
   }
 
-  return <form className="secure-form creation-wizard" data-step={step} aria-label={project ? "Edit a project" : "Create a project"} onSubmit={submit} noValidate>
+  return <><form className="secure-form creation-wizard" data-step={step} aria-label={project ? "Edit a project" : "Create a project"} onSubmit={submit} noValidate>
     <header className="creation-head">
       <h3>{project ? "Edit project" : "Create a project"}</h3>
       {project?.published && <p>{canPublishNow ? "Save a private draft or publish these changes to authorized clients." :
@@ -233,15 +238,15 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
           <input value={reference} maxLength={120} onChange={event => change(setReference, event.target.value)} /></label>
       </>}
       {step === "arrangement" && <>
-        {!miscellaneous && <label>Arrangement<select aria-label="Arrangement" value={type} onChange={event => change(setType, event.target.value as Delivery["type"])}>
+        {!miscellaneous && <label>Arrangement<select aria-label="Arrangement" value={program ? "training" : type} onChange={event => change(setType, event.target.value as Delivery["type"])}>
           {arrangements.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
         </select></label>}
-        <div className="creation-columns">
+        {!program && <div className="creation-columns">
           {(type === "hourly" || miscellaneous) && <label>Monthly budgeted hours<input inputMode="decimal" value={monthly}
             onChange={event => change(setMonthly, event.target.value)} placeholder="No monthly cap" /></label>}
           <label>{type === "hourly" || miscellaneous ? "Whole-project budgeted hours" : "Hour cap"}
             <input inputMode="decimal" value={lifetime} onChange={event => change(setLifetime, event.target.value)} placeholder="No cap" /></label>
-        </div>
+        </div>}
         {!miscellaneous && type === "hourly" && kind === "project" && <label className="creation-checkbox">
           <input type="checkbox" checked={countForParent} onChange={event => change(setCountForParent, event.target.checked)} />
           Count this project&rsquo;s delivery hours against the parent&rsquo;s budget</label>}
@@ -267,10 +272,10 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         <div className="creation-path" aria-label="Project location">{path.map((item, index) =>
           <span key={index}>{index > 0 && <ChevronRight size={15} aria-hidden="true" />}{item}</span>)}</div>
         <dl className="creation-summary">
-          {!miscellaneous && <div><dt>Arrangement</dt><dd>{arrangements.find(item => item.value === type)?.label}</dd></div>}
-          <div><dt>Hours caps</dt><dd>{[
+          {!miscellaneous && <div><dt>Arrangement</dt><dd>{arrangements.find(item => item.value === (program ? "training" : type))?.label}</dd></div>}
+          {!program && <div><dt>Hours caps</dt><dd>{[
             ((type === "hourly" || miscellaneous) && monthly) && monthly + " h per month", lifetime && lifetime + " h total",
-          ].filter(Boolean).join(" / ") || "No cap"}</dd></div>
+          ].filter(Boolean).join(" / ") || "No cap"}</dd></div>}
           <div><dt>Schedule</dt><dd>{program ? dates.slice().sort().join(", ") || "No dates selected" :
             [start, deadline].filter(Boolean).join(" to ") || "No dates selected"}</dd></div>
           {program && venue.trim() && <div><dt>Venue</dt><dd>{venue}</dd></div>}
@@ -280,13 +285,6 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
           {!miscellaneous && reference.trim() && <div><dt>Work-order reference</dt><dd>{reference}</dd></div>}
           {!miscellaneous && description.trim() && <div><dt>Client description</dt><dd>{description}</dd></div>}
         </dl>
-        <label className="creation-checkbox">
-          <input type="checkbox" checked={publishStartStatus} onChange={event => change(setPublishStartStatus, event.target.checked)} />
-          Show Upcoming or In progress when the start date is private</label>
-        {!publishSummary && <p className="secure-muted">Clients see the status after publication. Date and hour cap access is controlled separately.</p>}
-        {!miscellaneous && <label className="creation-checkbox">
-          <input type="checkbox" checked={publishSummary} onChange={event => change(setPublishSummary, event.target.checked)} />
-          Share schedule and hours caps with clients when published</label>}
         {!project && !canPublish && <p className="secure-muted">A publisher must approve this project before clients can see it.</p>}
       </>}
       {error && <p id={fieldId + "-error"} className="secure-error" role="alert">{error}</p>}
@@ -302,5 +300,21 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         </> : <button type="submit" disabled={busy}>Continue</button>}
       </div>
     </div>
-  </form>;
+  </form>
+    {pendingPublication && <ManagementDialog title={project ? "Publish project changes?" : "Publish new project?"}
+      close={() => setPendingPublication(undefined)}>
+      <p><strong>{pendingPublication.name}</strong></p>
+      <p>Authorized clients can see the project name, status and approved description after publication.</p>
+      <p>{publishSummary ? "The previously approved schedule and cap settings remain eligible for publishing."
+        : "Schedule dates and hour caps remain private."} {publishStartStatus && !publishSummary &&
+        "Clients may see the delivery phase without seeing the start date."} Only approved directory details appear for assigned people.</p>
+      <footer>
+        <button type="button" className="secure-secondary" onClick={() => setPendingPublication(undefined)}>Cancel</button>
+        <button type="button" className="mi-picker-primary" onClick={() => {
+          setPendingPublication(undefined);
+          onSave(pendingPublication, true);
+        }}>Publish</button>
+      </footer>
+    </ManagementDialog>}
+  </>;
 }
