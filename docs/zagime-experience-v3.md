@@ -9,10 +9,14 @@ The visual system uses an 8px grid with 16px, 24px and 32px section spacing, 14p
 | Client metric | Scope |
 | --- | --- |
 | Allocation share | Approved seconds for an item divided by approved seconds in the selected scope and month. A zero denominator has no share. |
+| Monthly approved effort · Share of selected-period effort | Each month's approved portfolio seconds divided by the sum of approved seconds in the displayed window. The window covers up to 24 calendar months and keeps the selected reporting month available. |
+| Monthly approved effort · Share of monthly portfolio effort | With a department or project selected, its approved seconds are divided by the whole authorized portfolio's approved seconds for the same month. |
 | Monthly cap utilization | Approved cap-consumed seconds divided by published caps in the current period. Portfolio totals omit nested limits under a capped ancestor. Effort outside those caps is excluded. |
 | Work completion | Approved published assessment or eligible milestone completion. |
 | Dated completion history | Verified published dates only. Closed projects enter the history only when a completion date was recorded. The percentage view uses the current approved portfolio as denominator. |
 | Deadline horizon | Calendar months from the current America/Regina date, including overdue actionable projects. Only published dates contribute. |
+
+The monthly effort plot and table use the same authorized series. The Hours toggle changes the plotted unit. Hover, focus and the table show the underlying integer seconds and the relevant denominator. Months missing from the report appear as Not reported, and zero denominators have no percentage. Existing CSV exports on other views continue to report their authorized effort measures in hours. The Monthly Approved Effort panel shows cap utilization separately for the latest reporting month. Historical cap versions are unavailable, so the panel omits historical utilization.
 
 Training & Workshops uses the existing `training` value for new records. Existing `training` and `workshop` values remain supported. Historical caps on those records remain readable and unchanged on ordinary edits. The server rejects new cap assignments, including zero, for both program types. No cap or production migration is applied automatically.
 

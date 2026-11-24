@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { ArrowUpRight, CalendarClock, CircleAlert } from "lucide-react";
 import type { ProjectReport } from "../projects/model";
+import { reportingTimeMonth } from "../projects/time-history";
 import { clientDelivery, deadlineHorizons, deadlineWindow, forProjectFilter, type DeadlineHorizon, type ProjectFilter } from "./client-delivery";
 import { projectStatus, reportDay, reportHours, reportMonth, today } from "./dashboard-format";
 import { metricPercent, percentText } from "./insight-metrics";
 import { TrendPlot } from "./ReportingPlots";
+import { monthlyEffort } from "./monthly-effort";
+import { portalNavigate, usePortalLocation } from "./portal-location";
 import "./client-intelligence.css";
 
 type Delivery = ReturnType<typeof clientDelivery>;
@@ -100,65 +103,77 @@ export function UpcomingDeadlines({ delivery, report, onLink }: { delivery: Deli
 }
 
 export function MonthlyEffort({ report, delivery, unit, onLink }: { report: ProjectReport; delivery: Delivery; unit: EffortUnit; onLink: OpenClientView }) {
-  const [areaId, setArea] = useState("");
-  const [projectId, setProject] = useState("");
+  const location = usePortalLocation();
   const [hovered, setHovered] = useState<string>();
-  const [selected, setSelected] = useState<string>();
-  const portfolioHistory = report.portfolio?.history ?? [];
-  const members = areaId ? delivery.departmentRows.find(item => item.id === areaId)?.effortProjects ?? [] : delivery.projectRows;
-  const scope = members.filter(item => !projectId || item.project.id === projectId);
-  const filtered = Boolean(areaId || projectId);
-  const byMonth = new Map<string, number>();
-  if (filtered) {
-    for (const member of scope) {
-      for (const entry of report.historyByProject?.[member.project.id] ?? [])
-        byMonth.set(entry.month, (byMonth.get(entry.month) ?? 0) + entry.seconds);
-    }
-    byMonth.set(report.month, scope.reduce((sum, item) => sum + item.project.seconds, 0));
-  }
-  const history = new Map(portfolioHistory.map(item => [item.month, item.seconds]));
-  history.set(report.month, report.totalSeconds);
-  const rows = [...history].sort(([a], [b]) => a.localeCompare(b)).map(([month, total]) => {
-    const seconds = filtered ? byMonth.get(month) ?? 0 : total;
-    return { id: month, month, label: reportMonth(month), seconds, total, share: metricPercent(seconds, total) };
+  const requestedDepartment = location.get("effort-department");
+  const department = delivery.departmentRows.find(item => item.id === requestedDepartment);
+  const members = department?.effortProjects ?? delivery.projectRows;
+  const project = members.find(item => item.project.id === location.get("effort-project"));
+  const filtered = Boolean(department || project);
+  const series = monthlyEffort(report, filtered ? project ? [project.project.id] : members.map(item => item.project.id) : undefined);
+  const getValue = (row: typeof series.rows[number]) => unit === "hours" ? row.seconds : row.share;
+  const points = series.rows.flatMap(row => {
+    const value = getValue(row);
+    return value === undefined ? [] : [{ id: row.month, month: row.month, label: reportMonth(row.month), value }];
   });
-  const comparable = unit === "percentage" ? rows.filter(row => row.share !== undefined) : rows;
-  const visible = comparable.slice(-24);
-  const active = visible.find(row => row.id === selected) ?? visible.find(row => row.id === report.month) ?? visible.at(-1);
-  const inspected = visible.find(row => row.id === hovered) ?? active;
-  const cap = projectId ? scope[0]?.delivery : undefined;
-  const utilized = cap?.monthlyCap !== undefined && cap.monthlyCapUsed !== undefined
+  const active = points.find(row => row.id === location.get("effort-point")) ??
+    points.find(row => row.id === report.month) ?? points.at(-1);
+  const inspected = series.rows.find(row => row.month === (hovered ?? active?.id));
+  const cap = project?.delivery;
+  const historical = report.month !== (report.reportingThroughMonth ?? reportingTimeMonth());
+  const utilized = !historical && cap?.monthlyCap !== undefined && cap.monthlyCapUsed !== undefined
     ? metricPercent(cap.monthlyCapUsed, cap.monthlyCap) : undefined;
-  const value = (row: typeof rows[number]) => unit === "hours" ? reportHours(row.seconds) + " h" :
-    row.share === undefined ? "Not applicable" : percentText(row.share);
+  const exact = (seconds: number | undefined) =>
+    seconds === undefined ? "Not reported" : reportHours(seconds) + " h (" + seconds.toLocaleString("en-CA") + " seconds)";
+  const share = (value: number | undefined) => value === undefined ? "Not applicable" : percentText(value);
+  const denominatorLabel = filtered ? "Monthly portfolio effort" : "Selected-period effort";
+  const detail = (row: typeof series.rows[number]) =>
+    "Approved effort: " + exact(row.seconds) + ". " + denominatorLabel + ": " + exact(row.denominator) + ". " +
+    series.label + ": " + share(row.share) + ".";
+
   return <section className="mi-exec-panel mi-monthly-effort" aria-label="Monthly approved effort">
     <div className="mi-exec-heading"><div><h3>Monthly approved effort</h3>
-      <p>{unit === "percentage" ? "Share of all approved portfolio effort in each month" : "Approved allocated hours in each month"}</p></div></div>
+      <p>{unit === "percentage" ? series.label : "Approved allocated hours in each month"}</p>
+      <p>{series.from === series.through ? reportMonth(series.from) : reportMonth(series.from) + " to " + reportMonth(series.through)}</p>
+    </div></div>
     <div className="mi-insight-controls">
-      <label>Effort department<select value={areaId} onChange={event => { setArea(event.target.value); setProject(""); }}>
+      <label>Effort department<select value={department?.id ?? ""} onChange={event => {
+        setHovered(undefined);
+        portalNavigate({ "effort-department": event.target.value || null, "effort-project": null, "effort-point": null }, true);
+      }}>
         <option value="">All departments</option>{delivery.departmentRows.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select></label>
-      <label>Effort project<select value={projectId} onChange={event => setProject(event.target.value)}>
+      <label>Effort project<select value={project?.project.id ?? ""} onChange={event => {
+        setHovered(undefined);
+        portalNavigate({ "effort-project": event.target.value || null, "effort-point": null }, true);
+      }}>
         <option value="">All projects in scope</option>{members.map(item => <option key={item.project.id} value={item.project.id}>{item.project.name}</option>)}
       </select></label>
     </div>
-    {inspected && active ? <>
-      <TrendPlot label="Monthly approved allocation" unit={unit === "hours" ? "hours" : "percent"} rows={visible.map(row => ({
-        id: row.id, month: row.month, label: row.label, value: unit === "hours" ? row.seconds : row.share!,
-      }))} active={active.id} onSelect={setSelected} onInspect={setHovered} />
-      <p aria-live="polite"><b>{inspected.label} · {value(inspected)}</b> · {reportHours(inspected.seconds)} of {reportHours(inspected.total)} approved h</p>
-      <button type="button" className="exec-text-button" onClick={() => onLink(projectId ? "project:" + projectId : areaId ? "area:" + areaId : "projects", active.month)}>
+    {active && inspected ? <>
+      <TrendPlot label={unit === "percentage" ? series.label : "Monthly approved allocation in hours"}
+        unit={unit === "hours" ? "hours" : "percent"} rows={points} active={active.id}
+        onSelect={month => portalNavigate({ "effort-point": month }, true)} onInspect={setHovered}
+        spokenValue={(_value, point) => detail(series.rows.find(row => row.month === point.id)!)} />
+      <p className="mi-effort-inspection" role={hovered ? "tooltip" : "status"}>
+        <b>{reportMonth(inspected.month)}</b> · {detail(inspected)}
+      </p>
+      <button type="button" className="exec-text-button" onClick={() => onLink(project ? "project:" + project.project.id : department ? "area:" + department.id : "projects", active.month)}>
         Open {active.label} detail <ArrowUpRight size={16} aria-hidden="true" />
       </button>
     </> : <p>No approved effort is available to compare in this scope.</p>}
-    {projectId && <p><strong>{reportMonth(report.month)} cap utilization</strong> {cap?.monthlyCap === undefined ? "No published cap" :
-      utilized === undefined ? "Not applicable" : percentText(utilized)}{cap?.monthlyCap !== undefined && cap.monthlyCapUsed !== undefined &&
-      " · " + reportHours(cap.monthlyCapUsed) + " of " + reportHours(cap.monthlyCap) + " h against the published cap"}</p>}
+    {points.length < series.rows.length && <p className="secure-muted">Months without a reported value for this measure are listed in the table and omitted from the plot.</p>}
+    {project && <section className="mi-effort-cap" aria-label="Selected reporting month cap utilization">
+      <p><strong>{reportMonth(report.month)} cap utilization</strong> {historical ? "Historical cap versions unavailable" :
+        cap?.monthlyCap === undefined ? "No published cap" : utilized === undefined ? "Not applicable" : percentText(utilized)}
+        {!historical && cap?.monthlyCap !== undefined && cap.monthlyCapUsed !== undefined &&
+          " · " + reportHours(cap.monthlyCapUsed) + " of " + reportHours(cap.monthlyCap) + " h against the published cap"}</p>
+    </section>}
     <details><summary>Show approved monthly effort table</summary>
-      <table><caption>Approved effort by month for the selected scope</caption>
-        <thead><tr><th scope="col">Month</th><th scope="col">Hours</th><th scope="col">Portfolio hours</th><th scope="col">Share</th></tr></thead>
-        <tbody>{rows.map(row => <tr key={row.id}><th scope="row">{row.label}</th><td>{reportHours(row.seconds)}</td><td>{reportHours(row.total)}</td>
-          <td>{row.share === undefined ? "Not applicable" : percentText(row.share)}</td></tr>)}</tbody>
+      <table><caption>{series.label}</caption>
+        <thead><tr><th scope="col">Month</th><th scope="col">Approved effort</th><th scope="col">{denominatorLabel}</th><th scope="col">Share</th></tr></thead>
+        <tbody>{series.rows.map(row => <tr key={row.month}><th scope="row">{reportMonth(row.month)}</th>
+          <td>{exact(row.seconds)}</td><td>{exact(row.denominator)}</td><td>{share(row.share)}</td></tr>)}</tbody>
       </table>
     </details>
   </section>;

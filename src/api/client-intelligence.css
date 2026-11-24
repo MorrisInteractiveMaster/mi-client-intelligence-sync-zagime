@@ -133,3 +133,14 @@
   align-items: stretch;
 }
 .mi-project-document > div { padding: var(--mi-space-2); border: 1px solid var(--mi-insight-edge); border-radius: var(--mi-panel-radius); min-width: 0; }
+
+.mi-effort-inspection {
+  padding: var(--mi-space-1) var(--mi-space-2);
+  background: var(--mi-insight-track);
+  border-radius: 8px;
+}
+.mi-effort-cap {
+  margin-block-start: var(--mi-space-2);
+  padding-block-start: var(--mi-space-1);
+  border-block-start: 1px solid var(--mi-insight-edge);
+}

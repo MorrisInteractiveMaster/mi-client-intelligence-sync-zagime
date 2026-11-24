@@ -532,6 +532,22 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.screenshot({ path: join(referenceEvidence, "03-leadership-engagements-1647x868.png"), animations: "disabled" });
     const effort = client.page.getByRole("group", { name: "Effort display", exact: true });
     assert.equal(await effort.getByRole("button", { name: "Percentage", exact: true }).getAttribute("aria-pressed"), "true");
+    const monthlyEffort = client.page.getByRole("region", { name: "Monthly approved effort", exact: true });
+    await monthlyEffort.getByRole("img", { name: "Share of selected-period effort", exact: true }).waitFor();
+    const septemberPoint = monthlyEffort.getByRole("button", { name: /^September 2026, .*33\.3%/ });
+    await septemberPoint.hover();
+    const inspection = monthlyEffort.getByRole("tooltip");
+    const tooltip = await inspection.innerText();
+    for (const value of ["September 2026", "1.5 h (5,400 seconds)", "4.5 h (16,200 seconds)", "33.3%"])
+      assert.ok(tooltip.includes(value), value + " appears in the point tooltip");
+    await monthlyEffort.getByText("Show approved monthly effort table").click();
+    const effortTable = monthlyEffort.getByRole("table");
+    for (const [label, percent] of [["September", "33.3%"], ["October", "22.2%"], ["November", "44.4%"]]) {
+      await effortTable.getByRole("row", { name: new RegExp("^" + label + " 2026") }).getByRole("cell", { name: percent, exact: true }).waitFor();
+    }
+    await septemberPoint.hover();
+    await monthlyEffort.screenshot({ path: join(evidence, "monthly-approved-effort-selected-period.png"), animations: "disabled" });
+    await monthlyEffort.getByText("Show approved monthly effort table").click();
     let reportRequests = 0;
     const countRequests = (request: import("playwright").Request) => {
       if (new URL(request.url()).pathname.endsWith("/report")) reportRequests++;
@@ -548,12 +564,38 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await choice.click();
       assert.equal(await choice.getAttribute("aria-pressed"), "true");
     }
-    const monthlyEffort = client.page.getByRole("region", { name: "Monthly approved effort", exact: true });
-    await monthlyEffort.getByRole("combobox", { name: "Effort project" }).selectOption(projectId);
+    await monthlyEffort.getByRole("img", { name: "Monthly approved allocation in hours" }).waitFor();
+    await monthlyEffort.getByRole("button", { name: /^September 2026, Approved effort: 1\.5 h/ }).waitFor();
+    const effortDepartment = monthlyEffort.getByRole("combobox", { name: "Effort department" });
+    await effortDepartment.selectOption("hr");
+    const hrNovember = monthlyEffort.getByRole("button", { name: /^November 2026, Approved effort: 0 h.*0%/ });
+    await hrNovember.focus();
+    assert.match(await monthlyEffort.getByRole("tooltip").innerText(), /Monthly portfolio effort: 2 h.*0%/);
+    await effortDepartment.selectOption("");
+    const effortProject = monthlyEffort.getByRole("combobox", { name: "Effort project" });
+    await effortProject.selectOption(projectId);
     await monthlyEffort.getByText("Show approved monthly effort table").click();
-    await monthlyEffort.getByRole("table").getByRole("row", { name: /November 2026.*2.*2.*100%/ }).waitFor();
+    await monthlyEffort.getByRole("table", { name: "Share of monthly portfolio effort" }).getByRole("row", { name: /November 2026.*2.*2.*100%/ }).waitFor();
+    await monthlyEffort.getByText("No published cap", { exact: false }).waitFor();
     assert.equal(reportRequests, 0, "Visual controls use the same authorized report");
     client.page.off("request", countRequests);
+    const octoberPoint = monthlyEffort.getByRole("button", { name: /^October 2026, Approved effort: 1 h/ });
+    await octoberPoint.click();
+    await monthlyEffort.getByRole("button", { name: "Open October 2026 detail" }).click();
+    await client.page.waitForURL(url => url.pathname === "/clients/zagime/projects/" + projectId && url.searchParams.get("month") === previousMonth);
+    await client.page.getByRole("heading", { name: projectName, level: 2 }).waitFor();
+    await client.page.goBack();
+    await effortProject.waitFor();
+    assert.equal(await effortProject.inputValue(), projectId);
+    await monthlyEffort.getByRole("button", { name: "Open October 2026 detail" }).waitFor();
+    await client.page.getByRole("combobox", { name: "Reporting month", exact: true }).selectOption(previousMonth);
+    await monthlyEffort.getByText("Historical cap versions unavailable", { exact: false }).waitFor();
+    await monthlyEffort.getByRole("button", { name: "Open October 2026 detail" }).waitFor();
+    await client.page.getByRole("combobox", { name: "Reporting month", exact: true }).selectOption(month);
+    await effortProject.selectOption("");
+    const departmentMode = departmentChart.getByRole("button", { name: "Project count", exact: true });
+    await departmentMode.click();
+    await departmentChart.getByRole("combobox", { name: "Project status" }).selectOption("active");
     await departmentChart.getByRole("button", { name: /No department.*approved delivery project/ }).click();
     await client.page.waitForURL(route("/clients/zagime/projects", "&effort-unit=hours&status=unassigned-active"));
     await captureReference(client.page, "01-client-projects-1740x907", 1740, 907);

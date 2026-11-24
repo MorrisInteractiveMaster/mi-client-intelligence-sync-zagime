@@ -161,13 +161,13 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview }: Report
   const periodToolbar = (action?: ReactNode) => <ReportingPeriod month={month} currentMonth={currentMonth} action={action}
     availableMonths={availableMonths} latestMonth={latestMonth} empty={report?.totalSeconds === 0}
     range={monthRange} pending={!report && !current}
-    onMonth={selected => portalNavigate({ month: selected, "period-scope": null, "from-month": null, "through-month": null })}
+    onMonth={selected => portalNavigate({ month: selected, "effort-point": null, "period-scope": null, "from-month": null, "through-month": null })}
     onRange={range => portalNavigate({ view: "history", "period-scope": range.preset,
       "from-month": range.preset === "custom" ? range.from ?? null : null,
       "through-month": range.preset === "custom" ? range.through ?? null : null, chart: null })} />;
 
   const legacyMonth = !nativeClient && !preview && <ReportingMonthField month={month}
-    onMonth={selected => portalNavigate({ month: selected })} />;
+    onMonth={selected => portalNavigate({ month: selected, "effort-point": null })} />;
 
   const [kind, id, itemId] = view.split(":");
   const area = kind === "area" ? report?.portfolio?.areas.find(a => a.id === id) : undefined;
