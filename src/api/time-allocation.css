@@ -184,7 +184,10 @@
   .time-entries [data-cell="Actions"] button { width: 100%; }
 }
 @container mi-time (max-width: 490px) {
-  .delivery-allocation .time-history-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .delivery-allocation .time-history-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .delivery-allocation .time-history-toolbar > .time-advanced { order: 2; grid-column: 1 / -1; }
+  .time-workbench-controls { padding: 10px; }
+  .nordic.secure-shell .delivery-allocation :is(.time-history-toolbar, .time-filter-form) :is(input, select, button) { min-height: 38px; }
   .delivery-allocation .time-filter-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .time-filter-form > :is(label, details) { grid-column: 1 / -1; }
   .delivery-allocation .time-workbench-heading { align-items: start; }

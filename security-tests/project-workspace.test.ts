@@ -1769,7 +1769,9 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       // Verify actual rendered geometry with ordinary and long source notes.
       for (const [width, height] of [[1440, 900], [1920, 1080], [768, 1024], [390, 844]]) {
         await bulkPage.setViewportSize({ width, height });
-        await bulkPage.locator(".time-table-filters").scrollIntoViewIfNeeded();
+        const filterBar = bulkPage.locator(".time-table-filters");
+        if (width < 900) await filterBar.evaluate(element => element.scrollIntoView({ block: "start" }));
+        else await filterBar.scrollIntoViewIfNeeded();
         const cells = await table.locator("tbody tr").first().locator("td").evaluateAll(nodes =>
           nodes.map(node => ({ label: node.getAttribute("data-cell"), width: node.getBoundingClientRect().width })));
         await bulkPage.screenshot({ path: join(evidence, "v51-time-table-" + width + ".png"), animations: "disabled" });
@@ -1804,6 +1806,8 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         const target = bulkTools.getByRole("combobox", { name: "Delivery Project", exact: true });
         await target.click();
         await bulkTools.getByRole("listbox", { name: "Delivery Project", exact: true }).getByRole("option", { name: "Policy assessment fixture", exact: true }).click();
+        await bulkTools.evaluate(element => element.scrollIntoView({ block: "start" }));
+        await bulkPage.screenshot({ path: join(evidence, "v51-bulk-selection-" + count + ".png"), animations: "disabled" });
         await bulkTools.getByRole("button", { name: "Review allocation", exact: true }).click();
         await review.getByText(/53 entries · 26.5 h recorded · 26.5 h to allocate/).waitFor();
         await review.getByText(/Consulting engagement fixture \/ HR \/ Policy assessment fixture/).waitFor();

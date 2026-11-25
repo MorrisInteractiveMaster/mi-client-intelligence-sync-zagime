@@ -26,7 +26,7 @@ export function TimeConsultantFilter({ choices, selected, disabled, onChange }: 
   }));
   return <div className="time-consultants" aria-label="Consultant filter">
     <SearchableCombobox label="Consultant" value="" options={options} disabled={disabled}
-      placeholder="Search consultants by name" onChange={id => {
+      placeholder="Search by name" onChange={id => {
         const group = groups.get(id);
         if (group) onChange([...new Set([...selected.filter(value => value !== "unavailable"), ...group.ids])]);
       }} />

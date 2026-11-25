@@ -604,7 +604,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
         ? "Parent Project: " + projectName([...bulkParents][0] ?? "") : "No fixed Parent Project in this selection."}</p>}
       <div className="time-bulk-destination">
         {!approveAutomatic && <>
-          <label>Department<select value={bulkDepartment} disabled={busy || bulkParents.size > 1} onChange={e => {
+          <label>Department<select aria-label="Department" value={bulkDepartment} disabled={busy || bulkParents.size > 1} onChange={e => {
             setBulkDepartment(e.target.value); setBulkProject("");
           }}><option value="">All compatible departments</option>{portfolio?.areas.filter(item =>
             compatibleTargets.some(project => resolvedArea(project.id) === item.id)).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
@@ -734,7 +734,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
               .map(p => ({ value: p.id, label: p.name }))}
             onChange={id => { setParent(id); setClassification(""); }} placeholder="Select parent project" />}
         <div className="time-destination-controls">
-          <label>Department<select value={classification} onChange={e => {
+          <label>Department<select aria-label="Department" value={classification} onChange={e => {
             setClassification(e.target.value);
             if (!advancedSplit && portions[0] && e.target.value && resolvedArea(portions[0].projectId) !== e.target.value) setPortions([]);
           }}><option value="">All compatible departments</option>{portfolio?.areas
