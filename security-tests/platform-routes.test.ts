@@ -138,7 +138,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     return { page, context };
   }
   const route = (path: string, extra = "") => origin + path + "?month=" + month + extra;
-  async function captureExperience(page: Page, name: string) {
+  async function captureExperience(page: Page, name: string, focus?: string) {
     const matrix = join(evidence, "experience-v2");
     await mkdir(matrix, { recursive: true });
     const appearance = page.getByRole("combobox", { name: "Appearance" });
@@ -149,6 +149,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       for (const [width, height] of [[1920, 1080], [1440, 900], [1366, 768], [1024, 768], [768, 1024], [390, 844], [320, 568]]) {
         await page.setViewportSize({ width, height });
         await page.evaluate(() => window.scrollTo(0, 0));
+        if (focus) await page.locator(focus).scrollIntoViewIfNeeded();
         const overflow = await page.evaluate(() => {
           if (document.documentElement.scrollWidth <= innerWidth) return [];
           return [...document.querySelectorAll("body *")].filter(element => element.getBoundingClientRect().right > innerWidth + 1)
@@ -1031,6 +1032,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await mappingArea.getByText("Will remain unchanged", { exact: true }).waitFor();
     assert.equal(await mappingArea.getByRole("button", { name: "Confirm mapping" }).isDisabled(), true);
     await timeOwner.page.screenshot({ path: join(evidence, "quickbooks-time-mapping.png"), fullPage: true, animations: "disabled" });
+    await captureExperience(timeOwner.page, "v5-mapping-impact", ".mi-mapping-impact");
     await timeOwner.page.getByRole("combobox", { name: "Appearance" }).selectOption("dark");
     await timeOwner.page.setViewportSize({ width: 390, height: 844 });
     assert.ok(await timeOwner.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

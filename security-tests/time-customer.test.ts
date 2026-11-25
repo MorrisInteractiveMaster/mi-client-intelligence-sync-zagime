@@ -405,25 +405,47 @@ test("verified customer discovery, registration, linking, daily reconciliation a
     const rawRef = root.collection("rawTime").doc(historicalId);
     const rawBefore = (await rawRef.get()).data()!;
     const checkpointBefore = (await checkpoint("104").get()).data();
+    // Tombstones exercise the reviewed inventory and cursor without changing recorded totals.
+    const excluded = Array.from({ length: 61 }, (_, index) => {
+      const externalId = String(8000 + index);
+      return [externalId, sourceRecordId("quickbooks-time", account, externalId)] as const;
+    });
+    const seedHistory = runtime.db.batch();
+    for (const [externalId, id] of excluded) {
+      seedHistory.set(root.collection("rawTime").doc(id), {
+        ...rawBefore, externalId, deleted: true, record: { ...rawBefore.record, id },
+      });
+    }
+    await seedHistory.commit();
     const impact = await sync.previewMapping(tenant, who, "104", deliveryId);
     assert.equal(impact.active, 1);
     assert.equal(impact.eligible, 1);
     assert.equal(impact.recordedSeconds, 61);
     assert.equal(impact.eligibleSeconds, 61);
+    assert.equal(impact.excluded, 61);
     const staleImpact = { ...deliveryReview, impactVersion: "a".repeat(64) };
     await assert.rejects(sync.confirmMapping(tenant, who, "104", deliveryId, staleImpact), /Time mapping conflict/);
     assert.equal((await map("104").get()).get("projectId"), pending.projectId);
     const mapped = await sync.confirmMapping(tenant, who, "104", deliveryId, { ...deliveryReview, impactVersion: impact.version });
     assert.equal(mapped.changed, true);
-    assert.equal(mapped.historical?.classified, 1);
-    assert.equal(mapped.historical?.progress?.done, true);
+    assert.equal(mapped.historical?.progress?.total, 62);
+    assert.equal(mapped.historical?.progress?.examined, 60);
+    assert.equal(mapped.historical?.progress?.done, false);
+    assert.ok(mapped.historical?.next);
+    const reloaded = (await sync.status(tenant, who, "2026-11")).mappings.find(entry => entry.jobcodeId === "104");
+    assert.deepEqual(reloaded?.historicalProgress, mapped.historical.progress);
+    const resumed = await sync.applyHistoricalMapping(tenant, who, "104");
+    assert.equal(resumed.examined, 2, "resume from persisted progress with no browser cursor");
+    assert.deepEqual(resumed.progress, { total: 62, examined: 62, classified: 1, unchanged: 61, conflicts: 0, seconds: 61, done: true });
     const classification = (await root.collection("automaticTimeAllocations").doc(historicalId).get()).data()!;
     assert.equal(classification.seconds, 61);
     assert.equal(classification.projectId, deliveryId);
     assert.equal(classification.parentId, existingProject);
     assert.equal(classification.areaId, "hr");
     assert.equal(classification.sourceRevision, rawBefore.record.revision);
-    assert.equal((await sync.applyHistoricalMapping(tenant, who, "104")).classified, 0);
+    const replay = await sync.applyHistoricalMapping(tenant, who, "104");
+    assert.equal(replay.classified, 0);
+    assert.deepEqual(replay.progress, resumed.progress);
     assert.deepEqual((await rawRef.get()).data(), rawBefore);
     assert.deepEqual((await checkpoint("104").get()).data(), checkpointBefore);
     assert.equal((await root.collection("allocationHeads").doc(historicalId).get()).exists, false);

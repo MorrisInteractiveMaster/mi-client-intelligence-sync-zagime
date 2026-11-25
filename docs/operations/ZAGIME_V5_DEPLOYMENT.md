@@ -28,16 +28,18 @@ Use the [owner-approved candidate phase](../delivery-operations.md#2-owner-appro
 
 On named staging, exercise a mapping preview and a resumable historical operation. Review a large fixed selection, retry a simulated interruption and verify tenant-scoped totals. Check an approved client report using a scoped account. Keep these tests on synthetic data.
 
-## 4. Update the Time worker and activate controlled history
+## 4. Update the Time worker
 
 Check that there is no active or inconclusive Time execution and coordinate with the operator so manual synchronization, recovery and the scheduled invocation do not overlap. Use the existing [image-only procedure](../delivery-operations.md#separately-approved-time-worker-image-change) when the reviewed worker digest requires promotion. Verify the unchanged service account, command, arguments, credentials, limits and schedule. A worker update does not authorize a provider reimport or a historical classification run.
 
-After the separately approved dashboard promotion, verify a single work order in the Morris mapping screen. Compare the complete preview against the preflight inventory. Confirm only the exact approved destination and monitor the historical results. Reconcile processed, unchanged, conflicting and changed-source entries before moving to the next work order. The normal worker schedule handles newly imported eligible time.
-
 ## 5. Promote traffic and perform authenticated smoke
 
-Use [dashboard traffic promotion](../delivery-operations.md#3-owner-approved-promotion) after the candidate and team approval. Verify the actual serving revision. Sign in as an authorized Morris staff user and separately as an authorized client. Check Time Allocation filters and approved-only reporting, then confirm the next normal Time dispatch from the read-only monitor. Perform approval or historical changes only in the approved operational window.
+Use [dashboard traffic promotion](../delivery-operations.md#3-owner-approved-promotion) after the candidate and team approval. Verify the actual serving revision. Sign in as an authorized Morris staff user and separately as an authorized client. Check Time Allocation filters and approved-only reporting, then confirm the next normal Time dispatch from the read-only monitor.
 
-## 6. Roll back and reconcile
+## 6. Run approved historical classification
+
+In the approved operational window, verify a single work order in the Morris mapping screen. Compare the complete preview against the preflight inventory. Confirm only the exact approved destination and monitor the historical results. Reconcile processed, unchanged, conflicting and changed-source entries before moving to the next work order. The normal worker schedule handles newly imported eligible time.
+
+## 7. Roll back and reconcile
 
 Use [dashboard traffic rollback](../delivery-operations.md#4-owner-controlled-rollback) to restore the captured split. If the worker image also needs rolling back, use the separate image-only procedure with the captured prior digest. Verify the running revisions and schedule. An image rollback leaves mapping decisions, classified entries, allocation history, approved effort, and historical progress documents in Firestore. Keep these records and reconcile differences using the before/after inventories and audit history. Pause discretionary mapping and approval actions during recovery. Resume the suspended historical check only on a compatible dashboard after resolving conflicts. Preserve all confirmed source and allocation versions.
