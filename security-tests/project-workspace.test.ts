@@ -1673,6 +1673,8 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       });
       // Link two verified source identities to the same directory profile. A
       // third source uses a matching display name without a verified link.
+      const bulkProject = await json(await create("Verified HR delivery fixture", { ...baseDelivery, structure: 3,
+        parentId: parent.id, areaId: "hr", managerIds: [contact.id], countAgainstParentCap: false }), 201);
       const account = "60", workOrder = "712", modified = "2026-11-23T18:00:00Z";
       const profile = { id: 501, name: "Jordan Cameron", url: "https://morrisinteractive.ca/team/fixture/" };
       const bulkPortfolioRef = portfolioRef(root);
@@ -1714,8 +1716,18 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       const otherParent = await json(await create("Other parent fixture", { ...baseDelivery, kind: "engagement", allowDirectAllocation: false }), 201);
       makeBulkEntry("1002", "615", "V51 mixed · Other parent", "Quinn Carter", otherParent.id, "713");
       makeBulkEntry("1003", "615", "V51 mixed · Consulting parent", "Quinn Carter");
+      const monthTotal = root.collection("timeMonthlyTotals").doc("2026-11");
+      const priorMonth = (await monthTotal.get()).data();
+      setup.set(monthTotal, { recorded: (priorMonth?.recorded ?? 0) + 109 * 1800, allocated: priorMonth?.allocated ?? 0 });
+      for (const period of ["2026-11", "lifetime"]) {
+        setup.set(root.collection("timeProjectTotals").doc(parent.id).collection("periods").doc(period),
+          { recorded: 108 * 1800, allocated: 0 });
+        setup.set(root.collection("timeProjectTotals").doc(otherParent.id).collection("periods").doc(period),
+          { recorded: 1800, allocated: 0 });
+      }
       await setup.commit();
       const bulkPage = hierarchyBrowser.page;
+      await bulkPage.reload();
       await bulkPage.getByRole("button", { name: "Time Allocation", exact: true }).click();
       const bulkFilters = bulkPage.getByRole("form", { name: "Time entry filters" });
       const consultants = bulkPage.getByRole("combobox", { name: "Consultant", exact: true });
@@ -1805,21 +1817,26 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         await bulkTools.getByLabel("Department", { exact: true }).selectOption("hr");
         const target = bulkTools.getByRole("combobox", { name: "Delivery Project", exact: true });
         await target.click();
-        await bulkTools.getByRole("listbox", { name: "Delivery Project", exact: true }).getByRole("option", { name: "Policy assessment fixture", exact: true }).click();
+        assert.equal(await bulkTools.getByRole("listbox", { name: "Delivery Project" })
+          .getByRole("option", { name: "Policy assessment fixture", exact: true }).count(), 0);
+        await bulkTools.getByRole("listbox", { name: "Delivery Project", exact: true }).getByRole("option", { name: "Verified HR delivery fixture", exact: true }).click();
         await bulkTools.evaluate(element => element.scrollIntoView({ block: "start" }));
         await bulkPage.screenshot({ path: join(evidence, "v51-bulk-selection-" + count + ".png"), animations: "disabled" });
         await bulkTools.getByRole("button", { name: "Review allocation", exact: true }).click();
         await review.getByText(/53 entries · 26.5 h recorded · 26.5 h to allocate/).waitFor();
-        await review.getByText(/Consulting engagement fixture \/ HR \/ Policy assessment fixture/).waitFor();
+        await review.getByText(/Consulting engagement fixture \/ HR \/ Verified HR delivery fixture/).waitFor();
       }
       await reviewBulk(53);
       await bulkPage.screenshot({ path: join(evidence, "v51-bulk-review-53.png"), animations: "disabled" });
       await review.getByRole("button", { name: "Apply allocation", exact: true }).click();
       const bulkResults = bulkPage.getByRole("region", { name: "Bulk allocation results" });
-      await bulkResults.getByText("53 of 53 entries saved.", { exact: true }).waitFor();
+      await bulkResults.getByText("53 of 53 entries saved.", { exact: true }).waitFor().catch(async error => {
+        const displayed = await bulkPage.locator(".delivery-allocation").innerText();
+        throw new Error("Clean bulk result: " + displayed.slice(0, 4500), { cause: error });
+      });
       await bulkResults.getByText("26.5 h saved (95,400 seconds).", { exact: true }).waitFor();
       const cleanHeads = await runtime.db.getAll(...clean.map(entry => root.collection("allocationHeads").doc(entry.ref.id)));
-      assert.ok(cleanHeads.every(doc => doc.get("portions")?.[0]?.projectId === nested.id && doc.get("portions")?.[0]?.seconds === 1800));
+      assert.ok(cleanHeads.every(doc => doc.get("portions")?.[0]?.projectId === bulkProject.id && doc.get("portions")?.[0]?.seconds === 1800));
       assert.deepEqual((await runtime.db.getAll(...clean.map(entry => entry.ref))).map(doc => doc.data()), clean.map(entry => entry.raw));
       await bulkResults.scrollIntoViewIfNeeded();
       await bulkPage.screenshot({ path: join(evidence, "v51-bulk-clean-53.png"), animations: "disabled" });
@@ -1839,11 +1856,11 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await drawerV51.getByLabel("Department", { exact: true }).selectOption("hr");
       await drawerV51.getByRole("combobox", { name: "Delivery Project", exact: true }).click();
       await drawerV51.getByRole("listbox", { name: "Delivery Project", exact: true })
-        .getByRole("option", { name: "Policy assessment fixture", exact: true }).click();
+        .getByRole("option", { name: "Verified HR delivery fixture", exact: true }).click();
       await drawerV51.getByRole("button", { name: "Save allocation", exact: true }).click();
       await bulkPage.getByText("Allocation saved.", { exact: true }).waitFor();
       assert.deepEqual((await root.collection("allocationHeads").doc(individual.ref.id).get()).get("portions"),
-        [{ projectId: nested.id, seconds: 1800, description: "" }]);
+        [{ projectId: bulkProject.id, seconds: 1800, description: "" }]);
       assert.deepEqual((await individual.ref.get()).data(), individual.raw);
 
       await searchBulk("V51 mixed");
@@ -1907,9 +1924,11 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       assert.deepEqual((await root.collection("allocationHeads").doc(splitSource.id).get()).data()?.portions, split);
       const hierarchyDraft = await json(await request("client-preview?month=2026-11&mode=draft"));
       assert.equal(hierarchyDraft.hierarchy[parent.id].monthlyCapUsed, 10_800);
-      assert.equal(hierarchyDraft.hierarchy[department.id].monthlyCapUsed, 7_200 + bulkSavedSeconds);
+      assert.equal(hierarchyDraft.hierarchy[department.id].monthlyCapUsed, 7_200);
       assert.equal(hierarchyDraft.hierarchy[parent.id].completion, undefined);
-      assert.equal(hierarchyDraft.projects.filter((item: { id: string }) => [direct.id, nested.id].includes(item.id))
+      assert.equal(hierarchyDraft.hierarchy[bulkProject.id].areaId, "hr");
+      assert.equal(hierarchyDraft.projects.find((item: { id: string }) => item.id === bulkProject.id).seconds, bulkSavedSeconds);
+      assert.equal(hierarchyDraft.projects.filter((item: { id: string }) => [direct.id, nested.id, bulkProject.id].includes(item.id))
         .reduce((total: number, item: { seconds: number }) => total + item.seconds, 0), 18_000 + bulkSavedSeconds);
       const hierarchyNavigation = bulkPage.getByRole("navigation", { name: "Morris workspace sections" });
       const managementBrowser = await session(1440);

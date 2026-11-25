@@ -315,3 +315,15 @@
 .nordic.secure-shell :is(.time-destination-controls, .time-bulk-destination, .time-consultants) .mi-combobox-input input {
   border: 0; box-shadow: none; background: transparent; padding-inline: 0;
 }
+
+.nordic.secure-shell .time-drawer-utilities a.secure-secondary {
+  display: inline-flex; align-items: center; border: 1px solid var(--mi-time-line); border-radius: 8px;
+  background: var(--mi-time-surface); color: var(--mi-time-ink); text-decoration: none; font-weight: 650;
+}
+.nordic.secure-shell .time-drawer-utilities a.secure-secondary:hover { background: var(--mi-time-soft); }
+.nordic.secure-shell.platform-shell :is(.time-destination-controls, .time-bulk-destination, .time-consultants) .mi-combobox-input input:focus-visible {
+  outline: none;
+}
+@media (max-width: 525px) {
+  .time-alloc-drawer .time-source-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

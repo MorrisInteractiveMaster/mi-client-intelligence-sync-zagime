@@ -226,9 +226,10 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   const defaultDepartment = (source: StaffSource) =>
     source.automaticClassification?.areaId ?? projects.find(project => project.id === source.reportingProjectId)?.delivery?.areaId ?? "";
   const priorAnnotations = editor?.annotations ?? (editor ? { ...blank, reportingDescription: editor.description.slice(0, 1000) } : blank);
+  const notesChanged = draftAnnotations.reportingDescription !== priorAnnotations.reportingDescription ||
+    draftAnnotations.internalNote !== priorAnnotations.internalNote;
   const dirty = Boolean(editor && (JSON.stringify(portions) !== JSON.stringify(editor.portions) ||
-    draftAnnotations.reportingDescription !== priorAnnotations.reportingDescription ||
-    draftAnnotations.internalNote !== priorAnnotations.internalNote || parent !== (priorAnnotations.parentId ?? defaultParent(editor)) ||
+    notesChanged || parent !== (priorAnnotations.parentId ?? defaultParent(editor)) ||
     classification !== (priorAnnotations.areaId ?? defaultDepartment(editor))));
   const notesOnly = Boolean(editor && !editor.needsReview && JSON.stringify(portions) === JSON.stringify(editor.portions) &&
     parent === (priorAnnotations.parentId ?? defaultParent(editor)) && classification === (priorAnnotations.areaId ?? (editor ? defaultDepartment(editor) : "")));
@@ -345,8 +346,14 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   };
   const header = (field: TimeEntrySortField) => linkedId ? <th scope="col">{entryLabels[field]}</th> :
     <SortHeader field={field} label={entryLabels[field]} sort={entrySort} onSort={sortEntries} disabled={busy} title={field === "notes" ? "Original description from QuickBooks Time" : undefined} />;
-  const bulkParents = new Set(selectedRows.map(row => row.reportingParentId).filter(Boolean));
+  const bulkParents = new Set(selectedRows.flatMap(row => row.reportingParentId ? [row.reportingParentId] : []));
+  const verifiedBulkParent = selectedRows.find(row => row.reportingProjectId && row.reportingParentId)?.reportingParentId;
+  // For a reviewed Time mapping, the ledger requires a direct delivery child
+  // with its own Department. Legacy service-area grandchildren remain readable.
+  const matchesVerifiedParent = (project: StaffProjectSummary, required?: string) => !required ||
+    project.delivery?.kind === "project" && project.delivery.parentId === required && Boolean(project.delivery.areaId);
   const compatibleTargets = projects.filter(project => canAllocateToDelivery(project.delivery) &&
+    matchesVerifiedParent(project, verifiedBulkParent) &&
     (!bulkParents.size || bulkParents.size === 1 && bulkParents.has(resolvedParent(project.id))));
   const bulkTargets = compatibleTargets.filter(project => !bulkDepartment || resolvedArea(project.id) === bulkDepartment);
   const selectedRecorded = selectedRows.reduce((sum, row) => sum + row.seconds, 0);
@@ -354,6 +361,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   const destination = [resolvedParent(bulkProject) && projectName(resolvedParent(bulkProject)),
     resolvedArea(bulkProject) && areaLabel(resolvedArea(bulkProject)), bulkProject && projectName(bulkProject)].filter(Boolean).join(" / ");
   const deliveryOptions = projects.filter(project => canAllocateToDelivery(project.delivery) &&
+    matchesVerifiedParent(project, editor?.reportingProjectId ? editor.reportingParentId : undefined) &&
     (!parent || resolvedParent(project.id) === parent) && (!classification || resolvedArea(project.id) === classification));
   function chooseDelivery(id: string, index: number) {
     setPortions(old => old.length ? old.map((part, i) => i === index ? { ...part, projectId: id } : part) :
@@ -792,11 +800,14 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       {historyCursor && <button type="button" className="secure-secondary" onClick={() => void revisions(editor, historyCursor)}>More allocation history</button>}
       <footer className="time-drawer-footer">
         <button type="button" className="secure-secondary" disabled={busy} onClick={() => close()}>Cancel</button>
-        <button type="button" disabled={busy || editor.conflict || remaining < 0 ||
-          new Set(portions.map(p => p.projectId)).size !== portions.length || portions.some(p => !p.projectId || !Number.isSafeInteger(p.seconds) || p.seconds <= 0)}
-          onClick={() => void save(editor, portions, notesOnly ? {
+        {notesOnly && notesChanged && <button type="button" className="secure-secondary" disabled={busy || editor.conflict}
+          onClick={() => void save(editor, portions, {
             ...priorAnnotations, reportingDescription: annotations.reportingDescription, internalNote: annotations.internalNote,
-          } : draftAnnotations, revision, true, notesOnly)}>{notesOnly ? "Save notes" : "Save allocation"}</button>
+          }, revision, true, true)}>Save notes</button>}
+        <button type="button" disabled={busy || editor.conflict || notesOnly || remaining < 0 ||
+          (!portions.length && !editor.portions.length) || new Set(portions.map(p => p.projectId)).size !== portions.length ||
+          portions.some(p => !p.projectId || !Number.isSafeInteger(p.seconds) || p.seconds <= 0)}
+          onClick={() => void save(editor, portions, draftAnnotations)}>Save allocation</button>
       </footer>
     </dialog>}
     {inspectDescription && <dialog className="time-review-dialog" ref={descriptionDialog} aria-label="Original QuickBooks Time Description"
