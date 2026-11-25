@@ -161,6 +161,7 @@
 .mi-page-tools :is(.mi-workspace-tools, .mi-account) { margin: 0; }
 .mi-page-tools .mi-workspace-tools { flex-wrap: nowrap; gap: 5px; }
 .mi-page-tools .mi-workspace-tools :is(span, kbd) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.mi-account:not([open]) .mi-account-menu { display: none; }
 .mi-account-menu a { display: block; padding: 7px; border-radius: 6px; }
 .mi-account-menu a:hover { background: var(--mi-background); }
 .reporting-period__main > .mi-preview-controls { padding: 0; border: 0; box-shadow: none; background: transparent; position: static; }

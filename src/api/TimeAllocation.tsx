@@ -679,11 +679,13 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
         <td role="cell" data-cell="Assignment">{source.portions.length ? source.portions.map(p => <div key={p.projectId}>{projectName(p.projectId)}<small>{resolvedParent(p.projectId) ? projectName(resolvedParent(p.projectId)) + " · " : ""}{areaLabel(resolvedArea(p.projectId))}</small></div>) :
           source.automaticClassification ? <div>{projectName(source.automaticClassification.projectId)}
             <small>{projectName(source.automaticClassification.parentId)} · {areaLabel(source.automaticClassification.areaId)}</small>
-          </div> : "Unassigned"}
+          </div> : source.reportingParentId
+            ? <span className="mi-time-note-preview" title={projectName(source.reportingParentId)}>{projectName(source.reportingParentId)}</span>
+            : "Unassigned"}
           {(source.annotations?.parentId || source.annotations?.areaId) && <small>Reporting: {source.annotations.parentId ? projectName(source.annotations.parentId) + " · " : ""}{areaLabel(source.annotations.areaId ?? "")}</small>}</td>
         <td role="cell" data-cell="Status">{source.automaticClassification ? "Automatic · staff only" : sourceStatus(source) === "unallocated" ? "Unassigned" : sourceStatusLabels[sourceStatus(source)]}
           {source.unallocatedSeconds > 0 && <small>{reportHours(source.unallocatedSeconds)} h remaining</small>}
-          {source.mappingStatus && !["unmapped", "delivery"].includes(source.mappingStatus) && <small>{sourceMappingLabels[source.mappingStatus]}</small>}</td>
+          {source.mappingStatus && ["pending", "conflict", "review"].includes(source.mappingStatus) && <small>{sourceMappingLabels[source.mappingStatus]}</small>}</td>
         <td role="cell" data-cell="Actions"><button type="button" className="secure-secondary time-manage" disabled={busy} onClick={() => edit(source)}>Manage Time</button></td>
       </tr>)}</tbody></table></div>}
     {cursor && <button type="button" className="secure-secondary" disabled={busy} onClick={() => void load(cursor)}>More recorded time</button>}
@@ -736,13 +738,15 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
             setClassification(e.target.value);
             if (!advancedSplit && portions[0] && e.target.value && resolvedArea(portions[0].projectId) !== e.target.value) setPortions([]);
           }}><option value="">All compatible departments</option>{portfolio?.areas
-            .filter(a => !parent || a.id === classification || projects.some(p => resolvedParent(p.id) === parent && resolvedArea(p.id) === a.id))
             .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
           {!advancedSplit && <div>
             <SearchableCombobox label="Delivery Project" value={portions[0]?.projectId ?? ""} placeholder="Select delivery project"
-              empty="No delivery projects are available for this parent project and department."
-              options={deliveryOptions.map(p => ({ value: p.id, label: p.name, detail: areaLabel(resolvedArea(p.id)) }))}
-              onChange={id => chooseDelivery(id, 0)} />
+              disabled={!deliveryOptions.length && !portions[0]?.projectId}
+              options={[
+                ...deliveryOptions.map(p => ({ value: p.id, label: p.name, detail: areaLabel(resolvedArea(p.id)) })),
+                ...portions.filter(part => part.projectId && !deliveryOptions.some(project => project.id === part.projectId))
+                  .map(part => ({ value: part.projectId, label: projectName(part.projectId), detail: "Existing assignment" })),
+              ]} onChange={id => chooseDelivery(id, 0)} />
             {!!portions[0]?.projectId && <button type="button" className="exec-text-button" onClick={() => setPortions([])}>Clear delivery project</button>}
           </div>}
         </div>

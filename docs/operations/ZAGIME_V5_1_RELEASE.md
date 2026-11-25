@@ -10,3 +10,10 @@ V5.1 uses the existing dashboard release path and production tenant. After owner
 **QuickBooks Time worker.** V5.1 changes dashboard reads and interactions. The existing worker image and schedule can continue serving the dashboard without an image update. There are no migrations, new indexes, credential changes or source imports in this release. Keep the V5 worker and 06:00 America/Regina schedule, and verify the next normal execution from the existing monitor.
 
 Application rollback restores the prior dashboard. Allocations already committed remain in the existing audit and reporting ledger. Review them through the normal allocation workflow.
+
+
+## Verification notes
+
+- V5 drawer labels and parent values used plain bold elements that inherited the shared Nordic 46 px display treatment. The Time drawer now uses scoped section labels, body text and a read-only parent field.
+- V5's Time table used automatic column sizing across long headers and repeated multi-line cell contents. The selection column expanded beyond its declared width and adjacent columns reflowed. V5.1 assigns column widths, caps source descriptions at a two-line preview and provides the full text on demand.
+- In the V5 browser fixture, selecting all and then reapplying the filter cleared the visible checks while leaving the earlier selection announcement. V5.1 derives the visible checks, header state, totals and actions from the same selection. Changing scope clears the selection together. Interrupted bulk requests retain settled outcomes and the remaining confirmed entries for retry.

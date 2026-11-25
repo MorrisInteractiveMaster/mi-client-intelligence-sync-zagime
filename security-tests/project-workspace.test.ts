@@ -111,7 +111,7 @@ test(
     // Fixture entry only: no production test hook, token value in bundle, browser storage or real OAuth.
     await build({
       stdin: {
-        contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {ProjectStaffWorkspace} from './src/api/ProjectWorkspace'; import {ProjectClientReport} from './src/api/ProjectClientReport'; import {SecuredApiClient} from './src/api/client'; import {useReportingMonth} from './src/api/portal-location'; import './src/api/secure.css'; import './src/reporting/nordic.css'; const identity=window.__localProjectFixture; async function fixtureRequest(input, init) {
+        contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {ProjectStaffWorkspace} from './src/api/ProjectWorkspace'; import {ProjectClientReport} from './src/api/ProjectClientReport'; import {SecuredApiClient} from './src/api/client'; import {useReportingMonth} from './src/api/portal-location'; import {WorkspaceAccount, WorkspaceSessionControls} from './src/api/WorkspaceToolbar'; import {ThemeSelector,usePlatformTheme} from './src/api/PlatformTheme'; import './src/api/secure.css'; import './src/reporting/nordic.css'; import './src/api/platform-theme.css'; const identity=window.__localProjectFixture; async function fixtureRequest(input, init) {
   const race = window.__reportRace;
   const url = new URL(input);
   if (race && url.pathname.endsWith("/report")) {
@@ -148,7 +148,15 @@ function StaffFixture({workspace}) {
   const month=useReportingMonth("2026-11");
   return <ProjectStaffWorkspace client={client} tenant="${tenant}" workspace={{...workspace,tenant:{...workspace.tenant,name:'Zagimē Anishinabēk Nation'}}} month={month} onDenied={denied}/>;
 }
-client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElementById('root')).render(<section className="nordic secure-shell platform-shell"><header className="secure-masthead"><div className="secure-brandmarks"><img alt="Zagimē Anishinabēk" src="/branding/zagime/zagime-main-logo.png" style={{background:'#01264f',padding:'4px'}}/><img alt="Morris Interactive" src="/branding/morris/morris-wordmark.png"/></div><div className="secure-identity"><h1>Client Intelligence</h1></div><div className="mi-masthead-actions"><div id="mi-workspace-commands"/></div></header><main id="platform-content" className={workspace.role === "staff" ? "platform-workspace" : "platform-client-report"}>{workspace.role === "staff" ? <StaffFixture workspace={workspace}/> : <ClientFixture/>}</main></section>)).catch(()=>document.body.textContent='Access denied');`,
+function FixtureShell({workspace}) {
+  const {theme,change,appearance}=usePlatformTheme();
+  return <WorkspaceSessionControls.Provider value={<><ThemeSelector theme={theme} onChange={change} compact/><WorkspaceAccount onSignOut={()=>{}}/></>}>
+    <section className="nordic secure-shell platform-shell" data-theme={appearance}><main id="platform-content"
+      className={workspace.role === "staff" ? "platform-workspace" : "platform-client-report"}>
+      {workspace.role === "staff" ? <StaffFixture workspace={workspace}/> : <ClientFixture/>}
+    </main></section></WorkspaceSessionControls.Provider>;
+}
+client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElementById('root')).render(<FixtureShell workspace={workspace}/>)).catch(()=>document.body.textContent='Access denied');`,
         loader: "jsx",
         resolveDir: process.cwd(),
       },
@@ -1698,11 +1706,11 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       };
       const clean = Array.from({ length: 53 }, (_, index) =>
         makeBulkEntry(String(800 + index), index % 2 ? "611" : "612",
-          index % 2 ? "V51 clean · Reviewed November work" :
+          index % 2 ? "V51 clean · Site review" :
             "V51 clean · Reviewed the department implementation and documented follow-up for the next delivery milestone."));
       const conflicts = Array.from({ length: 53 }, (_, index) =>
         makeBulkEntry(String(900 + index), "614", "V51 conflict · Reviewed time for project delivery", "Avery Patel"));
-      makeBulkEntry("1001", "613", "V51 clean · Other same-name consultant");
+      const individual = makeBulkEntry("1001", "613", "V51 clean · Other same-name consultant");
       const otherParent = await json(await create("Other parent fixture", { ...baseDelivery, kind: "engagement", allowDirectAllocation: false }), 201);
       makeBulkEntry("1002", "615", "V51 mixed · Other parent", "Quinn Carter", otherParent.id, "713");
       makeBulkEntry("1003", "615", "V51 mixed · Consulting parent", "Quinn Carter");
@@ -1764,6 +1772,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         await bulkPage.locator(".time-table-filters").scrollIntoViewIfNeeded();
         const cells = await table.locator("tbody tr").first().locator("td").evaluateAll(nodes =>
           nodes.map(node => ({ label: node.getAttribute("data-cell"), width: node.getBoundingClientRect().width })));
+        await bulkPage.screenshot({ path: join(evidence, "v51-time-table-" + width + ".png"), animations: "disabled" });
         if (width >= 1440) {
           assert.ok(cells[0].width >= 36 && cells[0].width <= 44, "Selection column is compact");
           assert.ok(cells.find(cell => cell.label === "Original description")!.width >= 190, JSON.stringify(cells));
@@ -1771,7 +1780,6 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           assert.ok(heights.some(height => height >= 44 && height <= 52), JSON.stringify(heights));
           assert.ok(heights.every(height => height <= 72), JSON.stringify(heights));
         }
-        await bulkPage.screenshot({ path: join(evidence, "v51-time-table-" + width + ".png"), animations: "disabled" });
       }
       await bulkPage.setViewportSize({ width: 1440, height: 900 });
       await table.getByRole("button", { name: "Manage Time", exact: true }).first().click();
@@ -1817,6 +1825,23 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       assert.equal(cleanScope.sourceSummary.hours.unallocatedSeconds, 0);
 
       await bulkPage.getByRole("button", { name: "Clear consultants" }).click();
+      await searchBulk("Other same-name consultant");
+      const individualRow = table.getByRole("row").filter({ hasText: "Other same-name consultant" });
+      await individualRow.getByRole("button", { name: "Manage Time", exact: true }).click();
+      assert.equal(await drawerV51.getByLabel("Reporting description", { exact: true }).inputValue(), "V51 clean · Other same-name consultant");
+      await drawerV51.getByLabel("Department", { exact: true }).selectOption("finance");
+      await drawerV51.getByText("No delivery projects are available for this parent project and department.", { exact: true }).waitFor();
+      await drawerV51.getByRole("link", { name: "Create delivery project", exact: true }).waitFor();
+      await drawerV51.getByLabel("Department", { exact: true }).selectOption("hr");
+      await drawerV51.getByRole("combobox", { name: "Delivery Project", exact: true }).click();
+      await drawerV51.getByRole("listbox", { name: "Delivery Project", exact: true })
+        .getByRole("option", { name: "Policy assessment fixture", exact: true }).click();
+      await drawerV51.getByRole("button", { name: "Save allocation", exact: true }).click();
+      await bulkPage.getByText("Allocation saved.", { exact: true }).waitFor();
+      assert.deepEqual((await root.collection("allocationHeads").doc(individual.ref.id).get()).get("portions"),
+        [{ projectId: nested.id, seconds: 1800, description: "" }]);
+      assert.deepEqual((await individual.ref.get()).data(), individual.raw);
+
       await searchBulk("V51 mixed");
       await bulkPage.getByText(/2 matching entries/).waitFor();
       await bulkPage.getByRole("button", { name: "Select all eligible matches" }).click();
@@ -1859,7 +1884,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await bulkResults.scrollIntoViewIfNeeded();
       await bulkPage.screenshot({ path: join(evidence, "v51-bulk-conflict-53.png"), animations: "disabled" });
       assert.deepEqual(await readClient(), clientBeforeBulk);
-      const bulkSavedSeconds = 105 * 1800;
+      const bulkSavedSeconds = 106 * 1800;
       const splitSource = root.collection("rawTime").doc("five-hour-delivery-split");
       const fiveHours = bulkFixture(splitSource.id, "23", "Five hours for two projects");
       fiveHours.record.seconds = 18_000;
