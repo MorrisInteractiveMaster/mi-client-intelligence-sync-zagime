@@ -119,6 +119,11 @@ export function ProjectStaffWorkspace({
   const [auditCursor, setAuditCursor] = useState<string>();
   const [editorSnapshot, setEditorSnapshot] = useState<StaffProjectDetail | "new">();
   const location = usePortalLocation();
+  const returnSource = location.get("time-return");
+  const timeReturn = returnSource && /^[a-zA-Z0-9_-]{1,128}$/.test(returnSource) ? returnSource : undefined;
+  const returnToTime = () => portalNavigate({ staff: "hours", source: timeReturn ?? null, editor: null,
+    "time-return": null, "time-parent-project": null, "time-department": null }, true);
+
   const overviewPeriod = location.get("period") || "month";
   const overCapOnly = location.get("budget-filter") === "over";
   const rangeStart = location.get("overview-start") || "";
@@ -621,12 +626,14 @@ export function ProjectStaffWorkspace({
         </div>}
         <ProjectCreation key={editing === "new" ? "new" : editing.id + ":" + editingDetail?.revision} discovered={wizardTime?.mappings}
           project={editing === "new" ? undefined : editing} projects={allProjects} portfolio={portfolio}
+          fromTime={editing === "new" && timeReturn ? { parent: location.get("time-parent-project") ?? "", area: location.get("time-department") ?? "" } : undefined}
           busy={busy || !page.revision || !portfolio} canPublish={workspace.canPublish === true}
           onDirty={() => setEditorDirty(true)} onCancel={() => {
             if (editorDirty && !window.confirm("Discard the unsaved project changes?")) return;
             setEditorDirty(false);
             creation.current = undefined;
-            portalNavigate({ ...(nativeWorkspace && { staff: "management", managed: editing === "new" ? null : editing.id }), editor: null });
+            if (timeReturn && editing === "new") returnToTime();
+            else portalNavigate({ ...(nativeWorkspace && { staff: "management", managed: editing === "new" ? null : editing.id }), editor: null });
           }} onSave={(project, publish) => void perform(async () => {
             if (editing === "new") {
               const result = await client.call<{ id: string }>(tenant, "projects", {
@@ -634,7 +641,8 @@ export function ProjectStaffWorkspace({
               });
               creation.current = undefined;
               setEditorDirty(false);
-              portalNavigate(nativeWorkspace ? { staff: "management", managed: result.id, editor: null } : { editor: null }, true);
+              if (timeReturn) returnToTime();
+              else portalNavigate(nativeWorkspace ? { staff: "management", managed: result.id, editor: null } : { editor: null }, true);
               setEpoch(value => value + 1);
               setNotice(publish ? "Project created and published." : "Project saved as a private draft.");
               return;
@@ -922,7 +930,9 @@ export function ProjectStaffWorkspace({
           initialStart={location.get("start")} initialEnd={location.get("end")} initialStatus={location.get("time-status")}
           initialWorkOrder={location.get("workOrder") ?? undefined} onUnsavedChange={setTimeDirty}
           sourceLink={{ id: linkedSource, href: id => portalHref({ staff: "hours", source: id }),
-            backHref: portalHref({ staff: "hours", source: null }) }} />}
+            backHref: portalHref({ staff: "hours", source: null }),
+            createHref: (id, parent, department) => portalHref({ staff: "projects", editor: "new", source: null,
+              "time-return": id, "time-parent-project": parent || null, "time-department": department || null }) }} />}
       </section>
       {area === "mapping" && <QuickBooksTimeMapping client={client} tenant={tenant} month={month}
         projects={allProjects} portfolio={portfolio} onDenied={onDenied} onSaved={refresh} />}

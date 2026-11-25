@@ -7,12 +7,12 @@ export function nextSort<Key extends string>(current: SortState<Key> | undefined
   return { key, direction: current?.key === key && current.direction === "asc" ? "desc" : "asc" };
 }
 
-export function SortHeader<Key extends string>({ field, sort, onSort, label, disabled }: {
-  field: Key; sort?: SortState<Key>; onSort: (value: SortState<Key>) => void; label: string; disabled?: boolean;
+export function SortHeader<Key extends string>({ field, sort, onSort, label, disabled, title }: {
+  field: Key; sort?: SortState<Key>; onSort: (value: SortState<Key>) => void; label: string; disabled?: boolean; title?: string;
 }) {
   const direction = field === sort?.key ? sort.direction : undefined;
   const Icon = direction === "asc" ? ArrowUp : direction === "desc" ? ArrowDown : ArrowUpDown;
-  return <th scope="col" data-sort-field={field} aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : undefined}>
+  return <th scope="col" title={title} data-sort-field={field} aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : undefined}>
     <button type="button" className="exec-text-button mi-sort-header" disabled={disabled}
       onClick={() => onSort(nextSort(sort, field))}>{label}<Icon size={14} aria-hidden="true" /></button>
   </th>;

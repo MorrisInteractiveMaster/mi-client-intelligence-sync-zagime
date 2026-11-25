@@ -2,12 +2,12 @@
 
 | Field | Detail |
 | --- | --- |
-| Version | 1.0 |
-| Application | Zagimē V5 |
+| Version | 1.1 |
+| Application | Zagimē V5.1 |
 | Last verified | November 25, 2026 |
 | Audience | Zagimē Anishinabēk First Nation leadership and authorized client users |
 | Owner | Morris Interactive client relationship lead |
-| Revision history | 1.0 · Initial V5 client guide |
+| Revision history | 1.1 · Updated toolbar and project filters |
 
 ## Contents
 
@@ -21,7 +21,7 @@
 
 1. Open the secure dashboard link supplied by Morris Interactive.
 2. Choose **Sign in with Google** and select the account you registered for access.
-3. Look for **Zagimē A. FN Workshop**. On a phone or tablet, open the navigation menu.
+3. The sidebar identifies **Zagimē Anishinabēk First Nation**. On a phone or tablet, use **Workspace navigation** in the reporting toolbar.
 4. Choose Light, Dark or System from the appearance icon. System follows your device setting. Sign out from the account icon when you finish using a shared device.
 
 **Expected result.** You can open the approved reports and published projects assigned to your account.
@@ -51,7 +51,7 @@ Use workspace search for a section or project. The breadcrumb near a project hea
 ## 4. Use charts, exports and presentation
 
 1. Hover over available chart labels or focus controls with the keyboard to read their details. Tap or activate an available chart item to open filtered detail. Use a chart’s data table when offered.
-2. Choose a sort order in Project Explorer and check the result range. Use **Previous** and **Next** to browse more results. Check any filters set by a chart before exporting.
+2. In Project Explorer and department views, use **Parent Project** to narrow the results or choose **All parent projects** to clear that filter. Choose a sort order and check the result range. Use **Previous** and **Next** to browse more results. Check any filters set by a chart before exporting.
 3. Use the CSV action offered by the current report or chart. The exported file reflects the authorized information in the selected scope.
 4. Open **Presentation** or **Present this view**. Verify the reporting period before presenting. Navigate with the chapter controls and use the exit button or Escape to leave.
 

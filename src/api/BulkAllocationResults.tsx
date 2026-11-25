@@ -1,3 +1,4 @@
+import { reportHours } from "./dashboard-format";
 import { useEffect, useRef } from "react";
 import type { BulkAllocationOutcome, BulkAllocationResponse } from "../projects/bulk-allocation";
 
@@ -12,18 +13,21 @@ const outcomeText: Record<BulkAllocationOutcome["status"], string> = {
   retryable: "The save could not be confirmed. Retry this entry.",
 };
 
-export function BulkAllocationResults({ result, describeEntry, onRetry, busy }: {
+export function BulkAllocationResults({ result, describeEntry, onRetry, busy, seconds }: {
   result: BulkAllocationResponse;
   describeEntry: (id: string) => string;
   onRetry?: () => void;
   busy?: boolean;
+  seconds?: Record<string, number>;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus(); }, [result]);
-  const saved = result.outcomes.filter(row => row.status === "saved" || row.status === "already_saved").length;
+  const saved = result.outcomes.filter(row => row.status === "saved" || row.status === "already_saved");
+  const savedSeconds = saved.reduce((total, row) => total + (seconds?.[row.sourceId] ?? 0), 0);
   return <section className="delivery-details delivery-bulk-results" aria-label="Bulk allocation results">
     <h3 ref={heading} tabIndex={-1}>Bulk allocation results</h3>
-    <p role="status">{saved} of {result.outcomes.length} entries saved.</p>
+    <p role="status">{saved.length} of {result.outcomes.length} entries saved.</p>
+    {seconds && <p>{reportHours(savedSeconds)} h saved ({savedSeconds.toLocaleString("en-CA")} seconds).</p>}
     <ul>
       {result.outcomes.map(row => <li key={row.sourceId}><b>{describeEntry(row.sourceId)}</b> {outcomeText[row.status]}</li>)}
     </ul>

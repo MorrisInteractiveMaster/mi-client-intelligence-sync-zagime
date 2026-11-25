@@ -1,0 +1,36 @@
+import { UserRound } from "lucide-react";
+import { navigatePlatform } from "./portal-location";
+import { createContext, useContext, type ReactNode } from "react";
+
+export const WorkspaceSessionControls = createContext<ReactNode>(null);
+export const WorkspaceNavigationControls = createContext<ReactNode>(null);
+
+export function WorkspaceToolbarControls() {
+  const session = useContext(WorkspaceSessionControls);
+  const navigation = useContext(WorkspaceNavigationControls);
+  if (!session && !navigation) return null;
+  return <div className="mi-page-tools">{navigation}{session}</div>;
+}
+
+export function WorkspaceAccount({ returnHref, permit, onSignOut }: {
+  returnHref?: string;
+  permit?: () => boolean;
+  onSignOut: () => void | Promise<void>;
+}) {
+  return <details className="mi-account" onKeyDown={event => {
+    if (event.key !== "Escape" || !event.currentTarget.open) return;
+    event.preventDefault();
+    event.currentTarget.open = false;
+    event.currentTarget.querySelector("summary")?.focus();
+  }}>
+    <summary aria-label="Account" title="Account"><UserRound size={17} aria-hidden="true" /></summary>
+    <div className="mi-account-menu">
+      {returnHref && <a href={returnHref} onClick={event => {
+        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        if (permit?.() !== false) navigatePlatform(returnHref);
+      }}>Return to Morris workspace</a>}
+      <button type="button" className="secure-secondary" onClick={() => void onSignOut()}>Sign out</button>
+    </div>
+  </details>;
+}

@@ -70,20 +70,19 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       contents: `import React, {useState} from "react"; import {createRoot} from "react-dom/client";
         import {PlatformApplication} from "./src/api/PlatformApplication"; import {SecuredApiClient} from "./src/api/client";
         import {ThemeSelector,usePlatformTheme} from "./src/api/PlatformTheme"; import "./src/api/platform-theme.css";
-        import {useReportingMonth} from "./src/api/portal-location";
+        import {useReportingMonth,periodHref} from "./src/api/portal-location";
+        import {WorkspaceAccount, WorkspaceSessionControls} from "./src/api/WorkspaceToolbar";
         import "./src/reporting/nordic.css"; import "./src/api/secure.css"; import "./src/api/executive.css";
         import "./src/api/intelligence.css"; import "./src/api/delivery-operations.css"; import "./src/api/platform.css";
         const client=new SecuredApiClient(true, location.origin, async()=>window.__localPortalToken, undefined, undefined, "projects");
         const denied=()=>{document.getElementById("auth-status").textContent="Workspace unavailable."};
         function Portal({workspace}) {
           const {theme,change,appearance}=usePlatformTheme(); const month=useReportingMonth("${month}"), [dirty,setDirty]=useState(false);
-          return <section className="nordic secure-shell platform-shell" data-theme={appearance}>
-            <header className="secure-masthead mi-compact-masthead">
-              <div className="secure-identity"><h1>{location.pathname.startsWith("/clients/") ? "Zagimē A. FN Workshop" : "Morris workspace"}</h1></div>
-              <div className="mi-masthead-actions"><div id="mi-workspace-commands"/><ThemeSelector theme={theme} onChange={change} compact/></div></header>
+          const session=<><ThemeSelector theme={theme} onChange={change} compact/><WorkspaceAccount onSignOut={()=>{}} returnHref={workspace.role === "staff" && location.pathname.startsWith("/clients/") ? periodHref("/workspace",month) : undefined}/></>;
+          return <WorkspaceSessionControls.Provider value={session}><section className="nordic secure-shell platform-shell" data-theme={appearance}>
             <div id="auth-status" role="status"></div>
             <PlatformApplication client={client} workspace={workspace} month={month} unsaved={dirty} onUnsavedChange={setDirty} onDenied={denied}/>
-          </section>;
+          </section></WorkspaceSessionControls.Provider>;
         }
         client.call("${tenant}", "workspace").then(workspace=>createRoot(document.getElementById("root")).render(<Portal workspace={workspace}/>))
           .catch(()=>{document.getElementById("root").textContent="Workspace unavailable."});`,
@@ -558,7 +557,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await table.getByRole("checkbox", { name: /^Select entry/ }).first().check();
       await table.getByRole("button", { name: "Recorded", exact: true }).click();
       await table.locator('th[aria-sort="descending"]').getByRole("button", {name: "Recorded", exact: true}).waitFor();
-      await time.page.getByLabel("Assign 1 unallocated entries").waitFor();
+      await time.page.getByRole("region", { name: "Bulk allocation", exact: true }).getByText("1 selected", { exact: true }).waitFor();
       await time.page.getByRole("button", { name: "More recorded time" }).click();
       await table.getByRole("row").nth(30).waitFor();
       await time.page.getByLabel("Sort time distribution").selectOption("recorded-asc");
@@ -947,6 +946,25 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.screenshot({ path: join(evidence, "client-projects-tablet.png"), fullPage: true, animations: "disabled" });
     await client.page.setViewportSize({ width: 1440, height: 1000 });
     assert.equal(await client.page.getByRole("link", { name: /Morris Workspace|Control Panel/ }).count(), 0);
+    const viewportBeforeToolbar = client.page.viewportSize()!;
+    const clientToolbar = client.page.getByRole("region", { name: "Reporting period" });
+    for (const [width, height] of [[1440, 900], [1920, 1080], [768, 1024], [390, 844]]) {
+      await client.page.setViewportSize({ width, height });
+      await clientToolbar.getByRole("combobox", { name: "Appearance" }).waitFor();
+      assert.equal(await client.page.locator(".secure-masthead").count(), 0);
+      assert.equal(await client.page.getByText("Zagimē A. FN Workshop", { exact: true }).count(), 0);
+      assert.equal(await clientToolbar.getByLabel("Preview mode").count(), 0);
+      const appearance = await clientToolbar.locator(".mi-theme-icon").boundingBox();
+      const account = await clientToolbar.getByLabel("Account", { exact: true }).boundingBox();
+      const monthControl = await clientToolbar.getByRole("combobox", { name: "Reporting month", exact: true }).boundingBox();
+      assert.ok(appearance && account && monthControl);
+      assert.ok(Math.abs(appearance.y - account.y) <= 1 && appearance.width === account.width && appearance.height === account.height);
+      if (width >= 1440) assert.ok(Math.abs(appearance.y + appearance.height / 2 - monthControl.y - monthControl.height / 2) <= 2);
+      if (width >= 1440) assert.equal(await client.page.locator(".mi-sidebar-partner-mark").evaluate(el =>
+        getComputedStyle(el).backgroundColor), "rgba(0, 0, 0, 0)");
+      await client.page.screenshot({ path: join(evidence, "v51-client-toolbar-" + width + ".png"), animations: "disabled" });
+    }
+    await client.page.setViewportSize(viewportBeforeToolbar);
     for (const path of ["/workspace", "/control", "/clients/another-client", "/clients/another-client/present"]) {
       const response = await client.page.goto(route(path));
       assert.equal(response?.status(), 200);

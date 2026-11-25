@@ -1,3 +1,4 @@
+import { WorkspaceToolbarControls } from "./WorkspaceToolbar";
 import { isZagimeClient } from "../config/client-identity";
 import { ArrowLeft, ArrowUpRight, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
@@ -128,8 +129,8 @@ export function PlatformControl({ client, workspace, section, month, onDenied, o
       </aside>
       <section className="platform-control-card" aria-label={title}>
         <header className="mi-page-heading"><p className="mi-kicker">{workspace.tenant.name}</p><h2>{title}</h2></header>
-        <PlatformLink href={periodHref("/workspace", month)} beforeNavigate={permit} className="platform-back"><ArrowLeft size={16} aria-hidden="true" /> Back to Morris Workspace</PlatformLink>
-        <ReportingMonthField month={month} onMonth={selected => { if (permit()) portalNavigate({ month: selected }); }} />
+        <div className="mi-control-toolbar"><PlatformLink href={periodHref("/workspace", month)} beforeNavigate={permit} className="platform-back"><ArrowLeft size={16} aria-hidden="true" /> Back to Morris Workspace</PlatformLink>
+        <ReportingMonthField month={month} onMonth={selected => { if (permit()) portalNavigate({ month: selected }); }} /><WorkspaceToolbarControls /></div>
         {error && <p role="alert" className="secure-message secure-error">{error} <button type="button" className="secure-secondary" disabled={busy} onClick={() => { if (permit()) refresh(); }}>Reload</button></p>}
         {notice && <p role="status" className="secure-message">{notice}</p>}
         {!control && !error && <p role="status">Checking Control Panel access…</p>}

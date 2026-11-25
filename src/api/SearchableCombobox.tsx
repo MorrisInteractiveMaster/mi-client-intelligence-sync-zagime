@@ -8,7 +8,7 @@ function normalize(value: string) {
   return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase();
 }
 
-export function SearchableCombobox({ label, value, options, onChange, required, disabled, placeholder = "Search options" }: {
+export function SearchableCombobox({ label, value, options, onChange, required, disabled, placeholder = "Search options", empty = "No matching options." }: {
   label: string;
   value: string;
   options: ComboboxOption[];
@@ -16,6 +16,7 @@ export function SearchableCombobox({ label, value, options, onChange, required, 
   required?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  empty?: string;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -96,7 +97,7 @@ export function SearchableCombobox({ label, value, options, onChange, required, 
           <strong>{option.label}</strong>{option.detail && <span id={id + "-detail-" + index}>{option.detail}</span>}
         </li>)}
       </ul>
-      {!results.length && <p role="status">No matching options.</p>}
+      {!results.length && <p role="status">{empty}</p>}
     </div>
   </div>;
 }

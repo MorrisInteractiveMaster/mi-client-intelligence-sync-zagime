@@ -77,8 +77,8 @@ export function ClientProjectExplorer({ delivery, params, onOpen, managersFor, e
       {!scoped && <label>Department<select aria-label="Department" value={department} onChange={event => filter("explorer-department", event.target.value)}>
         <option value="">All departments</option>{delivery.departmentRows.map(row => <option value={row.id} key={row.id}>{row.name}</option>)}
       </select></label>}
-      <label>Parent project<select value={parent} onChange={event => filter("explorer-parent", event.target.value)}>
-        <option value="">All engagements</option>{delivery.parentRows.map(row => <option value={row.id} key={row.id}>{row.name}</option>)}
+      <label>Parent Project<select value={parent} onChange={event => filter("explorer-parent", event.target.value)}>
+        <option value="">All parent projects</option>{delivery.parentRows.map(row => <option value={row.id} key={row.id}>{row.name}</option>)}
       </select></label>
       <label>Status<select value={status} onChange={event => filter("status", event.target.value === "all" ? "" : event.target.value)}>
         {Object.entries(clientProjectFilters).filter(([key]) => !key.startsWith("unassigned-") || key === status)

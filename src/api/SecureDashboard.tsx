@@ -1,4 +1,4 @@
-import { ArrowRight, LockKeyhole, UserRound } from "lucide-react";
+import { ArrowRight, LockKeyhole } from "lucide-react";
 import { ProjectStaffWorkspace } from "./ProjectWorkspace";
 import type { ProjectWorkspace } from "../projects/model";
 import "./secure.css";
@@ -10,8 +10,9 @@ import { branding, brandAsset } from "../config/branding";
 import { ZAGIME_NATION_NAME } from "../config/client-identity";
 import { ProjectClientReport } from "./ProjectClientReport";
 import { today } from "./dashboard-format";
-import { usePlatformRoute, useReportingMonth } from "./portal-location";
+import { periodHref, usePlatformRoute, useReportingMonth } from "./portal-location";
 import { PlatformApplication } from "./PlatformApplication";
+import { WorkspaceAccount, WorkspaceSessionControls } from "./WorkspaceToolbar";
 import "./platform.css";
 import "./platform-theme.css";
 import { ThemeSelector, usePlatformTheme } from "./PlatformTheme";
@@ -195,7 +196,20 @@ export function SecureDashboard() {
       setError("Sign-in was not completed.");
     }
   }
+  const activeShell = Boolean(signedIn && workspace && modernShell);
+  const permit = () => !unsaved || window.confirm("Leave without saving your changes?");
+  const account = signedIn && <WorkspaceAccount
+    returnHref={workspace?.role === "staff" && route?.kind === "client" ? periodHref("/workspace", month) : undefined}
+    permit={permit} onSignOut={async () => {
+      if (!auth || (unsaved && !window.confirm("Sign out without saving your changes?"))) return;
+      const sdk = await import("firebase/auth");
+      await sdk.signOut(auth);
+      setMicrosoftProof(undefined);
+      setWorkspace(undefined);
+      setError("");
+    }} />;
   return (
+    <WorkspaceSessionControls.Provider value={activeShell ? <><ThemeSelector theme={theme} onChange={change} compact />{account}</> : null}>
     <section className={"nordic secure-shell" + (modernShell ? " platform-shell" : "")} data-theme={appearance}>
       {signedIn && workspace && <a className="mi-skip-link" href="#platform-content" onClick={event => {
         const content = document.getElementById("platform-content");
@@ -204,8 +218,8 @@ export function SecureDashboard() {
         content.tabIndex = -1;
         content.focus();
       }}>Skip to content</a>}
-      <header className={"secure-masthead" + (signedIn && workspace && modernShell ? " mi-compact-masthead" : "")}>
-        {!(signedIn && workspace && modernShell) && <div className="secure-brandmarks">
+      {!activeShell && <header className="secure-masthead">
+        <div className="secure-brandmarks">
           {branding.clientLogo && (
             <img
               src={brandAsset(branding.clientLogo)}
@@ -218,7 +232,7 @@ export function SecureDashboard() {
               alt={branding.partnerName}
             />
           )}
-        </div>}
+        </div>
         <div className="secure-identity">
           <h1>
             {route ? (route.kind === "client" ? branding.clientName : "Morris workspace") : workspace?.role === "client"
@@ -228,29 +242,10 @@ export function SecureDashboard() {
           {!signedIn && !production && <Link to="/">Synthetic demonstration</Link>}
         </div>
         <div className="mi-masthead-actions">
-          {modernShell && signedIn && <div id="mi-workspace-commands" />}
-          <ThemeSelector theme={theme} onChange={change} compact={Boolean(signedIn && workspace && modernShell)} />
-          {signedIn && (
-          <details className="mi-account">
-            <summary aria-label="Account" title="Account"><UserRound size={17} aria-hidden="true" /></summary>
-            <div className="mi-account-menu"><p>{workspace?.role === "staff" ? "Morris workspace" : "Protected session"}</p><button
-            className="secure-secondary"
-            onClick={async () => {
-              if (unsaved && !window.confirm("Sign out without saving your changes?")) return;
-              if (auth) {
-                const sdk = await import("firebase/auth");
-                await sdk.signOut(auth);
-                setMicrosoftProof(undefined);
-                setWorkspace(undefined);
-                setError("");
-              }
-            }}
-          >
-            Sign out
-          </button></div></details>
-          )}
+          <ThemeSelector theme={theme} onChange={change} />
+          {account}
         </div>
-      </header>
+      </header>}
       {!signedIn ? (
         <main className="mi-access" aria-labelledby="workspace-sign-in">
           <div className="mi-access-story">
@@ -339,5 +334,6 @@ export function SecureDashboard() {
         </button>
       )}
     </section>
+    </WorkspaceSessionControls.Provider>
   );
 }

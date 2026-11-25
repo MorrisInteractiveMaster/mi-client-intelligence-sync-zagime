@@ -1,7 +1,7 @@
 import { ArrowUpRight, ChevronDown, ChevronsLeft, ChevronsRight, Menu, Search, X, type LucideIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { WorkspaceNavigationControls } from "./WorkspaceToolbar";
 import { branding, brandAsset } from "../config/branding";
 import { ZAGIME_NATION_NAME } from "../config/client-identity";
 import "./premium-shell.css";
@@ -43,7 +43,6 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
   const searchSelection = useRef(false);
   const [query, setQuery] = useState("");
   const [closedGroups, setClosedGroups] = useState<string[]>([]);
-  const [commandSlot, setCommandSlot] = useState<HTMLElement | null>(null);
   const groupPrefix = useId();
   const menuLabel = embedded ? "Client preview menu" : "Workspace menu";
   const searchLabel = embedded ? "Search client preview" : "Search workspace";
@@ -64,7 +63,6 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
   }
   useEffect(() => {
     if (embedded) return;
-    setCommandSlot(document.getElementById("mi-workspace-commands"));
     const shortcut = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k" && !document.querySelector("dialog[open]")) {
         event.preventDefault();
@@ -112,7 +110,10 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
   return <div className={"mi-workspace-frame" + (embedded ? " mi-workspace-embedded" : "")} data-collapsed={collapsed}>
     {!embedded && <aside className="mi-workspace-sidebar">
       <div className="mi-sidebar-brand">
-        {branding.partnerLogo && <img src={brandAsset(branding.partnerLogo)} alt={branding.partnerName} width="640" height="200" />}
+        <div className="mi-sidebar-partner">
+          <img className="mi-sidebar-partner-mark" src={brandAsset("branding/morris/morris-sidebar-mark.png")} alt="" width="32" height="32" />
+          <span>{branding.partnerName}</span>
+        </div>
         <img src={brandAsset("branding/zagime/zagime-main-logo.png")} alt={ZAGIME_NATION_NAME} width="495" height="155" />
       </div>
       <div className="mi-sidebar-heading"><span>{heading}</span>
@@ -127,14 +128,20 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
       {navigation()}
     </aside>}
     <div className="mi-workspace-body">
-      {commandSlot && !embedded ? createPortal(commands, commandSlot) : commands}
-      {children}
+      {embedded && commands}
+      <WorkspaceNavigationControls.Provider value={embedded ? null : commands}>{children}</WorkspaceNavigationControls.Provider>
     </div>
     <dialog className="mi-navigation-dialog" aria-label={menuLabel} ref={menu} onClose={() => {
       if (!menuSelection.current) mobileButton.current?.focus();
       menuSelection.current = false;
     }}>
       <div className="mi-dialog-heading"><h2>{menuLabel}</h2><button type="button" className="secure-secondary" aria-label="Close menu" onClick={() => menu.current?.close()}><X aria-hidden="true" /></button></div>
+      <button type="button" className="mi-navigation-search" onClick={() => {
+        menuSelection.current = true;
+        menu.current?.close();
+        showSearch();
+        searchOpener.current = mobileButton.current;
+      }}><Search size={18} aria-hidden="true" />{searchLabel}</button>
       {navigation(true)}
     </dialog>
     <dialog className="mi-search-dialog" aria-label={searchLabel} ref={search}

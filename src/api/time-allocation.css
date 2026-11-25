@@ -79,7 +79,7 @@
 .time-counts dd { margin: 2px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
 .delivery-allocation .time-summary-table table { min-width: 440px; }
 .delivery-allocation .time-entries { margin-block: 16px; max-inline-size: 100%; }
-.delivery-allocation .time-entries table { min-width: 840px; }
+.delivery-allocation .time-entries table { min-width: 1030px; table-layout: fixed; }
 .delivery-allocation .time-entries th { overflow-wrap: normal; }
 .delivery-allocation :is(.time-entries,.time-summary-table) thead {
   background: var(--mi-time-soft); color: var(--mi-time-ink);
@@ -87,14 +87,9 @@
 .nordic.secure-shell .delivery-allocation .time-entries .mi-sort-header {
   padding-inline: 6px; white-space: nowrap; overflow-wrap: normal;
 }
-.nordic.secure-shell .delivery-allocation .time-entries [data-sort-field="notes"] .mi-sort-header {
-  white-space: normal; min-inline-size: 116px;
-}
 .nordic.secure-shell .delivery-allocation th[aria-sort] .mi-sort-header {
   background: var(--mi-time-soft); border-color: var(--mi-insight-fill, #497ca5);
 }
-.time-entries :is(th, td)[data-cell="Original QuickBooks Time Description"] { min-width: 156px; }
-.time-entries :is(th, td):first-child { width: 42px; }
 .nordic.secure-shell .time-entries tbody :is(th,td) { padding-block: 4px; vertical-align: middle; }
 .time-entries tbody tr:nth-child(even) { background: var(--mi-time-soft); }
 .mi-time-note-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
@@ -204,3 +199,110 @@
   .time-alloc-drawer[open] { animation: time-drawer-in 185ms ease-out; }
   @keyframes time-drawer-in { from { transform: translateX(18px); opacity: .72; } to { transform: translateX(0); opacity: 1; } }
 }
+
+/* Keep tables in table layout at desktop widths and size every fixed column. */
+.time-col-select { width: 40px; }
+.time-col-date { width: 85px; }
+.time-col-consultant { width: 128px; }
+.time-col-work-order { width: 112px; }
+.time-col-hours { width: 73px; }
+.time-col-reporting { width: 10%; }
+.time-col-assignment { width: 12%; }
+.time-col-status { width: 105px; }
+.time-col-actions { width: 98px; }
+.nordic.secure-shell .time-entries :is(th, td) {
+  padding: 5px 8px; font-size: .81rem; line-height: 1.27; text-align: start;
+}
+.nordic.secure-shell .time-entries tbody td { height: 46px; padding-block: 7px; }
+.nordic.secure-shell .time-entries .time-select-cell { width: 40px; padding-inline: 0; text-align: center; }
+.nordic.secure-shell .time-entries .time-select-cell input {
+  appearance: auto; display: block; width: 17px; height: 17px; padding: 0; margin: auto;
+  accent-color: light-dark(#225985, #9dceff); cursor: pointer;
+}
+.nordic.secure-shell .time-entries td small { display: block; font-size: .72rem; line-height: 1.28; color: var(--mi-time-muted); }
+.time-entries :is([data-cell="Date"], [data-cell="Recorded"]) { white-space: nowrap; }
+.nordic.secure-shell .delivery-allocation .time-entries .mi-sort-header {
+  min-inline-size: 0; min-height: 32px; padding: 3px; margin: 0; gap: 3px; text-align: start;
+  white-space: normal; font-size: .77rem; line-height: 1.2;
+}
+.nordic.secure-shell .time-entries .time-description {
+  display: block; padding: 0; margin: 0; background: transparent; border: 0; color: inherit;
+  min-height: 0; text-align: start; border-radius: 3px; line-height: 1.35; font-weight: 450;
+}
+.time-description:hover { text-decoration: underline; }
+.nordic.secure-shell .time-entries .time-manage {
+  white-space: nowrap; min-height: 32px; padding: 4px 8px; margin: 0; font-size: .74rem;
+}
+.time-table-filters, .time-consultants, .time-consultant-chips, .time-selection-tools, .time-bulk-summary, .time-drawer-utilities, .time-drawer-footer {
+  display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; min-width: 0;
+}
+.time-table-filters { margin-block: 10px 5px; justify-content: space-between; }
+.time-table-filters > p { color: var(--mi-time-muted); margin: 0; font-size: .85rem; }
+.time-consultants > .mi-combobox { flex: 0 1 230px; }
+.time-consultant-chips { align-self: end; }
+.nordic.secure-shell :is(.time-consultant-chips, .time-selection-tools, .time-bulk-tools, .time-drawer-utilities) :is(button, a.secure-secondary) {
+  min-height: 34px; margin: 0; padding: 4px 9px; font-size: .82rem; line-height: 1.25;
+}
+.time-bulk-tools { padding: 9px 12px; margin-block: 8px; border: 1px solid var(--mi-time-line); border-radius: 9px; background: var(--mi-time-soft); }
+.time-bulk-summary { justify-content: space-between; }
+.time-bulk-summary p, .time-parent-summary { margin: 0; }
+.time-parent-summary { color: var(--mi-time-muted); overflow-wrap: anywhere; }
+.time-bulk-destination { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(10rem, 1.5fr) max-content; gap: 8px; align-items: end; margin-block: 4px; }
+.time-bulk-destination > button { grid-column: -2 / -1; }
+.time-bulk-destination :is(label, .mi-combobox) { margin: 0; }
+.time-parent-groups > p { margin: 2px 0; }
+.time-parent-groups button { margin-inline-end: 4px; }
+.time-secondary-analysis { margin-block-start: 20px; }
+.nordic.secure-shell .time-review-dialog {
+  max-width: min(520px, calc(100% - 28px)); padding: 18px; border-radius: 12px;
+  color: var(--mi-time-ink); background: var(--mi-time-surface); border: 1px solid var(--mi-time-line);
+}
+.time-review-dialog::backdrop { background: #06192b95; }
+.nordic.secure-shell .time-review-dialog h3 { font-size: 1.15rem; margin-bottom: 5px; }
+.time-review-dialog p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nordic.secure-shell .time-alloc-drawer { padding: 16px 20px; font-size: .875rem; }
+.nordic.secure-shell .time-alloc-drawer :is(h4, p, dl, summary, label) { margin-block: 0; }
+.nordic.secure-shell .time-alloc-drawer h4 { font-size: .95rem; margin-block-end: 3px; font-weight: 650; }
+.nordic.secure-shell .time-alloc-drawer > :is(section, details, dl, p) { margin-block: 7px; }
+.nordic.secure-shell .time-alloc-drawer details > summary { padding-block: 5px; }
+.nordic.secure-shell .time-alloc-drawer strong { display: inline; font: inherit; font-weight: 650; }
+.nordic.secure-shell .time-alloc-drawer .time-drawer-heading h3 { font-size: 1.25rem; font-weight: 650; align-self: center; }
+.nordic.secure-shell .time-drawer-heading button { width: 36px; height: 36px; min-width: 36px; min-height: 36px; margin: 0; }
+.time-alloc-drawer .time-source-summary { grid-template-columns: repeat(auto-fit,minmax(110px,1fr)); padding: 8px; background: var(--mi-time-soft); border-radius: 8px; }
+.time-source-parent { padding: 5px 8px; background: var(--mi-time-soft); border-radius: 6px; }
+.nordic.secure-shell .time-source-parent dd { font-size: .95rem; font-weight: 550; }
+.time-original-note p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.time-destination-controls, .time-split-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.4fr); gap: 7px 10px; align-items: start; margin-block: 5px; }
+.time-split-row { grid-template-columns: minmax(0,1fr) minmax(70px,105px) auto; align-items: end; }
+.nordic.secure-shell .time-alloc-drawer :is(label, .mi-combobox label), .nordic.secure-shell .time-bulk-destination label {
+  display: grid; gap: 3px; min-width: 0; font-size: .81rem; line-height: 1.3;
+}
+.nordic.secure-shell :is(.time-alloc-drawer, .time-bulk-destination, .time-consultants) :is(input:not([type="checkbox"]), select, textarea) {
+  min-height: 38px; margin: 0; font-size: .875rem; line-height: 1.3;
+}
+.nordic.secure-shell .time-alloc-drawer .time-drawer-notes { margin-block: 7px; }
+.time-drawer-notes span { color: var(--mi-time-muted); }
+.nordic.secure-shell .time-drawer-notes textarea { min-height: 62px; resize: vertical; }
+.time-drawer-footer { position: sticky; bottom: -16px; padding-block: 7px; margin-top: 8px;
+  justify-content: flex-end; background: var(--mi-time-surface); border-block-start: 1px solid var(--mi-time-line); }
+.nordic.secure-shell .time-drawer-footer button { margin: 0; }
+.delivery-allocation .time-history-toolbar > .mi-page-tools { grid-column: -2 / -1; justify-self: end; }
+.nordic.secure-shell .delivery-allocation .time-history-toolbar .mi-page-tools .mi-theme-icon select { width: 100%; min-height: 0; }
+@container mi-time (max-width: 730px) {
+  .delivery-allocation .time-entries table { min-width: 0; }
+  .delivery-allocation .time-entries td:is([data-cell="Actions"], [data-cell="Reporting"], [data-cell="Original description"]) { grid-column: 1 / -1; }
+  .nordic.secure-shell .delivery-allocation .time-entries td { height: auto; padding: 0; }
+  .nordic.secure-shell .time-entries .time-select-cell input { margin: 0; }
+  .time-entries colgroup { display: none; }
+}
+@container mi-time (max-width: 560px) {
+  .time-bulk-destination { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 525px) {
+  .time-destination-controls, .time-split-row { grid-template-columns: minmax(0, 1fr); }
+  .nordic.secure-shell .time-alloc-drawer { padding: 12px; }
+  .time-drawer-footer { bottom: -12px; }
+}
+.nordic.secure-shell :is(.time-destination-controls, .time-bulk-destination, .time-consultants) .mi-combobox { gap: 3px; }
+.nordic.secure-shell :is(.time-destination-controls, .time-bulk-destination, .time-consultants) :is(.mi-combobox-input, select) { min-height: 40px; }
+.nordic.secure-shell :is(.time-destination-controls, .time-bulk-destination, .time-consultants) .mi-combobox-input > :is(input, button) { min-height: 38px; }

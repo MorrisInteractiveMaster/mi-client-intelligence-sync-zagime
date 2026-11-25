@@ -9,6 +9,9 @@ import { chromium, firefox, webkit, type Browser } from "playwright";
 import { firebaseRuntime, FirebaseIdentityVerifier } from "../server/firebase";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
 import { TimeSync } from "../server/time-sync";
+import { timeEmployeeKey } from "../server/employee-mapping";
+import { portfolioRef } from "../server/portfolio";
+import { sourceRecordId } from "../server/contracts";
 import { timeDetailsRef } from "../server/time-details";
 import {
   seedProjectSynthetic,
@@ -896,10 +899,9 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         .click();
       await first.page.getByLabel("Reporting description", { exact: true }).fill("Reviewed delivery preparation");
       await first.page.getByLabel("Internal note", { exact: true }).fill("Private allocation review");
-      await first.page
-        .getByLabel("Delivery project", { exact: true })
-        .nth(0)
-        .selectOption({ label: "Browser saved project" });
+      const firstSplit = first.page.getByRole("combobox", { name: "Delivery project for split 1" });
+      await firstSplit.fill("Browser saved project");
+      await first.page.getByRole("listbox", { name: "Delivery project for split 1" }).getByRole("option", { name: "Browser saved project", exact: true }).click();
       await first.page
         .getByLabel("Allocated seconds", { exact: true })
         .nth(0)
@@ -989,10 +991,12 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await first.page.getByRole("button", { name: "Avery Morgan", exact: true }).click();
       await first.page.getByRole("status").filter({ hasText: /Consultant: Avery Morgan.*1 match out of/ }).waitFor();
       const historicRow = first.page.getByRole("row").filter({ hasText: "Review department rollout requirements" });
-      await historicRow.getByText("Approval not verified", { exact: true }).waitFor();
       await historicRow.getByText("5 h", { exact: true }).waitFor();
       await first.page.screenshot({ path: join(evidence, "historical-time.png"), fullPage: true, animations: "disabled" });
       await historicRow.getByRole("button", { name: "Manage Time", exact: true }).click();
+      const historicDrawer = first.page.getByRole("dialog", { name: "Time allocation" });
+      await historicDrawer.getByText("Original source details", { exact: true }).click();
+      await historicDrawer.getByText("Approval not verified", { exact: true }).waitFor();
       await first.page.getByLabel("Reporting description", { exact: true }).fill("Historical review");
       await first.page.getByRole("button", { name: "Save notes", exact: true }).click();
       await first.page.getByText("Notes saved.", { exact: true }).waitFor();
@@ -1654,52 +1658,208 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await capEditor.getByRole("button", { name: "Save", exact: true }).click();
       await capEditor.waitFor({ state: "hidden" });
 
-      const bulkReady = root.collection("rawTime").doc("browser-bulk-ready");
-      const bulkConflict = root.collection("rawTime").doc("browser-bulk-changed");
       const bulkFixture = (id: string, day: string, description: string) => ({
         schemaVersion: 2, source: "synthetic", scopeProjectId: "synthetic-delivery", deleted: false,
         record: { id, tenantId: tenant, sourcePersonId: "synthetic-person", sourceWorkOrderId: "synthetic-job",
-          date: "2026-11-" + day, seconds: 1733, description, revision: "browser-bulk-1" },
+          date: "2026-11-" + day, seconds: 1800, description, revision: "browser-bulk-1" },
       });
-      const readyEntry = bulkFixture(bulkReady.id, "21", "Browser bulk ready entry");
-      const additionalBulkEntries = Array.from({ length: 24 }, (_, index) => {
-        const id = "browser-bulk-extra-" + index;
-        const entry = bulkFixture(id, "21", "Browser bulk additional entry " + index);
-        entry.record.seconds = 1;
-        return entry;
+      // Link two verified source identities to the same directory profile. A
+      // third source uses a matching display name without a verified link.
+      const account = "60", workOrder = "712", modified = "2026-11-23T18:00:00Z";
+      const profile = { id: 501, name: "Jordan Cameron", url: "https://morrisinteractive.ca/team/fixture/" };
+      const bulkPortfolioRef = portfolioRef(root);
+      const bulkPortfolio = (await bulkPortfolioRef.get()).get("portfolio");
+      const setup = runtime.db.batch();
+      setup.set(bulkPortfolioRef, { portfolio: { ...bulkPortfolio, directory: [...bulkPortfolio.directory, {
+        id: "v51-consultant", name: profile.name, role: "", responsibility: "", internalContact: "", publicContact: "",
+        areaId: "hr", projectIds: [], order: bulkPortfolio.directory.length, active: true, visible: false, profile,
+      }] } });
+      setup.set(root.collection("workspaceSettings").doc("time-employee-mappings-v1"), {
+        schemaVersion: 1, tenantId: tenant, revision: 1,
+        links: ["611", "612"].map(userId => ({ employeeKey: timeEmployeeKey(account, userId), account, userId,
+          profileId: profile.id, updatedAt: modified })),
       });
-      const bulkSetup = runtime.db.batch();
-      bulkSetup.set(bulkReady, readyEntry);
-      bulkSetup.set(bulkConflict, bulkFixture(bulkConflict.id, "22", "Browser bulk changed entry"));
-      for (const entry of additionalBulkEntries) bulkSetup.set(root.collection("rawTime").doc(entry.record.id), entry);
-      await bulkSetup.commit();
+      setup.set(root.collection("timeMappings").doc(key(account, workOrder)), {
+        account, jobcodeId: workOrder, projectId: parent.id, scopeProjectId: parent.id, reviewedAttribution: true,
+        sourceJob: { id: workOrder, name: "WO1267 Consulting", active: true, missing: false },
+      });
+      const makeBulkEntry = (external: string, person: string, description: string, name = profile.name, scope = parent.id, job = workOrder) => {
+        const id = sourceRecordId("quickbooks-time", account, external);
+        const ref = root.collection("rawTime").doc(id);
+        const raw = { ...bulkFixture(id, "21", "QuickBooks Time"), source: "quickbooks-time", sourceCompanyId: account,
+          scopeProjectId: scope, externalId: external, modifiedAt: modified };
+        raw.record.sourcePersonId = person;
+        raw.record.sourceWorkOrderId = job;
+        setup.set(ref, raw);
+        setup.set(timeDetailsRef(ref, raw.record.revision), { provider: "quickbooks-time", sourceRevision: raw.record.revision,
+          sourceModifiedAt: modified, observedAt: modified, retrievedVia: "exact-id-lookup", personId: person,
+          consultantName: name, notes: description });
+        return { ref, raw };
+      };
+      const clean = Array.from({ length: 53 }, (_, index) =>
+        makeBulkEntry(String(800 + index), index % 2 ? "611" : "612",
+          index % 2 ? "V51 clean · Reviewed November work" :
+            "V51 clean · Reviewed the department implementation and documented follow-up for the next delivery milestone."));
+      const conflicts = Array.from({ length: 53 }, (_, index) =>
+        makeBulkEntry(String(900 + index), "614", "V51 conflict · Reviewed time for project delivery", "Avery Patel"));
+      makeBulkEntry("1001", "613", "V51 clean · Other same-name consultant");
+      const otherParent = await json(await create("Other parent fixture", { ...baseDelivery, kind: "engagement", allowDirectAllocation: false }), 201);
+      makeBulkEntry("1002", "615", "V51 mixed · Other parent", "Quinn Carter", otherParent.id, "713");
+      makeBulkEntry("1003", "615", "V51 mixed · Consulting parent", "Quinn Carter");
+      await setup.commit();
       const bulkPage = hierarchyBrowser.page;
       await bulkPage.getByRole("button", { name: "Time Allocation", exact: true }).click();
       const bulkFilters = bulkPage.getByRole("form", { name: "Time entry filters" });
-      await bulkFilters.getByRole("searchbox").fill("Browser bulk");
-      await bulkFilters.getByRole("button", { name: "Apply filters" }).click();
-      await bulkPage.getByText(/26 matches out of/).waitFor();
+      const consultants = bulkPage.getByRole("combobox", { name: "Consultant", exact: true });
+      const table = bulkPage.getByRole("region", { name: "Recorded time table" });
+      const headerCheck = table.getByRole("checkbox", { name: "Select all eligible visible entries" });
+      const checks = table.getByRole("checkbox", { name: /Select entry on/ });
+      const bulkTools = bulkPage.getByRole("region", { name: "Bulk allocation", exact: true });
+      const review = bulkPage.getByRole("dialog", { name: "Review allocation", exact: true });
+      const readClient = async () => json(await request("report?month=2026-11", "GET", undefined, client.idToken));
+      const clientBeforeBulk = await readClient();
+      async function searchBulk(text: string) {
+        await bulkFilters.getByRole("searchbox").fill(text);
+        await bulkFilters.getByRole("button", { name: "Apply filters" }).click();
+      }
+      async function chooseConsultant(name: string, keyboard = false) {
+        await consultants.fill(name);
+        if (keyboard) await consultants.press("Enter");
+        else await bulkPage.getByRole("option", { name, exact: true }).click();
+      }
+      await searchBulk("V51 clean");
+      await bulkPage.getByText(/54 matching entries/).waitFor();
+      await consultants.fill("Jordan");
+      await bulkPage.getByText("2 verified source identities", { exact: true }).waitFor();
+      await consultants.press("Enter");
+      await bulkPage.getByText("53 matching entries · 26.5 h recorded", { exact: true }).waitFor();
+      assert.equal(await table.getByText("Other same-name consultant", { exact: false }).count(), 0);
+      assert.equal(await checks.count(), 25);
+      await headerCheck.check();
+      await bulkTools.getByText("25 selected", { exact: true }).waitFor();
+      await headerCheck.uncheck();
+      assert.equal(await bulkTools.count(), 0);
       await bulkPage.getByRole("button", { name: "Select all eligible matches" }).click();
-      await bulkPage.getByLabel("Assign 26 unallocated entries").selectOption(nested.id);
-      // The browser has already loaded its revisions. Simulate a source correction in the emulator only.
-      await bulkConflict.update({ "record.revision": "browser-bulk-2" });
-      const confirmBulk = bulkPage.waitForEvent("dialog").then(async dialog => {
-        const message = dialog.message();
-        await dialog.accept();
-        assert.match(message, /Assign all recorded time on 26 selected entries to Policy assessment fixture/);
-      });
-      await Promise.all([bulkPage.getByRole("button", { name: "Assign selected time" }).click(), confirmBulk]);
+      await bulkTools.getByText("53 selected", { exact: true }).waitFor();
+      assert.equal(await headerCheck.isChecked(), true);
+      assert.equal(await checks.evaluateAll(inputs =>
+        inputs.every(el => (el as HTMLInputElement).checked)), true);
+      await checks.first().uncheck();
+      await bulkTools.getByText("52 selected", { exact: true }).waitFor();
+      assert.equal(await headerCheck.evaluate(el => (el as HTMLInputElement).indeterminate), true);
+      await checks.first().check();
+      await bulkPage.getByRole("button", { name: "More recorded time" }).click();
+      await checks.nth(49).waitFor();
+      assert.equal(await checks.nth(49).isChecked(), true);
+      await bulkPage.getByRole("button", { name: "Clear consultants" }).click();
+      await bulkPage.getByText(/54 matching entries/).waitFor();
+      assert.equal(await bulkTools.count(), 0);
+      await consultants.fill("Jordan");
+      await consultants.press("Enter");
+      await bulkPage.getByText("53 matching entries · 26.5 h recorded", { exact: true }).waitFor();
+
+      // Verify actual rendered geometry with ordinary and long source notes.
+      for (const [width, height] of [[1440, 900], [1920, 1080], [768, 1024], [390, 844]]) {
+        await bulkPage.setViewportSize({ width, height });
+        await bulkPage.locator(".time-table-filters").scrollIntoViewIfNeeded();
+        const cells = await table.locator("tbody tr").first().locator("td").evaluateAll(nodes =>
+          nodes.map(node => ({ label: node.getAttribute("data-cell"), width: node.getBoundingClientRect().width })));
+        if (width >= 1440) {
+          assert.ok(cells[0].width >= 36 && cells[0].width <= 44, "Selection column is compact");
+          assert.ok(cells.find(cell => cell.label === "Original description")!.width >= 190, JSON.stringify(cells));
+          const heights = await table.locator("tbody tr").evaluateAll(nodes => nodes.slice(0, 12).map(node => node.getBoundingClientRect().height));
+          assert.ok(heights.some(height => height >= 44 && height <= 52), JSON.stringify(heights));
+          assert.ok(heights.every(height => height <= 72), JSON.stringify(heights));
+        }
+        await bulkPage.screenshot({ path: join(evidence, "v51-time-table-" + width + ".png"), animations: "disabled" });
+      }
+      await bulkPage.setViewportSize({ width: 1440, height: 900 });
+      await table.getByRole("button", { name: "Manage Time", exact: true }).first().click();
+      const drawerV51 = bulkPage.getByRole("dialog", { name: "Time allocation", exact: true });
+      const font = (className: string) => drawerV51.locator(className).evaluate(node => parseFloat(getComputedStyle(node).fontSize));
+      assert.ok(await font(".time-drawer-heading h3") >= 18 && await font(".time-drawer-heading h3") <= 22);
+      assert.ok(await font(".time-original-note h4") >= 14 && await font(".time-original-note h4") <= 16);
+      assert.ok(await font(".time-source-parent dd") >= 14 && await font(".time-source-parent dd") <= 16);
+      const departmentBounds = (await drawerV51.getByLabel("Department", { exact: true }).boundingBox())!;
+      const projectBounds = (await drawerV51.getByRole("combobox", { name: "Delivery Project", exact: true }).boundingBox())!;
+      assert.ok(Math.abs(departmentBounds.y - projectBounds.y) <= 3, JSON.stringify([departmentBounds, projectBounds]));
+      await bulkPage.screenshot({ path: join(evidence, "v51-manage-time-1440.png"), animations: "disabled" });
+      await bulkPage.setViewportSize({ width: 390, height: 844 });
+      await bulkPage.screenshot({ path: join(evidence, "v51-manage-time-390.png"), animations: "disabled" });
+      await drawerV51.getByRole("button", { name: "Close allocation", exact: true }).click();
+      await bulkPage.setViewportSize({ width: 1440, height: 900 });
+
+      async function reviewBulk(count: number) {
+        await bulkPage.getByRole("button", { name: "Select all eligible matches" }).click();
+        await bulkTools.getByText(count + " selected", { exact: true }).waitFor();
+        await bulkTools.getByLabel("Department", { exact: true }).selectOption("hr");
+        const target = bulkTools.getByRole("combobox", { name: "Delivery Project", exact: true });
+        await target.click();
+        await bulkTools.getByRole("listbox", { name: "Delivery Project", exact: true }).getByRole("option", { name: "Policy assessment fixture", exact: true }).click();
+        await bulkTools.getByRole("button", { name: "Review allocation", exact: true }).click();
+        await review.getByText(/53 entries · 26.5 h recorded · 26.5 h to allocate/).waitFor();
+        await review.getByText(/Consulting engagement fixture \/ HR \/ Policy assessment fixture/).waitFor();
+      }
+      await reviewBulk(53);
+      await bulkPage.screenshot({ path: join(evidence, "v51-bulk-review-53.png"), animations: "disabled" });
+      await review.getByRole("button", { name: "Apply allocation", exact: true }).click();
       const bulkResults = bulkPage.getByRole("region", { name: "Bulk allocation results" });
-      await bulkResults.getByText("25 of 26 entries saved.", { exact: true }).waitFor();
-      assert.equal(await bulkResults.getByText(/Nov 21.*Saved\./).count(), 25);
-      await bulkResults.getByText(/Nov 22.*Source changed/).waitFor();
-      assert.equal(await bulkResults.getByRole("button", { name: "Retry unsaved entries" }).count(), 0);
-      assert.deepEqual((await root.collection("allocationHeads").doc(bulkReady.id).get()).data()?.portions,
-        [{ projectId: nested.id, description: "", seconds: 1733 }]);
-      assert.equal((await root.collection("allocationHeads").doc(bulkConflict.id).get()).exists, false);
-      assert.deepEqual((await bulkReady.get()).data(), readyEntry);
+      await bulkResults.getByText("53 of 53 entries saved.", { exact: true }).waitFor();
+      await bulkResults.getByText("26.5 h saved (95,400 seconds).", { exact: true }).waitFor();
+      const cleanHeads = await runtime.db.getAll(...clean.map(entry => root.collection("allocationHeads").doc(entry.ref.id)));
+      assert.ok(cleanHeads.every(doc => doc.get("portions")?.[0]?.projectId === nested.id && doc.get("portions")?.[0]?.seconds === 1800));
+      assert.deepEqual((await runtime.db.getAll(...clean.map(entry => entry.ref))).map(doc => doc.data()), clean.map(entry => entry.raw));
       await bulkResults.scrollIntoViewIfNeeded();
-      await bulkPage.screenshot({ path: join(evidence, "bulk-allocation-results.png"), animations: "disabled" });
+      await bulkPage.screenshot({ path: join(evidence, "v51-bulk-clean-53.png"), animations: "disabled" });
+      assert.deepEqual(await readClient(), clientBeforeBulk);
+      const cleanScope = await json(await request("sources?month=2026-11&consultants=611,612&search=V51%20clean"));
+      assert.equal(cleanScope.sourceSummary.hours.recordedSeconds, 95_400);
+      assert.equal(cleanScope.sourceSummary.hours.unallocatedSeconds, 0);
+
+      await bulkPage.getByRole("button", { name: "Clear consultants" }).click();
+      await searchBulk("V51 mixed");
+      await bulkPage.getByText(/2 matching entries/).waitFor();
+      await bulkPage.getByRole("button", { name: "Select all eligible matches" }).click();
+      await bulkTools.getByText(/span different Parent Projects/).waitFor();
+      assert.equal(await bulkTools.getByRole("button", { name: "Review allocation", exact: true }).isDisabled(), true);
+      await bulkTools.getByRole("button", { name: "Keep 1 from Consulting engagement fixture", exact: true }).click();
+      await bulkTools.getByText("1 selected", { exact: true }).waitFor();
+
+      await searchBulk("V51 conflict");
+      await bulkPage.getByText("53 matching entries · 26.5 h recorded", { exact: true }).waitFor();
+      await chooseConsultant("Avery Patel");
+      await chooseConsultant("Quinn Carter");
+      await bulkPage.getByRole("button", { name: "Remove Quinn Carter", exact: true }).click();
+      await reviewBulk(53);
+      await conflicts[52].ref.update({ "record.revision": "corrected-after-selection" });
+      // Drop the second HTTP response after the server has committed it.
+      // Retrying must reuse the same idempotency key and confirmed selection.
+      let attempts = 0;
+      await bulkPage.route("**/allocations/bulk", async route => {
+        attempts++;
+        if (attempts !== 2) return route.continue();
+        await route.fetch();
+        await route.abort();
+      });
+      await review.getByRole("button", { name: "Apply allocation", exact: true }).click();
+      await bulkPage.getByRole("button", { name: "Check this bulk request again" }).waitFor();
+      await bulkPage.reload();
+      await bulkPage.getByRole("button", { name: "Check this bulk request again" }).click();
+      await bulkResults.getByText("52 of 53 entries saved.", { exact: true }).waitFor();
+      await bulkResults.getByText("26 h saved (93,600 seconds).", { exact: true }).waitFor();
+      await bulkResults.getByText(/Source changed/).waitFor();
+      assert.equal(attempts, 4);
+      await bulkPage.unroute("**/allocations/bulk");
+      const conflictHeads = await runtime.db.getAll(...conflicts.map(entry => root.collection("allocationHeads").doc(entry.ref.id)));
+      assert.equal(conflictHeads.filter(doc => doc.exists && doc.get("revision") === 1).length, 52);
+      assert.equal(conflictHeads[52].exists, false);
+      const conflictScope = await json(await request("sources?month=2026-11&consultant=614"));
+      assert.equal(conflictScope.sourceSummary.hours.recordedSeconds, 95_400);
+      assert.equal(conflictScope.sourceSummary.hours.unallocatedSeconds, 1800);
+      await bulkResults.scrollIntoViewIfNeeded();
+      await bulkPage.screenshot({ path: join(evidence, "v51-bulk-conflict-53.png"), animations: "disabled" });
+      assert.deepEqual(await readClient(), clientBeforeBulk);
+      const bulkSavedSeconds = 105 * 1800;
       const splitSource = root.collection("rawTime").doc("five-hour-delivery-split");
       const fiveHours = bulkFixture(splitSource.id, "23", "Five hours for two projects");
       fiveHours.record.seconds = 18_000;
@@ -1718,10 +1878,10 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       assert.deepEqual((await root.collection("allocationHeads").doc(splitSource.id).get()).data()?.portions, split);
       const hierarchyDraft = await json(await request("client-preview?month=2026-11&mode=draft"));
       assert.equal(hierarchyDraft.hierarchy[parent.id].monthlyCapUsed, 10_800);
-      assert.equal(hierarchyDraft.hierarchy[department.id].monthlyCapUsed, 7_200 + 1_733 + additionalBulkEntries.length);
+      assert.equal(hierarchyDraft.hierarchy[department.id].monthlyCapUsed, 7_200 + bulkSavedSeconds);
       assert.equal(hierarchyDraft.hierarchy[parent.id].completion, undefined);
       assert.equal(hierarchyDraft.projects.filter((item: { id: string }) => [direct.id, nested.id].includes(item.id))
-        .reduce((total: number, item: { seconds: number }) => total + item.seconds, 0), 18_000 + 1_733 + additionalBulkEntries.length);
+        .reduce((total: number, item: { seconds: number }) => total + item.seconds, 0), 18_000 + bulkSavedSeconds);
       const hierarchyNavigation = bulkPage.getByRole("navigation", { name: "Morris workspace sections" });
       const managementBrowser = await session(1440);
       try {

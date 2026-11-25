@@ -2,12 +2,12 @@
 
 | Field | Detail |
 | --- | --- |
-| Version | 1.0 |
-| Application | Zagimē V5, draft PR #33 |
+| Version | 1.1 |
+| Application | Zagimē V5.1 |
 | Last verified | November 25, 2026 |
 | Audience | Morris project leads, Time operators and publication administrators |
 | Owner | Morris client intelligence operations lead |
-| Revision history | 1.0 · Initial V5 onboarding and operating procedures |
+| Revision history | 1.1 · Compact workspace and Time Allocation procedures |
 
 ## Contents
 
@@ -24,7 +24,7 @@
 
 1. Open the approved workspace link and choose **Sign in with Microsoft** with your approved Morris work account.
 2. Look for **Morris workspace**. On a phone, open the menu. Use **Search workspace** to find a destination or project and the account icon to sign out.
-3. Use the appearance icon to choose Light, Dark or System. System follows the device setting.
+3. Use the Appearance icon on the right of the page toolbar to choose Light, Dark or System. System follows the device setting.
 
 Project leads maintain projects and prepare drafts. The assigned Time operator confirms mappings. Staff with publication permission can approve mapped effort and publish content. The configured platform administrator handles deletion and protected settings. Ask the operations lead about missing permissions.
 
@@ -70,11 +70,12 @@ Project leads maintain projects and prepare drafts. The assigned Time operator c
 
 ## 5. Classify, review and approve Time
 
-1. Open **Time Allocation** and apply the reporting period. In **Advanced filters**, choose one or more consultants, work order, parent, department, delivery project, allocation status, mapping status or classification source. Apply the filters and check the scope and matches. Sort using a meaningful table column.
-2. For a parent-only entry, open **Manage Time**. Verify the source parent. Choose a department first to narrow delivery projects, or choose the delivery project and confirm the derived department. Resolve uncertain mappings with the Time operator.
-3. Keep the original QuickBooks Time description for reference. Use **Reporting description** for reporting context and **Internal note** for private staff information. Enter the full assignment or **Add split** for several projects. Check remaining time before choosing **Save allocation**. Review Activity History or Undo if a correction is needed.
-4. To backfill several eligible entries, apply a precise scope. Choose **Select eligible entries on this page** or **Select all eligible matches**. Review the exact count, recorded and available hours, and the compatible destination. Choose **Assign selected time** and confirm once. Review completed, conflicting and retryable outcomes.
-5. To approve mapped effort, use a single **Delivery Project** filter and apply it. With publication permission, use **Select this project’s automatic classifications**, review the selected effort and choose **Approve selected effort**. Expect the approval in allocation history. Clients see approved hours only on projects published and authorized for them.
+1. Open **Time Allocation** and apply the reporting period. Use **Consultant** above the table to search by name and add one or more consultants. The table, count and hours update as you choose. Remove an individual chip or use **Clear consultants**. Verified source identities linked to the same approved directory profile can appear under one consultant. People with the same name can still have separate choices.
+2. Use **Advanced filters** for work order, parent, department, delivery project, allocation status, mapping status or classification source. Apply the scope and sort by a table column. Changing the scope clears the current row selection.
+3. Open **Manage Time** for an individual entry. Read the immutable source description and check the Parent Project. Choose a department to narrow delivery projects, or choose an eligible project directly to fill its department. Edit the reporting description or private internal note as needed. Choose **Save allocation**, **Save notes** for a note-only change, or **Advanced split allocation** for partial or multi-project time. Use **Activity History** or **Copy entry link** when needed.
+4. Use the header checkbox or **Select eligible entries on this page** for loaded entries, or **Select all eligible matches** for the entire filtered scope. The latter uses a fixed selection. Uncheck individual entries as needed. Review the count, recorded hours, remaining hours and parent compatibility in the bulk toolbar. If multiple Parent Projects are selected, choose a parent group and repeat for other groups.
+5. In the bulk toolbar, choose **Department** and **Delivery Project**, then **Review allocation**. Verify the destination and hours and choose **Apply allocation** once. Review saved, conflicting and retryable entries. Use **Check this bulk request again** if the response was interrupted. The dashboard submits the approved selection in batches.
+6. To approve mapped effort, apply a single **Delivery Project** filter. With publication permission, choose **Select this project’s automatic classifications**, **Review effort approval** and **Approve selected effort**. Clients see approved hours on published projects within their authorized scope.
 
 **Example.** Filter parent-only time to the consultant, parent and period. Select the eligible matches and check their sum. Send them to the agreed delivery project. If a source revision changed, confirm the updated entry before making a fresh selection.
 

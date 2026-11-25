@@ -149,7 +149,6 @@ export function DeliveryPreview({ client, tenant, month, standalone = false }: {
   const onPreviewDenied = useCallback(() => setError("This client access profile is no longer available."), []);
   const entitled = standalone || mode === "draft" || Boolean(scope);
   const controls = <div className="delivery-filters mi-preview-controls">
-      {standalone && <PlatformLink className="mi-client-launch" href={periodHref("/workspace", month)} aria-label="Back to Morris Workspace">Morris Workspace</PlatformLink>}
       <label>Preview mode<select value={mode} onChange={e => { setError(""); portalNavigate({
         previewMode: e.target.value === "draft" ? "draft" : null,
         view: previewProject ? "project:" + previewProject : location.get("view"), q: null, present: null, chart: null,

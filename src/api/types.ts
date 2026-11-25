@@ -107,7 +107,7 @@ export interface SourceSummary {
   matched: number;
   counts: Record<SourceStatus, number> & { total: number; remaining: number };
   workOrders: { id: string; label: string }[];
-  consultants: { id: string; label: string }[];
+  consultants: { id: string; label: string; profile?: { id: number; name: string } }[];
   period: TimeWindow;
   hours: SourceHours & {
     byConsultant: SourceHoursGroup[];

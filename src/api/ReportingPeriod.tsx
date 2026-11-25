@@ -5,6 +5,7 @@ import { reportMonth } from "./dashboard-format";
 import { validMonth } from "./portal-location";
 import { followingTimeMonth, historyRange, reportingMonthOptions, type ReportingMonthRange } from "./reporting-period";
 import "./reporting-period.css";
+import { WorkspaceToolbarControls } from "./WorkspaceToolbar";
 
 export function ReportingMonthField({ month, onMonth }: { month: string; onMonth: (month: string) => void }) {
   const [native] = useState(() => {
@@ -65,7 +66,7 @@ export function ReportingPeriod({ month, currentMonth = reportingTimeMonth(), av
         </button>
         <label className="reporting-period__month" htmlFor={control}>
           <span className="reporting-period__sr">Reporting month</span>
-          <select id={control} value={month} onChange={event => selectMonth(event.currentTarget.value)}>
+          <select id={control} aria-label="Reporting month" value={month} onChange={event => selectMonth(event.currentTarget.value)}>
             {[...options].reverse().map(option => <option key={option} value={option}>{reportMonth(option)}</option>)}
           </select>
         </label>
@@ -96,6 +97,7 @@ export function ReportingPeriod({ month, currentMonth = reportingTimeMonth(), av
         </div>}
       </div>
       {action}
+      <WorkspaceToolbarControls />
     </div>
     {range && <p className="reporting-period__hint">{range.from && range.through ?
       "Trend range: " + reportMonth(range.from) + " to " + reportMonth(range.through) : "Trend range: All available history"}</p>}

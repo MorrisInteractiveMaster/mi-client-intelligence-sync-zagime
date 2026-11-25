@@ -84,6 +84,7 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
   const counts: SourceSummary["counts"] = { total: 0, allocated: 0, partial: 0, unallocated: 0, review: 0, deleted: 0, remaining: 0 };
   const workOrders = new Map<string, string>();
   const consultants = new Map<string, string>();
+  const consultantProfiles = new Map<string, { id: number; name: string }>();
   const matches: StaffSource[] = [];
   const hours = emptyHours();
   const byConsultant = new Map<string | null, SourceHoursGroup>();
@@ -97,6 +98,7 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
     const person = row.sourcePersonId;
     if (filterId.test(workOrder) && (row.workOrderName || !workOrders.has(workOrder))) workOrders.set(workOrder, row.workOrderName || workOrder);
     if (person && filterId.test(person) && (row.consultantName || !consultants.has(person))) consultants.set(person, row.consultantName || person);
+    if (person && row.wordpressProfile) consultantProfiles.set(person, { id: row.wordpressProfile.id, name: row.wordpressProfile.name });
     if (filters.workOrder && filters.workOrder !== workOrder ||
       filters.consultant && (filters.consultant === "unavailable" ? Boolean(person) : filters.consultant !== person) ||
       selectedConsultants.size > 0 && (!person || !selectedConsultants.has(person)) ||
@@ -160,7 +162,10 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
     .sort((a, b) => b.recordedSeconds - a.recordedSeconds || a.label.localeCompare(b.label) || (a.id ?? "").localeCompare(b.id ?? ""));
   const summary: SourceSummary = { monthTotal: rows.length, matched: matches.length, counts, period,
     visibleColumns: { consultant: matches.some(row => Boolean(row.consultantName)), notes: matches.some(row => Boolean(row.description)) },
-    workOrders: options(workOrders), consultants: options(consultants),
+    workOrders: options(workOrders), consultants: options(consultants).map(item => {
+      const profile = consultantProfiles.get(item.id);
+      return profile ? { ...item, profile } : item;
+    }),
     hours: { ...hours, byConsultant: breakdown(byConsultant), byMorrisProfile: breakdown(byMorrisProfile), byWorkOrder: breakdown(byWorkOrder), byPeriod: [...byPeriod.values()] },
   };
   return { matches, summary };

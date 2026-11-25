@@ -1,3 +1,4 @@
+import { WorkspaceToolbarControls } from "./WorkspaceToolbar";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { ProjectReport } from "../projects/model";
 import { ApiError, type SecuredApiClient } from "./client";
@@ -330,8 +331,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
       searchResults={delivery.projects.map(row => ({ id: "client-project-" + row.project.id, label: row.project.name,
         context: row.department?.name ?? "Published projects", select: () => choose("project:" + row.project.id) }))}>
       <div className="exec-content intel-workspace mi-v4-client" tabIndex={-1} ref={page}>
-        {(nativeClient || legacyMonth || view !== "overview") && <div className="mi-report-top" data-preview={Boolean(previewToolbar)}>{previewToolbar}
-          {nativeClient ? periodToolbar(presentationButton) : <>{legacyMonth}{view !== "overview" && presentationButton}</>}
+        {(nativeClient || legacyMonth || view !== "overview") && <div className="mi-report-top" data-preview={Boolean(previewToolbar)}>
+          {nativeClient ? periodToolbar(<>{previewToolbar}{presentationButton}</>) : <>{previewToolbar}{legacyMonth}{view !== "overview" && presentationButton}{!preview && <WorkspaceToolbarControls />}</>}
         </div>}
         {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose} effortUnit={effortUnit}
           onEffortUnit={unit => portalNavigate({ "effort-unit": unit === "hours" ? unit : null }, true)}
