@@ -226,10 +226,13 @@
 .nordic.secure-shell .time-entries td small { display: block; margin: 0; font-size: .72rem; line-height: 1.2; color: var(--mi-time-muted); }
 .time-entries :is([data-cell="Date"], [data-cell="Recorded"]) { white-space: nowrap; }
 .nordic.secure-shell .delivery-allocation .time-entries .mi-sort-header {
-  min-inline-size: 0; max-inline-size: 100%; min-height: 32px; padding: 3px; margin: 0; gap: 3px; text-align: start;
+  min-inline-size: 0; max-inline-size: 100%; min-height: 32px; padding: 3px 2px; margin: 0; gap: 2px; text-align: start;
   white-space: normal; font-size: .77rem; line-height: 1.2;
 }
-.time-entries [data-sort-field="recorded"] .mi-sort-header svg { width: 11px; }
+.nordic.secure-shell .delivery-allocation .time-entries .mi-sort-header svg { width: 11px; height: 11px; flex: 0 0 11px; }
+.nordic.secure-shell .delivery-allocation .time-entries :is([data-sort-field="recorded"], [data-sort-field="reporting"]) .mi-sort-header {
+  font-size: .72rem;
+}
 .nordic.secure-shell .time-entries .time-description {
   display: block; padding: 0; margin: 0; background: transparent; border: 0; color: inherit;
   min-height: 0; text-align: start; border-radius: 3px; font-size: inherit; line-height: 1.8; font-weight: 450;
