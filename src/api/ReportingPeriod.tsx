@@ -76,27 +76,29 @@ export function ReportingPeriod({ month, currentMonth = reportingTimeMonth(), av
           <ChevronRight size={18} aria-hidden="true" />
         </button>
       </div>
-      {latest !== month && <button className="secure-secondary reporting-period__latest" type="button"
-        onClick={() => selectMonth(latest)}>Latest available month</button>}
-      <div className="reporting-period__presets" data-open={optionsOpen}>
-        <button type="button" className="secure-secondary reporting-period__options" aria-expanded={optionsOpen}
-          aria-controls={control + "-options"} disabled={pending} onClick={() => setOptionsOpen(value => !value)}>Period options</button>
-        {optionsOpen && <div className="reporting-period__choices" id={control + "-options"}>
-          <button className="secure-secondary" type="button" onClick={() => selectMonth(currentMonth)}>This Month</button>
-          <button className="secure-secondary" type="button" onClick={() => selectMonth(precedingTimeMonth(currentMonth))}>Previous Month</button>
-          {onRange && <>
-            {([["year", "This Year"], ["last-year", "Last Year"], ["all", "All History"]] as const).map(([preset, label]) =>
-              <button className="secure-secondary" type="button" key={preset} aria-pressed={range?.preset === preset} onClick={() => {
-                setCustom(false);
-                setOptionsOpen(false);
-                onRange(historyRange(preset, currentMonth));
-              }}>{label}</button>)}
-            <button className="secure-secondary" type="button" aria-pressed={custom || range?.preset === "custom"}
-              onClick={() => { setCustom(value => !value); setRangeError(""); }}>Custom Range</button>
-          </>}
-        </div>}
+      <div className="reporting-period__actions">
+        {latest !== month && <button className="secure-secondary reporting-period__latest" type="button"
+          onClick={() => selectMonth(latest)}>Latest available month</button>}
+        <div className="reporting-period__presets" data-open={optionsOpen}>
+          <button type="button" className="secure-secondary reporting-period__options" aria-expanded={optionsOpen}
+            aria-controls={control + "-options"} disabled={pending} onClick={() => setOptionsOpen(value => !value)}>Period options</button>
+          {optionsOpen && <div className="reporting-period__choices" id={control + "-options"}>
+            <button className="secure-secondary" type="button" onClick={() => selectMonth(currentMonth)}>This Month</button>
+            <button className="secure-secondary" type="button" onClick={() => selectMonth(precedingTimeMonth(currentMonth))}>Previous Month</button>
+            {onRange && <>
+              {([["year", "This Year"], ["last-year", "Last Year"], ["all", "All History"]] as const).map(([preset, label]) =>
+                <button className="secure-secondary" type="button" key={preset} aria-pressed={range?.preset === preset} onClick={() => {
+                  setCustom(false);
+                  setOptionsOpen(false);
+                  onRange(historyRange(preset, currentMonth));
+                }}>{label}</button>)}
+              <button className="secure-secondary" type="button" aria-pressed={custom || range?.preset === "custom"}
+                onClick={() => { setCustom(value => !value); setRangeError(""); }}>Custom Range</button>
+            </>}
+          </div>}
+        </div>
+        {action}
       </div>
-      {action}
       <WorkspaceToolbarControls />
     </div>
     {range && <p className="reporting-period__hint">{range.from && range.through ?

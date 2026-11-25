@@ -164,21 +164,22 @@
 .mi-account:not([open]) .mi-account-menu { display: none; }
 .mi-account-menu a { display: block; padding: 7px; border-radius: 6px; }
 .mi-account-menu a:hover { background: var(--mi-background); }
-.reporting-period__main > .mi-preview-controls { padding: 0; border: 0; box-shadow: none; background: transparent; position: static; }
+.reporting-period__actions > .mi-preview-controls { padding: 0; border: 0; box-shadow: none; background: transparent; position: static; }
 .nordic.secure-shell .reporting-period__main :is(button, select) { min-height: 36px; }
 .nordic.secure-shell .reporting-period__stepper button { min-width: 36px; }
-.nordic.secure-shell .reporting-period__main > .mi-preview-controls label { gap: 5px; }
+.nordic.secure-shell .reporting-period__actions > .mi-preview-controls label { gap: 5px; }
 .mi-report-top:has(.reporting-period) { display: block; margin-block: 0 6px; }
 .nordic.secure-shell .platform-workspace .mi-page-heading { margin-block-end: 5px; }
 .nordic.secure-shell .platform-workspace .mi-page-heading h2 { font-size: clamp(1.6rem, 2.4vw, 2.3rem); }
 .nordic.secure-shell .platform-control-card .mi-control-toolbar :is(form, label) { margin-block: 0; }
+.reporting-period__actions { display: contents; }
 @media (max-width: 850px) {
-  .reporting-period__main { gap: 5px; }
+  .reporting-period__main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 8px; }
+  .reporting-period__actions { grid-column: 1 / -1; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+  .reporting-period__main > .mi-page-tools { grid-column: 2; grid-row: 1; justify-self: end; flex-wrap: nowrap; gap: 4px; }
   .reporting-period__main .reporting-period__label { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }
-  .reporting-period__main .reporting-period__stepper { order: -2; flex: 1 1 148px; }
+  .reporting-period__main .reporting-period__stepper { grid-column: 1; grid-row: 1; max-width: 330px; }
   .reporting-period__main .reporting-period__month { flex: 1 1 0; }
-  .reporting-period__main .mi-page-tools { order: -1; gap: 4px; }
-  .reporting-period__main:has(.mi-page-tools) .reporting-period__stepper { flex-basis: calc(100% - 155px); }
   .nordic.secure-shell .reporting-period__main .reporting-period__month select { width: 100%; padding-inline: 4px; font-size: .82rem; }
   .nordic.secure-shell .reporting-period__main .reporting-period__stepper button { min-width: 27px; min-height: 34px; margin: 0; }
   .nordic.secure-shell.platform-shell .reporting-period__main .mi-page-tools :is(.mi-theme-icon, .mi-account summary, .mi-workspace-tools button) {

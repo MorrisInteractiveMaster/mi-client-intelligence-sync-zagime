@@ -1896,10 +1896,12 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       // Drop the second HTTP response after the server has committed it.
       // Retrying must reuse the same idempotency key and confirmed selection.
       let attempts = 0;
+      const errorsBeforeInterruptedRequest = errors.length;
       await bulkPage.route("**/allocations/bulk", async route => {
         attempts++;
         if (attempts !== 2) return route.continue();
-        await route.fetch();
+        const committed = await route.fetch();
+        assert.equal(committed.ok(), true, "The server completed the deliberately interrupted batch.");
         await route.abort();
       });
       await review.getByRole("button", { name: "Apply allocation", exact: true }).click();
@@ -1910,6 +1912,8 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await bulkResults.getByText("26 h saved (93,600 seconds).", { exact: true }).waitFor();
       await bulkResults.getByText(/Source changed/).filter({ visible: true }).waitFor();
       assert.equal(attempts, 4);
+      assert.deepEqual(errors.splice(errorsBeforeInterruptedRequest), ["Failed to load resource: net::ERR_FAILED"],
+        "The only browser error was the deliberately interrupted response.");
       await bulkPage.unroute("**/allocations/bulk");
       const conflictHeads = await runtime.db.getAll(...conflicts.map(entry => root.collection("allocationHeads").doc(entry.ref.id)));
       assert.equal(conflictHeads.filter(doc => doc.exists && doc.get("revision") === 1).length, 52);

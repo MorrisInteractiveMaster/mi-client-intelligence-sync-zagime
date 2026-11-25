@@ -959,11 +959,11 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       const monthControl = await clientToolbar.getByRole("combobox", { name: "Reporting month", exact: true }).boundingBox();
       assert.ok(appearance && account && monthControl);
       assert.ok(Math.abs(appearance.y - account.y) <= 1 && appearance.width === account.width && appearance.height === account.height);
+      await client.page.screenshot({ path: join(evidence, "v51-client-toolbar-" + width + ".png"), animations: "disabled" });
       assert.ok(Math.abs(appearance.y + appearance.height / 2 - monthControl.y - monthControl.height / 2) <= 2,
-        "Toolbar controls align with the reporting month at " + width + " pixels");
+        "Toolbar controls align with the reporting month at " + width + " pixels: " + JSON.stringify({ appearance, monthControl }));
       if (width >= 1440) assert.equal(await client.page.locator(".mi-sidebar-partner-mark").evaluate(el =>
         getComputedStyle(el).backgroundColor), "rgba(0, 0, 0, 0)");
-      await client.page.screenshot({ path: join(evidence, "v51-client-toolbar-" + width + ".png"), animations: "disabled" });
     }
     await client.page.setViewportSize(viewportBeforeToolbar);
     for (const path of ["/workspace", "/control", "/clients/another-client", "/clients/another-client/present"]) {
