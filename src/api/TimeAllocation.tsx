@@ -645,7 +645,8 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
         setUnconfirmed(undefined);
       }}>Discard pending request</button>
     </div>}
-    {batch && bulkResult && <BulkAllocationResults result={bulkResult} seconds={batch.seconds} describeEntry={id => batch.labels[id] ?? id} busy={busy}
+    {batch && bulkResult && (!selectedRows.length || busy || unconfirmed) && <BulkAllocationResults result={bulkResult} seconds={batch.seconds}
+      describeEntry={id => batch.labels[id] ?? "Entry " + id.slice(-8)} entryHref={sourceLink?.href} busy={busy}
       onRetry={unconfirmed ? undefined : () => {
         const retryable = new Set(bulkResult.outcomes.filter(outcome => outcome.status === "retryable").map(outcome => outcome.sourceId));
         const entries = batch.body.entries.filter(entry => retryable.has(entry.sourceId));

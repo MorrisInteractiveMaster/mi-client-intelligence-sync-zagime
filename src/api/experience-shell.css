@@ -175,11 +175,10 @@
 @media (max-width: 850px) {
   .reporting-period__main { gap: 5px; }
   .reporting-period__main .reporting-period__label { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }
-}
-@media (max-width: 680px) {
   .reporting-period__main .reporting-period__stepper { order: -2; flex: 1 1 148px; }
   .reporting-period__main .reporting-period__month { flex: 1 1 0; }
   .reporting-period__main .mi-page-tools { order: -1; gap: 4px; }
+  .reporting-period__main:has(.mi-page-tools) .reporting-period__stepper { flex-basis: calc(100% - 155px); }
   .nordic.secure-shell .reporting-period__main .reporting-period__month select { width: 100%; padding-inline: 4px; font-size: .82rem; }
   .nordic.secure-shell .reporting-period__main .reporting-period__stepper button { min-width: 27px; min-height: 34px; margin: 0; }
   .nordic.secure-shell.platform-shell .reporting-period__main .mi-page-tools :is(.mi-theme-icon, .mi-account summary, .mi-workspace-tools button) {

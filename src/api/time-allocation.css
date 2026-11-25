@@ -286,7 +286,8 @@
 }
 .nordic.secure-shell .time-alloc-drawer .time-drawer-notes { margin-block: 7px; }
 .time-drawer-notes span { color: var(--mi-time-muted); }
-.nordic.secure-shell .time-drawer-notes textarea { min-height: 62px; resize: vertical; }
+.nordic.secure-shell .time-alloc-drawer .time-drawer-notes textarea { min-height: 62px; resize: vertical; }
+.nordic.secure-shell .time-alloc-drawer .time-drawer-notes textarea[aria-label="Reporting description"] { min-height: 76px; }
 .time-drawer-footer { position: sticky; bottom: -16px; padding-block: 7px; margin-top: 8px;
   justify-content: flex-end; background: var(--mi-time-surface); border-block-start: 1px solid var(--mi-time-line); }
 .nordic.secure-shell .time-drawer-footer button { margin: 0; }

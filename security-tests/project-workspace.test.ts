@@ -927,6 +927,8 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         .click();
       await first.page.getByText("Allocation saved.", { exact: true }).waitFor();
       await first.page.getByText("Reviewed delivery preparation", { exact: true }).waitFor();
+      const existingSplit = first.page.getByRole("row").filter({ hasText: "Reviewed delivery preparation" });
+      assert.equal(await existingSplit.getByRole("checkbox", { name: /Select entry on/ }).isDisabled(), true);
       const monthSearch = first.page.getByRole("searchbox", { name: "Search month", exact: true });
       await monthSearch.fill("Reviewed delivery");
       await first.page.getByRole("button", { name: "Apply filters", exact: true }).click();
@@ -1824,7 +1826,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await drawerV51.getByRole("button", { name: "Close allocation", exact: true }).click();
       await bulkPage.setViewportSize({ width: 1440, height: 900 });
 
-      async function reviewBulk(count: number) {
+      async function reviewBulk(count: number, capture = false) {
         await bulkPage.getByRole("button", { name: "Select all eligible matches" }).click();
         await bulkTools.getByText(count + " selected", { exact: true }).waitFor();
         await bulkTools.getByLabel("Department", { exact: true }).selectOption("hr");
@@ -1834,12 +1836,12 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           .getByRole("option", { name: "Policy assessment fixture", exact: true }).count(), 0);
         await bulkTools.getByRole("listbox", { name: "Delivery Project", exact: true }).getByRole("option", { name: "Verified HR delivery fixture", exact: true }).click();
         await bulkTools.evaluate(element => element.scrollIntoView({ block: "start" }));
-        await bulkPage.screenshot({ path: join(evidence, "v51-bulk-selection-" + count + ".png"), animations: "disabled" });
+        if (capture) await bulkPage.screenshot({ path: join(evidence, "v51-bulk-selection-" + count + ".png"), animations: "disabled" });
         await bulkTools.getByRole("button", { name: "Review allocation", exact: true }).click();
         await review.getByText(/53 entries · 26.5 h recorded · 26.5 h to allocate/).waitFor();
         await review.getByText(/Consulting engagement fixture \/ HR \/ Verified HR delivery fixture/).waitFor();
       }
-      await reviewBulk(53);
+      await reviewBulk(53, true);
       await bulkPage.screenshot({ path: join(evidence, "v51-bulk-review-53.png"), animations: "disabled" });
       await review.getByRole("button", { name: "Apply allocation", exact: true }).click();
       const bulkResults = bulkPage.getByRole("region", { name: "Bulk allocation results" });
@@ -1906,7 +1908,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await bulkPage.getByRole("button", { name: "Check this bulk request again" }).click();
       await bulkResults.getByText("52 of 53 entries saved.", { exact: true }).waitFor();
       await bulkResults.getByText("26 h saved (93,600 seconds).", { exact: true }).waitFor();
-      await bulkResults.getByText(/Source changed/).waitFor();
+      await bulkResults.getByText(/Source changed/).filter({ visible: true }).waitFor();
       assert.equal(attempts, 4);
       await bulkPage.unroute("**/allocations/bulk");
       const conflictHeads = await runtime.db.getAll(...conflicts.map(entry => root.collection("allocationHeads").doc(entry.ref.id)));
@@ -1939,7 +1941,8 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       assert.equal(hierarchyDraft.hierarchy[parent.id].monthlyCapUsed, 10_800);
       assert.equal(hierarchyDraft.hierarchy[department.id].monthlyCapUsed, 7_200);
       assert.equal(hierarchyDraft.hierarchy[parent.id].completion, undefined);
-      assert.equal(hierarchyDraft.hierarchy[bulkProject.id].areaId, "hr");
+      assert.equal(hierarchyDraft.hierarchy[bulkProject.id].parentId, parent.id);
+      assert.equal(hierarchyDraft.portfolio.placements.find((item: { id: string }) => item.id === bulkProject.id).areaId, "hr");
       assert.equal(hierarchyDraft.projects.find((item: { id: string }) => item.id === bulkProject.id).seconds, bulkSavedSeconds);
       assert.equal(hierarchyDraft.projects.filter((item: { id: string }) => [direct.id, nested.id, bulkProject.id].includes(item.id))
         .reduce((total: number, item: { seconds: number }) => total + item.seconds, 0), 18_000 + bulkSavedSeconds);
