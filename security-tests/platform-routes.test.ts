@@ -78,7 +78,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
           const {theme,change,appearance}=usePlatformTheme(); const month=useReportingMonth("${month}"), [dirty,setDirty]=useState(false);
           return <section className="nordic secure-shell platform-shell" data-theme={appearance}>
             <header className="secure-masthead mi-compact-masthead">
-              <div className="secure-identity"><h1>{location.pathname.startsWith("/clients/") ? "Zagimē A. FN Workshop" : "Morris Interactive"}</h1></div>
+              <div className="secure-identity"><h1>{location.pathname.startsWith("/clients/") ? "Zagimē A. FN Workshop" : "Morris workspace"}</h1></div>
               <div className="mi-masthead-actions"><div id="mi-workspace-commands"/><ThemeSelector theme={theme} onChange={change} compact/></div></header>
             <div id="auth-status" role="status"></div>
             <PlatformApplication client={client} workspace={workspace} month={month} unsaved={dirty} onUnsavedChange={setDirty} onDenied={denied}/>
@@ -1037,6 +1037,19 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     assert.equal(await arrangement.getByRole("option", { name: "Training & Workshops", exact: true }).count(), 1);
     assert.equal(await newWizard.getByLabel(/hour cap|budgeted hours/i).count(), 0);
     await captureReference(publisher.page, "06-training-schedule-1209x907", 1209, 907);
+    await newWizard.getByText("Delivery activity dates and venue", { exact: true }).click();
+    await newWizard.getByLabel("Delivery days", { exact: true }).selectOption("consecutive");
+    for (const [label, date] of [["First delivery date", "5"], ["Last delivery date", "6"]]) {
+      await newWizard.getByRole("button", { name: new RegExp("^" + label) }).click();
+      await publisher.page.getByRole("dialog", { name: label, exact: true })
+        .locator('button[data-other-month="false"]').filter({ hasText: new RegExp("^" + date + "$") }).click();
+    }
+    await newWizard.getByText("2 of 2 delivery days selected", { exact: true }).waitFor();
+    await newWizard.getByRole("checkbox", { name: "Use the same venue for all dates", exact: true }).uncheck();
+    assert.equal(await newWizard.getByRole("combobox", { name: /Venue for/ }).count(), 2);
+    await newWizard.getByRole("combobox", { name: /Venue for/ }).first().selectOption("physical");
+    await newWizard.getByRole("textbox", { name: "Staff-only venue details" }).fill("Synthetic delivery venue");
+    await newWizard.screenshot({ path: join(evidence, "v5-consecutive-schedule-and-venues.png"), animations: "disabled" });
     const staleEdit = await reviewProjectEdit(publisher.page, "This outdated edit should stay private.");
     const openedRevision = (await root.get()).get("revision");
     const concurrentSave = await publisher.context.request.patch(projectApi, {

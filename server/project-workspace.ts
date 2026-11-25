@@ -187,11 +187,16 @@ export class ProjectStore {
           if (previous.exists) {
             if (previous.data()!.payloadHash !== idem!.payloadHash)
               throw Error("Idempotency conflict");
-            return previous.data()!.result as {
+            const result = previous.data()!.result as {
               id: string;
               revision: number;
               changed: boolean;
             };
+            // A key from an intentionally removed project must never report
+            // a successful creation or bring the deleted record back.
+            if (!(await tx.get(a.root.collection("projects").doc(safeId(result.id)))).exists)
+              throw Error("Revision conflict");
+            return result;
           }
         }
         const id = options.id ? safeId(options.id) : randomUUID();

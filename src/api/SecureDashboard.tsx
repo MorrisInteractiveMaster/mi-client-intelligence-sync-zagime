@@ -221,7 +221,7 @@ export function SecureDashboard() {
         </div>}
         <div className="secure-identity">
           <h1>
-            {route ? (route.kind === "client" ? branding.clientName : "Morris Interactive") : workspace?.role === "client"
+            {route ? (route.kind === "client" ? branding.clientName : "Morris workspace") : workspace?.role === "client"
               ? "Client intelligence dashboard"
               : "Morris protected workspace"}
           </h1>
