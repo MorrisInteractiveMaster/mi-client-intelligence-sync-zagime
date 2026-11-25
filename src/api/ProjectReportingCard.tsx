@@ -73,7 +73,7 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
     <div><dt>{period} approved effort</dt><dd>{reportHours(descendantTotals?.monthly ?? project.seconds)} h</dd></div>
     <div><dt>Whole-project approved effort</dt><dd>{reportHours(descendantTotals?.lifetime ?? project.lifetimeSeconds)} h</dd></div>
   </dl>;
-  const budgetTitle = delivery?.kind === "engagement" ? "Parent engagement hour caps" : "Delivery project hour caps";
+  const budgetTitle = delivery?.kind === "engagement" ? "Parent project hour caps" : "Delivery project hour caps";
   if (detail) {
     const approved = (project.milestones ?? []).filter(item => item.status !== "waived");
     const complete = approved.filter(item => item.completed).length;
@@ -104,7 +104,7 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
           {(hasCaps(delivery) || hasCaps(parent?.budget)) && <EffortToggle unit={unit} onChange={setUnit} />}
           {hasCaps(delivery) ? <BudgetUtilization budget={delivery} showHours={unit === "hours"} title={budgetTitle} />
             : <p className="secure-muted">No published project cap</p>}
-          <BudgetUtilization budget={parent?.budget} showHours={unit === "hours"} title="Parent engagement hour caps" />
+          <BudgetUtilization budget={parent?.budget} showHours={unit === "hours"} title="Parent project hour caps" />
         </section>
       </div>
       <div className="mi-project-document" aria-label="Project detail sections">{detailSections()}</div>
@@ -140,7 +140,7 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
     </div>}
     <details className="mi-project-detail-panel" onToggle={event => setDetailsOpen(event.currentTarget.open)}>
       <summary>Project details</summary>
-      {detailsOpen && <>{reportingTargets()}<BudgetUtilization budget={parent?.budget} title="Parent engagement hour caps" />{detailSections()}</>}
+      {detailsOpen && <>{reportingTargets()}<BudgetUtilization budget={parent?.budget} title="Parent project hour caps" />{detailSections()}</>}
     </details>
     {onLink && <button type="button" className="exec-text-button intel-open-project" onClick={() => onLink("project:" + project.id)}>
       Open project <span className="exec-sr-only">{project.name}</span><ArrowUpRight size={16} aria-hidden="true" />
@@ -158,6 +158,10 @@ export function ProjectReportingCard({ project, period, placement, team, onLink,
   function detailSections() {
     const Heading = detail ? "h3" : "h4";
     return <>
+      {Boolean(delivery?.activityDates?.length) && <section>
+        <Heading>Delivery dates</Heading>
+        <ul className="secure-timeline">{delivery?.activityDates?.map(date => <li key={date}><time dateTime={date}>{reportDay(date)}</time></li>)}</ul>
+      </section>}
       {Boolean(history?.length) && <div>
         <Heading>Reported effort by month</Heading>
         {detail && sortedHistory.rows.length > 1 && <SortControls fields={{ month: "Month", seconds: "Reported effort" }}

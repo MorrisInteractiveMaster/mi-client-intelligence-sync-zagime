@@ -928,6 +928,12 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       const initialTimeViewport = first.page.viewportSize()!;
       const timeLayout = [await auditViewport(first.page, "Legacy Time Allocation", 1440, 1000, { compactSidebar: true })];
       await first.page.screenshot({ path: join(evidence, "time-allocation.png"), fullPage: true, animations: "disabled" });
+      const filterForm = first.page.getByRole("form", { name: "Time entry filters" });
+      await filterForm.getByText("Advanced filters", { exact: true }).click();
+      await filterForm.getByRole("combobox", { name: "Parent Project", exact: true }).waitFor();
+      await filterForm.getByRole("combobox", { name: "Mapping status", exact: true }).waitFor();
+      await filterForm.screenshot({ path: join(evidence, "v5-time-parent-and-mapping-filters.png"), animations: "disabled" });
+      await filterForm.getByText("Advanced filters", { exact: true }).click();
       assert.equal(await staffNavigation.getByRole("button", { name: "Time Allocation", exact: true }).getAttribute("aria-current"), "page");
       for (const [width, height] of [[1024, 768], [768, 1024], [390, 844], [320, 568]]) {
         timeLayout.push(await auditViewport(first.page, "Legacy Time Allocation", width, height, { compactSidebar: true }));
@@ -1175,7 +1181,9 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await previewCard.getByText(/Approved synthetic contact.*Project manager/).waitFor();
       assert.doesNotMatch(await previewCard.innerText(), /PRIVATE|INTERNAL/);
       await previewPage.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Client Preview", exact: true }).click();
-      await previewPage.getByText("LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW", { exact: true }).waitFor();
+      await previewPage.getByLabel("Preview mode").waitFor();
+      assert.equal(await previewPage.getByLabel("Preview mode").inputValue(), "published");
+      assert.equal(await previewPage.getByText("LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW", { exact: true }).count(), 0);
       await previewPage.getByRole("heading", { name: "Leadership summary", exact: true }).waitFor();
       await previewPage.getByLabel("Preview mode").selectOption("draft");
       await previewPage.getByText("DRAFT PREVIEW · MORRIS STAFF ONLY", { exact: true }).waitFor();
@@ -1654,26 +1662,36 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           date: "2026-11-" + day, seconds: 1733, description, revision: "browser-bulk-1" },
       });
       const readyEntry = bulkFixture(bulkReady.id, "21", "Browser bulk ready entry");
-      await Promise.all([
-        bulkReady.set(readyEntry),
-        bulkConflict.set(bulkFixture(bulkConflict.id, "22", "Browser bulk changed entry")),
-      ]);
+      const additionalBulkEntries = Array.from({ length: 24 }, (_, index) => {
+        const id = "browser-bulk-extra-" + index;
+        const entry = bulkFixture(id, "21", "Browser bulk additional entry " + index);
+        entry.record.seconds = 1;
+        return entry;
+      });
+      const bulkSetup = runtime.db.batch();
+      bulkSetup.set(bulkReady, readyEntry);
+      bulkSetup.set(bulkConflict, bulkFixture(bulkConflict.id, "22", "Browser bulk changed entry"));
+      for (const entry of additionalBulkEntries) bulkSetup.set(root.collection("rawTime").doc(entry.record.id), entry);
+      await bulkSetup.commit();
       const bulkPage = hierarchyBrowser.page;
       await bulkPage.getByRole("button", { name: "Time Allocation", exact: true }).click();
-      await bulkPage.getByRole("row").filter({ hasText: "Browser bulk ready entry" }).getByRole("checkbox").check();
-      await bulkPage.getByRole("row").filter({ hasText: "Browser bulk changed entry" }).getByRole("checkbox").check();
-      await bulkPage.getByLabel("Assign 2 unallocated entries").selectOption(nested.id);
+      const bulkFilters = bulkPage.getByRole("form", { name: "Time entry filters" });
+      await bulkFilters.getByRole("searchbox").fill("Browser bulk");
+      await bulkFilters.getByRole("button", { name: "Apply filters" }).click();
+      await bulkPage.getByText(/26 matches out of/).waitFor();
+      await bulkPage.getByRole("button", { name: "Select all eligible matches" }).click();
+      await bulkPage.getByLabel("Assign 26 unallocated entries").selectOption(nested.id);
       // The browser has already loaded its revisions. Simulate a source correction in the emulator only.
       await bulkConflict.update({ "record.revision": "browser-bulk-2" });
       const confirmBulk = bulkPage.waitForEvent("dialog").then(async dialog => {
         const message = dialog.message();
         await dialog.accept();
-        assert.match(message, /Assign all recorded time on 2 selected entries to Policy assessment fixture/);
+        assert.match(message, /Assign all recorded time on 26 selected entries to Policy assessment fixture/);
       });
       await Promise.all([bulkPage.getByRole("button", { name: "Assign selected time" }).click(), confirmBulk]);
       const bulkResults = bulkPage.getByRole("region", { name: "Bulk allocation results" });
-      await bulkResults.getByText("1 of 2 entries saved.", { exact: true }).waitFor();
-      await bulkResults.getByText(/Nov 21.*Saved\./).waitFor();
+      await bulkResults.getByText("25 of 26 entries saved.", { exact: true }).waitFor();
+      assert.equal(await bulkResults.getByText(/Nov 21.*Saved\./).count(), 25);
       await bulkResults.getByText(/Nov 22.*Source changed/).waitFor();
       assert.equal(await bulkResults.getByRole("button", { name: "Retry unsaved entries" }).count(), 0);
       assert.deepEqual((await root.collection("allocationHeads").doc(bulkReady.id).get()).data()?.portions,
@@ -1700,10 +1718,10 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       assert.deepEqual((await root.collection("allocationHeads").doc(splitSource.id).get()).data()?.portions, split);
       const hierarchyDraft = await json(await request("client-preview?month=2026-11&mode=draft"));
       assert.equal(hierarchyDraft.hierarchy[parent.id].monthlyCapUsed, 10_800);
-      assert.equal(hierarchyDraft.hierarchy[department.id].monthlyCapUsed, 7_200 + 1_733);
+      assert.equal(hierarchyDraft.hierarchy[department.id].monthlyCapUsed, 7_200 + 1_733 + additionalBulkEntries.length);
       assert.equal(hierarchyDraft.hierarchy[parent.id].completion, undefined);
       assert.equal(hierarchyDraft.projects.filter((item: { id: string }) => [direct.id, nested.id].includes(item.id))
-        .reduce((total: number, item: { seconds: number }) => total + item.seconds, 0), 18_000 + 1_733);
+        .reduce((total: number, item: { seconds: number }) => total + item.seconds, 0), 18_000 + 1_733 + additionalBulkEntries.length);
       const hierarchyNavigation = bulkPage.getByRole("navigation", { name: "Morris workspace sections" });
       const managementBrowser = await session(1440);
       try {
@@ -1871,7 +1889,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       const legacyClientAudit: Awaited<ReturnType<typeof auditViewport>>[] = [];
       try {
         const views = [
-          ["overview", "Leadership summary"], ["projects", "Projects"], ["engagements", "Parent engagements"],
+          ["overview", "Leadership summary"], ["projects", "Projects"], ["engagements", "Parent projects"],
           ["areas", "Departments"], ["area:health", "Health"], ["project:" + persisted.id, "Browser saved project"],
           ["timeline:" + persisted.id, "Project timeline"], ["milestones", "Milestones"],
           ["milestone:" + persisted.id + ":browser-approved-milestone", "Approved milestone"],
@@ -1885,8 +1903,8 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           await page.getByRole("heading", { name: heading, exact: true, level: 2 }).waitFor();
           assert.equal(await page.getByText("This link is unavailable for your approved report.").count(), 0, view);
           if (view === "engagements") {
-            await page.getByRole("region", { name: "Parent engagements" }).waitFor();
-            legacyClientAudit.push(await auditViewport(page, "legacy client parent engagement cards", 1661, 930, { compactSidebar: true }));
+            await page.getByRole("region", { name: "Parent projects" }).waitFor();
+            legacyClientAudit.push(await auditViewport(page, "legacy client parent project cards", 1661, 930, { compactSidebar: true }));
             await page.screenshot({ path: join(evidence, "04-parent-engagements-1661x930.png"), animations: "disabled" });
           }
           for (const [width, height] of [[1440, 900], [390, 844], [320, 568]]) {

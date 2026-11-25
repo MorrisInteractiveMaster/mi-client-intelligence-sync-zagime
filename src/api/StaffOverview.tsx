@@ -81,6 +81,10 @@ export function StaffOverview({
       </section>
       <div className="mi-cockpit-panel mi-staff-coverage">
         <AllocationCoverage hours={source} loading={!time && !timeError} />
+        {Boolean(source?.automaticallyClassifiedSeconds) && <p className="mi-effort-muted">
+          {reportHours(source?.automaticallyClassifiedSeconds ?? 0)} h automatically classified for staff review.
+          {" "}{reportHours(Math.max(0, (source?.unallocatedSeconds ?? 0) - (source?.automaticallyClassifiedSeconds ?? 0)))} h remain unclassified.
+        </p>}
         {timeError && <p className="mi-effort-muted">The selected Time scope could not be loaded.</p>}
         {period && <p className="mi-effort-muted">{period}</p>}
         <button type="button" className="mi-cockpit-link" onClick={onTime}>Open Time Allocation <ArrowUpRight size={16} aria-hidden="true" /></button>

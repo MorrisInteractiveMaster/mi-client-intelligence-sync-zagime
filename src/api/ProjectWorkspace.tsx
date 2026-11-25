@@ -34,6 +34,7 @@ import { precedingTimeMonth, reportingTimeMonth } from "../projects/time-history
 import { TimeConnectionPanel } from "./TimeConnectionPanel";
 import { QuickBooksTimeMapping } from "./QuickBooksTimeMapping";
 import { ProjectCreation } from "./ProjectCreation";
+import { ProjectDeletion } from "./ProjectDeletion";
 import { ProjectManagement } from "./ProjectManagement";
 import { StaffOverview } from "./StaffOverview";
 import { staffPulseStatus } from "./staff-overview-metrics";
@@ -134,6 +135,15 @@ export function ProjectStaffWorkspace({
   const editingDetail = editorSnapshot && editorSnapshot !== "new" && editorSnapshot.project.id === editorRoute ? editorSnapshot : undefined;
   const editing = editorSnapshot === "new" && editorRoute === "new" ? "new" : editingDetail?.project;
   const editingDraft = editingDetail?.draft;
+  const [wizardTime, setWizardTime] = useState<TimeStatus>();
+  useEffect(() => {
+    if (!editorRoute) return;
+    const controller = new AbortController();
+    client.call<TimeStatus>(tenant, "time?" + new URLSearchParams({ month }), { signal: controller.signal })
+      .then(result => { if (!controller.signal.aborted) setWizardTime(result); })
+      .catch(() => { if (!controller.signal.aborted) setWizardTime(undefined); });
+    return () => controller.abort();
+  }, [editorRoute, client, tenant, month]);
   const tableView = location.get("staff-layout") === "table";
   const treeView = location.get("staff-layout") === "tree";
   const statusFilter = location.get("project-filter") || "all";
@@ -368,6 +378,14 @@ export function ProjectStaffWorkspace({
       }).catch(error => { if (!abort.signal.aborted) failed(error); });
     return () => abort.abort();
   }, [client, tenant, scope, page.revision, area, editorRoute]);
+  const [deletion, setDeletion] = useState<string>();
+  function reviewDeletion(id: string) {
+    if (permit()) setDeletion(id);
+  }
+  function deleteAction(id: string) {
+    return workspace.platformAdmin && <button type="button" className="secure-secondary" disabled={busy}
+      onClick={() => reviewDeletion(id)}>Delete project</button>;
+  }
   async function perform(work: () => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
@@ -564,6 +582,7 @@ export function ProjectStaffWorkspace({
         onSelect={id => { if (permit()) portalNavigate({ staff: "management", managed: id ?? null }); }}
         onSetup={id => { if (permit()) portalNavigate({ staff: "projects", managed: null, editor: id }); }}
         onSaved={() => setEpoch(value => value + 1)} />}
+      {area === "management" && managed && deleteAction(managed)}
       {area === "directory" && <DeliveryDirectory client={client} tenant={tenant} portfolio={portfolio} revision={page.revision} onSaved={() => setEpoch(value => value + 1)} onDenied={onDenied} />}
       {area === "directory" && <div className="mi-related-settings"><button type="button" className="secure-secondary" onClick={() => openConfiguration("directory")}>Manage directory records</button></div>}
       {area === "departments" && <DepartmentWorkspace portfolio={portfolio} projects={allProjects} selected={department}
@@ -600,7 +619,7 @@ export function ProjectStaffWorkspace({
           <p role="alert">Project setup could not load the departments and team directory.</p>
           <button type="button" className="secure-secondary" onClick={() => setEpoch(value => value + 1)}>Retry project setup</button>
         </div>}
-        <ProjectCreation key={editing === "new" ? "new" : editing.id + ":" + editingDetail?.revision}
+        <ProjectCreation key={editing === "new" ? "new" : editing.id + ":" + editingDetail?.revision} discovered={wizardTime?.mappings}
           project={editing === "new" ? undefined : editing} projects={allProjects} portfolio={portfolio}
           busy={busy || !page.revision || !portfolio} canPublish={workspace.canPublish === true}
           onDirty={() => setEditorDirty(true)} onCancel={() => {
@@ -635,6 +654,7 @@ export function ProjectStaffWorkspace({
             }
           })} />
         {editing !== "new" && <div className="secure-actions creation-related" aria-label="Project actions">
+          {deleteAction(editing.id)}
           <button type="button" className="secure-secondary" disabled={busy}
             onClick={() => { if (permit()) portalNavigate({ staff: "management", managed: editing.id, editor: null }); }}>Manage delivery progress</button>
           {editing.published && editingDetail && editingDraft && <>
@@ -765,6 +785,7 @@ export function ProjectStaffWorkspace({
             onClick={() => { if (!editorDirty || window.confirm("Discard the unsaved project changes?")) portalNavigate({ staff: "projects", editor: p.id }); }}>{p.name}</button></th>
             <td>{projectStatus[p.status]}</td><td>{p.published ? (p.draft ? "Published · Draft changes" : "Published") : "Unpublished"}</td><td>{reportHours(p.seconds)} h</td><td>{p.workOrderReference || "—"}</td>
             <td><div className="secure-actions">
+              {deleteAction(p.id)}
               {p.published && nativeWorkspace && <PlatformLink href={periodHref(clientBase + "/projects/" + p.id, month)}>View Published</PlatformLink>}
               {p.draft ? <button type="button" className="secure-secondary" disabled={busy || editorDirty}
                 onClick={() => openDeliveryProject(p.id)}>Review changes</button> :
@@ -813,6 +834,7 @@ export function ProjectStaffWorkspace({
                 </div>
               </dl>
               <div className="secure-actions">
+                {deleteAction(p.id)}
                 <a
                   href="#project-time-hours"
                   aria-label={`View hours for ${p.name}`}
@@ -895,7 +917,7 @@ export function ProjectStaffWorkspace({
               </dl>
             ))}
         {area === "hours" && <TimeAllocation client={client} tenant={tenant} month={month} projects={allProjects}
-          portfolio={portfolio} onDenied={onDenied} onSaved={() => setEpoch(value => value + 1)}
+          portfolio={portfolio} canPublish={workspace.canPublish} operatorKey={workspace.operatorKey} onDenied={onDenied} onSaved={() => setEpoch(value => value + 1)}
           initialConsultant={location.get("consultant") ?? undefined} initialPeriod={location.get("period")}
           initialStart={location.get("start")} initialEnd={location.get("end")} initialStatus={location.get("time-status")}
           initialWorkOrder={location.get("workOrder") ?? undefined} onUnsavedChange={setTimeDirty}
@@ -989,6 +1011,15 @@ export function ProjectStaffWorkspace({
       searchResults={allProjects.map(project => ({ id: "project-" + project.id, label: project.name, context: "Project management",
         select: () => { if (permit()) portalNavigate({ staff: "management", managed: project.id, editor: null }); } }))}>
       {content}
+      {deletion && <ProjectDeletion key={deletion} id={deletion} client={client} tenant={tenant}
+        close={() => setDeletion(undefined)} onDeleted={() => {
+          setDeletion(undefined);
+          setEditorDirty(false);
+          setManagementDirty(false);
+          portalNavigate({ staff: "projects", editor: null, managed: null });
+          setEpoch(value => value + 1);
+          setNotice("Project permanently deleted.");
+        }} />}
     </WorkspaceNavigation>
   </section>;
 }

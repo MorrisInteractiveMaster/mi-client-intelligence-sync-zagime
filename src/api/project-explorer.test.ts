@@ -25,7 +25,7 @@ function fixture(count: number) {
   return clientDelivery(report, date);
 }
 
-test("6, 100 and 300 approved deliveries paginate with zero effort and exclude the parent engagement", () => {
+test("6, 100 and 300 approved deliveries paginate with zero effort and exclude the parent project", () => {
   for (const count of [6, 100, 300]) {
     const delivery = fixture(count);
     const result = explorerResults(delivery.projects, new URLSearchParams("explorer-size=50&explorer-page=900"), date);

@@ -8,7 +8,7 @@ import { compareValues } from "../projects/sort";
 import { percentText } from "./insight-metrics";
 import { portalNavigate, usePortalLocation } from "./portal-location";
 
-const dimensions = { department: "Departments", parent: "Parent engagements", status: "Delivery status" } as const;
+const dimensions = { department: "Departments", parent: "Parent projects", status: "Delivery status" } as const;
 type Dimension = keyof typeof dimensions;
 const orders = { most: "Most projects", least: "Fewest projects", name: "Name A–Z", configured: "Configured order" } as const;
 type Order = keyof typeof orders;

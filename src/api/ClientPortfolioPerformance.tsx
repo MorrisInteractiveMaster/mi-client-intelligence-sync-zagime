@@ -113,8 +113,8 @@ export function MilestonePerformance({ delivery, onLink }: { delivery: Delivery;
 
 export function ParentPerformance({ delivery, onLink }: { delivery: Delivery; onLink: OpenClientView }) {
   const max = Math.max(1, ...delivery.parentRows.map(row => row.counts.all));
-  return <section className="mi-exec-panel" aria-label="Parent engagements">
-    <div className="mi-exec-heading"><div><h3>Parent engagements</h3><p>Compare delivery counts and measured completion</p></div>
+  return <section className="mi-exec-panel" aria-label="Parent projects">
+    <div className="mi-exec-heading"><div><h3>Parent projects</h3><p>Compare delivery counts and measured completion</p></div>
       <button type="button" className="exec-text-button" onClick={() => onLink("engagements")}>View engagements <ArrowUpRight size={14} aria-hidden="true" /></button></div>
     {delivery.parentRows.length ? <div className="mi-v4-parent-list">{delivery.parentRows.map(row => {
       const assessments = row.projects.flatMap(item => item.completion === undefined ? [] : [item.completion]);
@@ -134,7 +134,7 @@ export function ParentPerformance({ delivery, onLink }: { delivery: Delivery; on
         </div>
         <p>{average}{assessments.length > 0 && " average across " + assessments.length + " assessed"}</p>
       </Fragment>;
-    })}</div> : <p className="mi-cockpit-empty">No approved parent engagements.</p>}
+    })}</div> : <p className="mi-cockpit-empty">No approved parent projects.</p>}
     {delivery.unaffiliated.length > 0 && <button type="button" className="exec-text-button" onClick={() => onLink("projects", undefined, "unaffiliated")}>
       {delivery.unaffiliated.length} independent delivery projects <ArrowUpRight size={14} aria-hidden="true" /></button>}
   </section>;

@@ -235,6 +235,41 @@ Before release, have the owner verify the named production database and register
 
 For a newly discovered work order, open **Time & Reporting → QuickBooks Time Mapping**, review the recorded and allocated totals, and select the exact Parent Project or Delivery Project. A Delivery Project must already have its own verified parent and department relationship. Confirm only after reviewing whether already-published reporting is affected. The server checks the Time operator, customer scope, project classification, current mapping and historical second totals again when saving. Linked legacy orders and inactive orders remain review-only. If the server reports a conflict, refresh and repeat the review.
 
-The mapping moves the reporting destination of remaining source hours. The immutable ledger anchor and active allocations are kept. Reporting reads assign each anchor to one destination, and only that destination's authorized report can include its remaining hours. Named source facts, employee identities, source notes, checkpoints and allocation revisions stay private or unchanged as applicable. Compare before/after tenant-wide recorded seconds and approved project totals with the same cutoff. Recheck the next scheduled execution without changing its 06:00 America/Regina schedule.
+The mapping moves the reporting destination of remaining source hours. The immutable ledger anchor and active allocations are kept. Staff reporting assigns each anchor to one destination. The client report only includes approved allocations to projects in the client’s authorized scope. Named source facts, employee identities, source notes, checkpoints and allocation revisions stay private or unchanged as applicable. Compare before/after tenant-wide recorded seconds and approved project totals with the same cutoff. Recheck the next scheduled execution without changing its 06:00 America/Regina schedule.
 
 For application rollback, pause project edits and mapping confirmations and restore the prior verified serving revision using the owner-controlled rollback above. Prior code can still read the source anchors directly, so the reporting destination of a confirmed new mapping will only be visible when the compatible dashboard is serving. Do not run a Time reimport or reverse a confirmed mapping with ad hoc writes. Record any mapping requiring correction in the owner's reconciliation review.
+
+## V5 workflow compatibility
+
+V5 activity dates use calendar-only values. Inclusive ranges are expanded at save and separate dates remain separate. Venue details stay in the protected project record. Client reporting receives only activity dates on projects whose schedule summary is approved. A legacy project can retain its current placement or be explicitly updated from Edit Project. Review saved drafts before publishing any changed hierarchy or schedule.
+
+Reviewed delivery mappings create staff-only automatic Time classifications. They use exact recorded seconds, the verified QuickBooks Time account and work-order IDs, and the current source revision. The first historical batch runs at mapping confirmation. In QuickBooks Time Mapping, use **Continue historical classification** for additional batches. Each batch checks at most 60 entries and can be replayed safely. Confirm the work-order mapping and compare the recorded total before and after. Review a classification from **Manage Time** before saving any approved reporting allocation. Older staff annotations, split allocations and reviewed allocations take precedence. Corrections and deletions invalidate stale classifications without changing the original Time versions.
+
+Permanent deletion is available to the configured Morris platform administrator. The dependency review is read-only until the administrator types the exact name and confirms. Publication history, time history, mappings, child projects, portfolio placements and client access assignments prevent deletion. A successful deletion removes the project and its reporting view and leaves a minimal audit event. Preserve an independently approved backup of any draft that must remain recoverable.
+
+Run the read-only checks above for the named database, four work-order mappings, baseline image digests and 06:00 America/Regina scheduler. Use named staging for candidate review. Image rollback leaves the additive activity and classification records in place. A permanent deletion is an independent data operation.
+
+Run the read-only preflight in the linked runbook first. Independently compare recorded seconds, allocation revisions, the four work-order IDs, and the current 06:00 America/Regina scheduler against one cutoff. Reconcile any differences before making a release decision.
+
+### Separately approved Time worker image change
+
+Use the preflight variables and private evidence directory in the same Cloud Shell. Supply the exact owner-approved immutable worker digest as `V5_WORKER_IMAGE`. Review the existing execution list and choose a window outside the scheduled run with zero active executions. Call the function only after the V5 candidate passes and the worker image change is authorized.
+
+```bash
+v5_worker_image_only() {
+  local requested_image="$1" evidence_file="$2"
+  [[ "${DELIVERY_PREFLIGHT_READY:-0}" == 1 ]] || return 1
+  [[ "$requested_image" =~ ^northamerica-northeast1-docker\.pkg\.dev/morris-client-dash-zagime/mi-client-build/[a-z0-9-]+@sha256:[a-f0-9]{64}$ ]] || return 1
+  gcloud run jobs executions list --job="$DELIVERY_TIME_JOB" --project="$DELIVERY_PROJECT" --region="$DELIVERY_REGION" --format=json > "$DELIVERY_EVIDENCE/executions.json" &&
+    jq -e 'all(.[]; (.status.completionTime // "") != "")' "$DELIVERY_EVIDENCE/executions.json" >/dev/null || return 1
+  gcloud run jobs update "$DELIVERY_TIME_JOB" --project="$DELIVERY_PROJECT" --region="$DELIVERY_REGION" --image="$requested_image" || return 1
+  gcloud run jobs describe "$DELIVERY_TIME_JOB" --project="$DELIVERY_PROJECT" --region="$DELIVERY_REGION" --format=json > "$evidence_file" || return 1
+  jq -e --arg image "$requested_image" '.spec.template.spec.template.spec.containers[0].image == $image' "$evidence_file" >/dev/null &&
+    diff -u <(jq -S '.spec.template.spec | del(.template.spec.containers[0].image)' "$DELIVERY_EVIDENCE/worker-before.json") \
+      <(jq -S '.spec.template.spec | del(.template.spec.containers[0].image)' "$evidence_file")
+}
+```
+
+- Owner-approved promotion uses `if v5_worker_image_only "$V5_WORKER_IMAGE" "$DELIVERY_EVIDENCE/worker-after.json"; then printf "Worker image verified\n"; fi`.
+- Owner-approved rollback uses the same function with the immutable prior image from `jq -er '.spec.template.spec.template.spec.containers[0].image' "$DELIVERY_EVIDENCE/worker-before.json"` and a new evidence filename. Use the separate traffic rollback in the application runbook if required.
+- Leave the scheduler as configured. Verify the next normal dispatch using the read-only monitor, then compare the reviewed mapped orders and allocation invariants. Do not run enrollment or historical reimport. [Cloud Run job update reference](https://docs.cloud.google.com/sdk/gcloud/reference/run/jobs/update)

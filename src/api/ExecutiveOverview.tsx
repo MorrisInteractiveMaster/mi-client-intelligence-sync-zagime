@@ -42,7 +42,7 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
   ] as const;
   const openFilter = (filter: ProjectFilter) => onLink("projects", undefined, filter);
   const signalHelp = {
-    all: "Counts client-authorized published delivery projects. Parent engagement containers are excluded.",
+    all: "Counts client-authorized published delivery projects. Parent project containers are excluded.",
     active: "Counts approved projects in progress whose published schedule has started, when a start is available.",
     upcoming: "Counts approved planned projects and projects with a verified start still ahead.",
     completed: "Counts projects with completed delivery status. A 100% work assessment is a separate measure.",

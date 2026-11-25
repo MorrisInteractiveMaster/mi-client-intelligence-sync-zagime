@@ -77,7 +77,7 @@ export async function projectRequest(
     return { status: 200, body: sourceUpdatedAt ? { ...report, sourceUpdatedAt } : report };
   }
   const timeRoute =
-    /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/time(?:\/(mapping|sync))?$/.exec(
+    /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/time(?:\/(mapping|mapping-impact|sync|classify-history))?$/.exec(
       url.pathname,
     );
   if (timeRoute && time) {
@@ -116,19 +116,28 @@ export async function projectRequest(
         Object.keys(body).some(
           (k) =>
             !(
-              action === "mapping" ? ["jobcodeId", "projectId", "review"] : ["jobcodeId"]
+              action === "mapping" ? ["jobcodeId", "projectId", "review"] : action === "mapping-impact" ? ["jobcodeId", "projectId"] :
+                action === "classify-history" ? ["jobcodeId", "after"] : ["jobcodeId"]
             ).includes(k),
         )
       )
         throw Error("Invalid Time request");
       if (action === "mapping" && typeof body.projectId !== "string")
         throw Error("Invalid project ID");
+      if (action === "mapping-impact") {
+        if (typeof body.projectId !== "string") throw Error("Invalid project ID");
+        return { status: 200, body: await time.previewMapping(tenant, who, body.jobcodeId, body.projectId) };
+      }
+      if (action === "classify-history") {
+        if (body.after !== undefined && typeof body.after !== "string") throw Error("Invalid classification cursor");
+        return { status: 200, body: await time.applyHistoricalMapping(tenant, who, body.jobcodeId, body.after) };
+      }
       return {
         status: 200,
         body:
           action === "mapping"
             ? time.requiresMappingReview()
-              ? await time.confirmMapping(tenant, who, body.jobcodeId, body.projectId, parseTimeMappingReview(body.review))
+              ? await time.confirmMapping(tenant, who, body.jobcodeId, body.projectId, parseTimeMappingReview(body.review), true)
               : await time.approve(tenant, who, body.jobcodeId, body.projectId, disconnected)
             : await time.sync(tenant, who, body.jobcodeId, disconnected),
       };
@@ -154,7 +163,7 @@ export async function projectRequest(
     return { status: 405, body: { error: "method_not_allowed" } };
   }
   const m =
-    /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|report|projects|sources|allocations|audits)(?:\/([-a-zA-Z0-9_]{1,128}))?(?:\/(publication|history|draft|caps))?$/.exec(
+    /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/(workspace|report|projects|sources|allocations|audits)(?:\/([-a-zA-Z0-9_]{1,128}))?(?:\/(publication|history|draft|caps|deletion))?$/.exec(
       url.pathname,
     );
   if (!m) return { status: 404, body: { error: "not_found" } };
@@ -196,6 +205,18 @@ export async function projectRequest(
       .map(field => [field, url.searchParams.get(field)!])) as SourceFilters } : {}),
   };
   const ok = (body: unknown, status = 200) => ({ status, body });
+  if (resource === "projects" && id && action === "deletion" && !url.search) {
+    if (req.method === "GET") return ok(await backend.deleteProject(token, tenant, id));
+    if (req.method === "POST") {
+      const b = await readBody();
+      only(b, ["expectedRevision", "name"]);
+      if (!Number.isSafeInteger(b.expectedRevision) || b.expectedRevision < 1 ||
+        typeof b.name !== "string" || b.name.length > 300) throw Error("Invalid project confirmation");
+      const result = await backend.deleteProject(token, tenant, id, { expectedRevision: b.expectedRevision, name: b.name });
+      return ok(result, result.deleted ? 200 : 409);
+    }
+    return { status: 405, body: { error: "method_not_allowed" } };
+  }
   if (req.method === "GET") {
     if (resource === "workspace" && !id && !url.search)
       return ok(await backend.workspace(token, tenant));

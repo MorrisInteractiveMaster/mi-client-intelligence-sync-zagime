@@ -10,6 +10,7 @@ import { seedProjectSynthetic } from "../server/project-operator";
 import { timeTotalsWrite } from "../server/time-totals";
 import type { ReportingBackend } from "../server/backend";
 import type { BulkAllocationEntry, BulkAllocationResponse } from "../src/projects/bulk-allocation";
+import { MAX_BULK_ALLOCATION_ENTRIES } from "../src/projects/bulk-allocation";
 
 test("bulk Time allocation reports every outcome, authenticates staff and replays without duplicate seconds", async () => {
   const runtime = firebaseRuntime("emulator", "demo-mi-security", "mi-client-staging");
@@ -139,6 +140,34 @@ test("bulk Time allocation reports every outcome, authenticates staff and replay
     assert.equal((await root.collection("projectPeriods").doc(key(month, projectId)).get()).data()!.seconds, expectedAllocated);
     assert.deepEqual((await monthTotals.get()).data(), { recorded, allocated: expectedAllocated });
     assert.deepEqual(await getSources(), originalSources);
+
+    const historySelection = Array.from({ length: 137 }, (_, index) => row("history-" + index));
+    const expectedHistory = historySelection.reduce((sum, _, index) => sum + index + 1, 0);
+    await runtime.db.runTransaction(async tx => {
+      const totals = await timeTotalsWrite(tx, root, [{ project: scopeProject, month, recorded: expectedHistory, allocated: 0 }]);
+      totals();
+      for (const [index, entry] of historySelection.entries()) {
+        tx.create(root.collection("rawTime").doc(entry.sourceId), { schemaVersion: 2, source: "quickbooks-time", scopeProjectId: scopeProject,
+          deleted: false, record: { id: entry.sourceId, tenantId: tenant, sourceWorkOrderId: "fixture-work-order",
+            revision: entry.expectedSourceRevision, date: month + "-19", seconds: index + 1 } });
+      }
+    });
+    const historyKey = batchKey();
+    const firstChunk = historySelection.slice(0, MAX_BULK_ALLOCATION_ENTRIES);
+    assert.ok((await runBulk(firstChunk, historyKey)).every(item => item.status === "saved"));
+    // The first response can go missing. Racing a replay against the next
+    // bounded group must retain the fixed selection and count each second once.
+    const resumed = await Promise.all([
+      runBulk(firstChunk, historyKey),
+      runBulk(historySelection.slice(MAX_BULK_ALLOCATION_ENTRIES, MAX_BULK_ALLOCATION_ENTRIES * 2), historyKey),
+    ]);
+    assert.ok(resumed[0].every(item => item.status === "already_saved"));
+    assert.ok(resumed[1].every(item => item.status === "saved"));
+    for (let offset = MAX_BULK_ALLOCATION_ENTRIES * 2; offset < historySelection.length; offset += MAX_BULK_ALLOCATION_ENTRIES) {
+      assert.ok((await runBulk(historySelection.slice(offset, offset + MAX_BULK_ALLOCATION_ENTRIES), historyKey)).every(item => item.status === "saved"));
+    }
+    assert.equal((await projectView.get()).get("lifetimeSeconds"), expectedAllocated + expectedHistory);
+    assert.deepEqual((await monthTotals.get()).data(), { recorded: recorded + expectedHistory, allocated: expectedAllocated + expectedHistory });
   } finally {
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));

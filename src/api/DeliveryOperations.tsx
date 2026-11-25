@@ -149,14 +149,13 @@ export function DeliveryPreview({ client, tenant, month, standalone = false }: {
   const onPreviewDenied = useCallback(() => setError("This client access profile is no longer available."), []);
   const entitled = standalone || mode === "draft" || Boolean(scope);
   const controls = <div className="delivery-filters mi-preview-controls">
-      {standalone && <PlatformLink href={periodHref("/workspace", month)}>Back to Morris Workspace</PlatformLink>}
+      {standalone && <PlatformLink className="mi-client-launch" href={periodHref("/workspace", month)} aria-label="Back to Morris Workspace">Morris Workspace</PlatformLink>}
       <label>Preview mode<select value={mode} onChange={e => { setError(""); portalNavigate({
         previewMode: e.target.value === "draft" ? "draft" : null,
         view: previewProject ? "project:" + previewProject : location.get("view"), q: null, present: null, chart: null,
       }, true); }}><option value="published">Published client view</option><option value="draft">Staff draft preview</option></select></label>
       {mode === "published" && !standalone && <label>Client access profile<select value={scope} onChange={e => { portalNavigate({ previewScope: e.target.value || null }); setError(""); }}><option value="">Select an approved profile</option>{profiles?.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>}
-      {entitled && <p className="delivery-watermark" data-draft={mode === "draft"}>{mode === "draft" ? "DRAFT PREVIEW · MORRIS STAFF ONLY" : "LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW"}</p>}
-      {standalone && <PlatformLink href={periodHref("/workspace/portfolio", month, { subsection: "notes" })}>Manage executive updates</PlatformLink>}
+      {entitled && mode === "draft" && <p className="delivery-watermark" data-draft="true">DRAFT PREVIEW · MORRIS STAFF ONLY</p>}
     </div>;
   return <section aria-label="Preview as client">
     {!standalone && <div className="delivery-section-heading"><p>Published preview follows the selected client access profile. Draft preview includes saved changes and private projects.</p>
@@ -301,7 +300,8 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
         <td>{portfolio?.areas.find(a => a.id === area)?.name ?? "Unclassified"}<small>{p.delivery?.kind ? deliveryKindNames[p.delivery.kind] : "Legacy project"} · {p.delivery?.type ?? "Engagement type not configured"}</small></td>
         <td>{managers.map(id => people.get(id)).filter(Boolean).join(", ") || "Unassigned"}</td>
         <td>{reportHours(sum.monthly)} h monthly<small>{reportHours(sum.lifetime)} h lifetime</small>
-          {p.workOrderEffort && <small>{reportHours(p.workOrderEffort.recordedSeconds)} h work-order recorded · {reportHours(p.workOrderEffort.remainingSeconds)} h remaining at work order</small>}</td>
+          {p.workOrderEffort && <small>{reportHours(p.workOrderEffort.recordedSeconds)} h work-order recorded · {reportHours(p.workOrderEffort.remainingSeconds)} h remaining at work order</small>}
+          {Boolean(p.pendingMappedEffort?.monthly) && <small>{reportHours(p.pendingMappedEffort!.monthly)} h automatically classified, awaiting approval</small>}</td>
         <td>{result.monthlyRemaining === undefined ? "No monthly cap" : reportHours(result.monthlyRemaining) + " h monthly"}
           <small>{result.lifetimeRemaining === undefined ? "No lifetime cap" : reportHours(result.lifetimeRemaining) + " h lifetime"}</small>
           {p.delivery?.monthlyCap !== undefined && <small>{reportHours(cap.monthly)} of {reportHours(p.delivery.monthlyCap)} h used monthly</small>}

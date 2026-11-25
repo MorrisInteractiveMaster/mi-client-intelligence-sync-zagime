@@ -6,7 +6,7 @@ import { parseTimeMappingReview, workOrderQueue } from "../projects/time";
 import { parsePlatformPath, staffPath } from "./platform-routes";
 
 test("Zagime has one canonical display name independent of its tenant ID and stored label", () => {
-  assert.equal(ZAGIME_CLIENT_DISPLAY_NAME, "Zagime Anishinabek First Nation");
+  assert.equal(ZAGIME_CLIENT_DISPLAY_NAME, "Zagimē A. FN Workshop");
   assert.equal(clientDisplayName({ id: "zagime-production", name: "Legacy registered name" }, "Old branding"), ZAGIME_CLIENT_DISPLAY_NAME);
   assert.equal(clientDisplayName({ id: "zagime", name: "Legacy short name" }), ZAGIME_CLIENT_DISPLAY_NAME);
   assert.equal(clientDisplayName({ id: "other-tenant", name: "Other" }, "Other approved brand"), "Other approved brand");

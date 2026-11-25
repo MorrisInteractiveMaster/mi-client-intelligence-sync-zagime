@@ -3,11 +3,13 @@ import { Check, ChevronRight, FolderKanban, Layers3 } from "lucide-react";
 import { isProgramType, type Delivery } from "../projects/delivery";
 import { hoursToSeconds } from "../projects/duration";
 import type { ManagedProject, Project, StaffProjectSummary } from "../projects/model";
+import type { TimeMapping } from "../projects/time";
 import { byOrder, type Portfolio } from "../projects/portfolio";
 import { CalendarMultiPicker, CalendarPicker } from "./CalendarPicker";
 import { PeoplePicker } from "./DeliveryOperations";
 import { ManagementDialog } from "./ManagementDialog";
 import { SearchableCombobox } from "./SearchableCombobox";
+import { ActivityScheduleFields, activityInput, selectedActivity } from "./ActivityScheduleFields";
 import "./project-creation.css";
 
 const projectKinds = [
@@ -34,18 +36,21 @@ function amount(value: string, previous?: number) {
   return !value.trim() ? undefined : previous !== undefined && value === String(previous / 3600) ? previous : hoursToSeconds(value.trim());
 }
 
-export function ProjectCreation({ projects, portfolio, project, busy, canPublish, onDirty, onCancel, onSave }: {
+export function ProjectCreation({ projects, portfolio, project, busy, canPublish, discovered, onDirty, onCancel, onSave }: {
   projects: StaffProjectSummary[];
   portfolio?: Portfolio;
   project?: Project;
   busy: boolean;
   canPublish: boolean;
+  discovered?: TimeMapping[];
   onDirty: () => void;
   onCancel: () => void;
   onSave: (project: ManagedProject, publish: boolean) => void;
 }) {
   const saved = project?.delivery;
-  const legacy = Boolean(project && saved?.structure !== 3);
+  const legacyRecord = Boolean(project && saved?.structure !== 3);
+  const [remediate, setRemediate] = useState(false);
+  const legacy = legacyRecord && !remediate;
   const canPublishNow = canPublish;
   const [step, setStep] = useState<Step>("identity");
   const [kind, setKind] = useState<Delivery["kind"]>(saved?.kind ?? (project ? "project" : "engagement"));
@@ -54,6 +59,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
   const [area, setArea] = useState(saved?.areaId ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
   const [reference, setReference] = useState(project?.workOrderReference ?? "");
+  const [pendingJobCode, setPendingJobCode] = useState(saved?.pendingTimeJobcodeId ?? "");
   const [type, setType] = useState<Delivery["type"]>(saved?.type ?? "hourly");
   const [monthly, setMonthly] = useState(saved?.monthlyCap === undefined ? "" : String(saved.monthlyCap / 3600));
   const [lifetime, setLifetime] = useState(saved?.lifetimeCap === undefined ? "" : String(saved.lifetimeCap / 3600));
@@ -63,6 +69,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
   const [days, setDays] = useState(saved?.training?.days.toString() ?? "1");
   const [dates, setDates] = useState(saved?.training?.dates ?? []);
   const [venue, setVenue] = useState(saved?.training?.venue ?? "");
+  const [activity, setActivity] = useState(() => activityInput(saved?.activity));
   const [managers, setManagers] = useState(saved?.managerIds ?? []);
   const [team, setTeam] = useState(saved?.teamIds ?? []);
   const [facilitators, setFacilitators] = useState(saved?.training?.facilitatorIds ?? []);
@@ -78,12 +85,13 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
 
   const parents = projects.filter(p => p.delivery?.kind === "engagement" && !p.delivery.parentId && p.id !== project?.id);
   const departments = [...(portfolio?.areas ?? [])].sort(byOrder);
-  const legacyDepartment = legacy ? projects.find(p => p.id === parent && p.delivery?.kind === "service-area") : undefined;
+  const legacyDepartment = legacyRecord ? projects.find(p => p.id === parent && p.delivery?.kind === "service-area") : undefined;
   const selectedParent = parents.find(item => item.id === (legacyDepartment?.delivery?.parentId ?? parent));
   const selectedDepartment = departments.find(item => item.id === (area || legacyDepartment?.delivery?.areaId));
   const miscellaneous = kind === "project" && (selectedDepartment?.id === "miscellaneous" ||
     selectedDepartment?.name.trim().toLowerCase() === "miscellaneous");
   const program = isProgramType(type);
+  const hasActivityDates = activity.mode !== "unscheduled";
   const daysCount = Number(days);
   const validDays = Number.isSafeInteger(daysCount) && daysCount >= 1 && daysCount <= 60;
   const requiresCompleteProgram = !legacy || type !== saved?.type;
@@ -110,9 +118,10 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
     if (part === "location" && !legacy && (!selectedParent || !selectedDepartment))
       throw Error("Choose a parent project and department.");
     if (part === "arrangement") {
-      if (program && (!validDays || dates.length > daysCount || requiresCompleteProgram && dates.length !== daysCount))
+      selectedActivity(activity);
+      if (program && !hasActivityDates && (!validDays || dates.length > daysCount || requiresCompleteProgram && dates.length !== daysCount))
         throw Error("Choose exactly one distinct calendar date per program day.");
-      if (!program && start && deadline && start > deadline)
+      if ((!program || hasActivityDates) && start && deadline && start > deadline)
         throw Error("Choose an expected end date on or after the start date.");
       if (!program) {
         if (type === "hourly" || miscellaneous) amount(monthly, saved?.monthlyCap);
@@ -156,11 +165,13 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         type === "hourly" || miscellaneous ? amount(monthly, saved?.monthlyCap) :
           legacy && type === saved?.type ? saved?.monthlyCap : undefined;
       const lifetimeCap = program ? existingProgram ? saved?.lifetimeCap : undefined : amount(lifetime, saved?.lifetimeCap);
-      const schedule = program && (!legacy || dates.length > 0)
+      const selectedSchedule = selectedActivity(activity);
+      const schedule = program && !selectedSchedule && (!legacy || dates.length > 0)
         ? { start: [...dates].sort()[0], deadline: latest }
         : { start: start || undefined, deadline: deadline || undefined };
-      const training = miscellaneous ? sourceProgram : program && (!legacy || sourceProgram || dates.length)
-        ? { ...sourceProgram, days: daysCount, dates, facilitatorIds: facilitators, venue: venue.trim() || undefined }
+      const training = miscellaneous ? sourceProgram : program && (!legacy || sourceProgram || dates.length || selectedSchedule)
+        ? { ...sourceProgram, days: selectedSchedule?.dates.length ?? daysCount, dates: selectedSchedule?.dates ?? dates,
+          facilitatorIds: facilitators, venue: selectedSchedule ? undefined : venue.trim() || undefined }
         : undefined;
       const delivery: Delivery = {
         ...unchanged,
@@ -169,7 +180,8 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         ...(!miscellaneous && kind === "project" && type === "hourly" ? { countAgainstParentCap: countForParent } : {}),
         ...(publishSummary || saved?.publishSummary !== undefined ? { publishSummary } : {}),
         ...(publishStartStatus || saved?.publishStartStatus !== undefined ? { publishStartStatus } : {}),
-        monthlyCap, lifetimeCap, training, ...schedule,
+        monthlyCap, lifetimeCap, training, ...schedule, activity: selectedSchedule,
+        pendingTimeJobcodeId: kind === "service-area" ? undefined : pendingJobCode || undefined,
       };
       const candidate: ManagedProject = {
         name: name.trim(),
@@ -208,7 +220,15 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
     <fieldset className="creation-fields" disabled={busy} aria-describedby={error ? fieldId + "-error" : undefined}>
       <legend className="creation-legend">{titles[step]}</legend>
       {step === "identity" && <>
-        {legacy ? <p className="secure-muted">This existing record keeps its current project structure.</p> :
+        {legacy ? <div>
+          <p className="secure-muted">This project keeps its existing structure until you explicitly change it.</p>
+          <button type="button" className="secure-secondary" onClick={() => {
+            if (kind === "service-area") setKind("project");
+            if (selectedParent) setParent(selectedParent.id);
+            if (selectedDepartment) setArea(selectedDepartment.id);
+            change(setRemediate, true);
+          }}>Update project hierarchy</button>
+        </div> :
           <div className="creation-kinds">{projectKinds.map(option =>
             <label key={option.value} className={kind === option.value ? "creation-kind-selected" : undefined}>
               <input type="radio" name="project-kind" aria-label={option.label} aria-describedby={fieldId + option.value}
@@ -237,6 +257,13 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         <label>Work-order reference <small>Optional. This label is separate from the approved Time mapping.</small>
           <input value={reference} maxLength={120} onChange={event => change(setReference, event.target.value)} /></label>
       </>}
+      {step === (miscellaneous ? "location" : "description") && kind !== "service-area" && <div>
+        <SearchableCombobox label="QuickBooks Time Work Order" value={pendingJobCode} onChange={value => change(setPendingJobCode, value)}
+          placeholder="Find a discovered work order"
+          options={(discovered ?? []).filter(row => row.canReview || row.jobcodeId === pendingJobCode)
+            .map(row => ({ value: row.jobcodeId, label: row.sourceName ?? row.jobcodeId }))} />
+        <p>Optional. A selected work order stays pending until an authorized Time administrator confirms the mapping.</p>
+      </div>}
       {step === "arrangement" && <>
         {!miscellaneous && <label>Arrangement<select aria-label="Arrangement" value={program ? "training" : type} onChange={event => change(setType, event.target.value as Delivery["type"])}>
           {arrangements.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
@@ -250,7 +277,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         {!miscellaneous && type === "hourly" && kind === "project" && <label className="creation-checkbox">
           <input type="checkbox" checked={countForParent} onChange={event => change(setCountForParent, event.target.checked)} />
           Count this project&rsquo;s delivery hours against the parent&rsquo;s budget</label>}
-        {program ? <>
+        {program && !hasActivityDates ? <>
           <div className="creation-columns">
             <label>Program length in days<input type="number" min={1} max={60} value={days}
               onChange={event => change(setDays, event.target.value)} /></label>
@@ -262,6 +289,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
           <CalendarPicker label="Start date" value={start} onChange={value => change(setStart, value)} />
           <CalendarPicker label="Expected end date" value={deadline} onChange={value => change(setDeadline, value)} min={start || undefined} />
         </div>}
+        <ActivityScheduleFields value={activity} change={value => change(setActivity, value)} />
       </>}
       {step === "people" && <div className="creation-columns">
         <PeoplePicker name="projectManagers" label="Project Managers" people={people} defaults={managers} onSelectionChange={value => change(setManagers, value)} />
@@ -276,13 +304,15 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
           {!program && <div><dt>Hours caps</dt><dd>{[
             ((type === "hourly" || miscellaneous) && monthly) && monthly + " h per month", lifetime && lifetime + " h total",
           ].filter(Boolean).join(" / ") || "No cap"}</dd></div>}
-          <div><dt>Schedule</dt><dd>{program ? dates.slice().sort().join(", ") || "No dates selected" :
+          <div><dt>Schedule</dt><dd>{program && !hasActivityDates ? dates.slice().sort().join(", ") || "No dates selected" :
             [start, deadline].filter(Boolean).join(" to ") || "No dates selected"}</dd></div>
-          {program && venue.trim() && <div><dt>Venue</dt><dd>{venue}</dd></div>}
+          {activity.mode !== "unscheduled" && <div><dt>Activity dates</dt><dd>{selectedActivity(activity)?.dates.join(", ")}</dd></div>}
+          {program && !hasActivityDates && venue.trim() && <div><dt>Venue</dt><dd>{venue}</dd></div>}
           <div><dt>Project managers</dt><dd>{people.filter(person => managers.includes(person.id)).map(person => person.name).join(", ") || "None selected"}</dd></div>
           {program && <div><dt>Facilitators</dt><dd>{people.filter(person => facilitators.includes(person.id)).map(person => person.name).join(", ") || "None selected"}</dd></div>}
           {team.length > 0 && <div><dt>Team members</dt><dd>{people.filter(person => team.includes(person.id)).map(person => person.name).join(", ")}</dd></div>}
           {!miscellaneous && reference.trim() && <div><dt>Work-order reference</dt><dd>{reference}</dd></div>}
+          {pendingJobCode && <div><dt>QuickBooks Time Work Order</dt><dd>{discovered?.find(row => row.jobcodeId === pendingJobCode)?.sourceName ?? pendingJobCode} · Pending review</dd></div>}
           {!miscellaneous && description.trim() && <div><dt>Client description</dt><dd>{description}</dd></div>}
         </dl>
         {!project && !canPublish && <p className="secure-muted">A publisher must approve this project before clients can see it.</p>}

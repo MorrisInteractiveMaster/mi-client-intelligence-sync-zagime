@@ -30,6 +30,7 @@ export function DepartmentWorkspace({ portfolio, projects, selected, onDepartmen
   const currentStatus = filter?.department === selected ? filter?.status : undefined;
   const displayed = departmentProjects.filter(project => !currentStatus || project.status === currentStatus);
   const allocated = departmentProjects.reduce((total, project) => total + (project.workOrderEffort?.assignedSeconds ?? project.seconds), 0);
+  const pending = departmentProjects.reduce((sum, project) => sum + (project.pendingMappedEffort?.monthly ?? 0), 0);
   const reported = projects.filter(project => (project.delivery?.areaId ?? placements.get(project.id)?.areaId) === department?.id)
     .reduce((total, project) => total + project.seconds, 0);
   const today = deliveryDate();
@@ -50,6 +51,7 @@ export function DepartmentWorkspace({ portfolio, projects, selected, onDepartmen
       {department.description && <p>{department.description}</p>}
       <div className="mi-department-snapshot mi-exec-panel">
         <div><h3>Delivery snapshot</h3><p>{departmentProjects.length} delivery projects · {reportHours(allocated)} h allocated this month</p>
+          {pending > 0 && <p>{reportHours(pending)} h automatically classified and awaiting approval</p>}
           <div className="secure-actions">{[...statusCounts].map(([status, count]) => <button type="button" className="secure-secondary" key={status}
             aria-pressed={status === currentStatus} onClick={() => setFilter(status === currentStatus ? undefined : { department: department.id, status })}>
             {projectStatus[status]} · {count}</button>)}</div>
@@ -63,7 +65,8 @@ export function DepartmentWorkspace({ portfolio, projects, selected, onDepartmen
         const completion = measureDelivery(project, { monthly: project.seconds, lifetime: project.lifetimeSeconds }, today).completion;
         return <article className="mi-department-project" key={project.id}>
           <button className="mi-department-card" type="button" onClick={() => onProject(project.id)}>
-            <div><strong>{project.name}</strong><span>{projectStatus[project.status]} · {reportHours(project.workOrderEffort?.assignedSeconds ?? project.seconds)} h allocated</span></div><ChevronRight aria-hidden="true" />
+            <div><strong>{project.name}</strong><span>{projectStatus[project.status]} · {reportHours(project.workOrderEffort?.assignedSeconds ?? project.seconds)} h allocated</span>
+              {Boolean(project.pendingMappedEffort?.monthly) && <span>{reportHours(project.pendingMappedEffort!.monthly)} h awaiting approval</span>}</div><ChevronRight aria-hidden="true" />
           </button>
           {completion !== undefined && <DottedTrack value={completion} label="Project work completion" />}
         </article>;

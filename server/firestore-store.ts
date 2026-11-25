@@ -18,6 +18,8 @@ import { canAllocateToDelivery } from "../src/projects/delivery";
 import type { AllocationAnnotations } from "../src/api/types";
 import { approvedMember, canAccessProject } from "./authorization";
 import { readPortfolio } from "./portfolio";
+import { automaticTimeRef } from "./automatic-time";
+import { portalSettings } from "../src/projects/control";
 import {
   safeId,
   type TenantStore,
@@ -30,7 +32,7 @@ export const key = (...parts: string[]) =>
 type AllocationReview = { expectedSourceRevision: string; annotations: AllocationAnnotations };
 type AllocationWrite =
   | { mode: "manual"; expectedRevision: number; portions: Allocation[]; review?: AllocationReview }
-  | { mode: "bulk"; projectId: string; entry: BulkAllocationEntry; receipt: { id: string; hash: string } };
+  | { mode: "bulk"; projectId: string; entry: BulkAllocationEntry; receipt: { id: string; hash: string }; approveAutomatic?: true };
 const empty = (tenant: ReportingState["tenant"]): ReportingState => ({
   ...demo(),
   tenant,
@@ -55,7 +57,7 @@ const bounded = async (tx: Transaction, q: FirebaseFirestore.Query) => {
 };
 /** All histories are separate documents. Generic mutations load only targeted metadata, never source records or growing history. */
 export class FirestoreTenantStore implements TenantStore {
-  constructor(readonly db: Firestore, private readonly expectedSchemaVersion?: number) {}
+  constructor(readonly db: Firestore, private readonly expectedSchemaVersion?: number, private readonly platformAdminUid?: string) {}
   async base(tx: Transaction, tenantId: string, subject: string) {
     safeId(tenantId);
     const target = this.db.databaseId === PRODUCTION_DATABASE ? assertProjectDatabase(this.db) : undefined;
@@ -399,10 +401,11 @@ export class FirestoreTenantStore implements TenantStore {
     entry: BulkAllocationEntry,
     receipt: { id: string; hash: string },
     now: number,
+    approveAutomatic?: true,
   ) {
     if (this.expectedSchemaVersion !== 2) throw Error("Forbidden");
     safeId(projectId);
-    return this.writeAllocation(tenantId, subject, safeId(entry.sourceId), now, { mode: "bulk", projectId, entry, receipt });
+    return this.writeAllocation(tenantId, subject, safeId(entry.sourceId), now, { mode: "bulk", projectId, entry, receipt, approveAutomatic });
   }
   private async writeAllocation(
     tenantId: string,
@@ -418,6 +421,8 @@ export class FirestoreTenantStore implements TenantStore {
         const { root, record } = await this.base(tx, tenantId, subject);
         const m = approvedMember(record, tenantId, subject);
         if (m.role === "client" || ((review || bulk) && m.role !== "administrator")) throw Error("Forbidden");
+        if (bulk?.approveAutomatic && subject !== this.platformAdminUid &&
+          portalSettings((await tx.get(root)).get("portalSettings")).ownerPublishes) throw Error("Forbidden");
         if (input.mode === "manual" && record.revision !== input.expectedRevision)
           throw Error("Revision conflict");
         const receiptRef = bulk ? root.collection("idempotency").doc(bulk.receipt.id) : undefined;
@@ -464,12 +469,39 @@ export class FirestoreTenantStore implements TenantStore {
         if (!Array.isArray(head.portions) || head.portions.length > 10 || !Array.isArray(previous) || previous.length > 10)
           throw Error("Reporting capacity exceeded");
         if (bulk && head.revision !== bulk.entry.expectedAllocationRevision) throw Error("Bulk allocation revision conflict");
+        const automatic = this.expectedSchemaVersion === 2 && source.get("source") === "quickbooks-time"
+          ? await tx.get(automaticTimeRef(root, sourceId)) : undefined;
+        if (bulk && !bulk.approveAutomatic && automatic?.get("sourceRevision") === raw.revision) throw Error("Bulk entry not eligible");
+        const account = source.get("sourceCompanyId");
+        const mapped = automatic && typeof account === "string" && typeof raw.sourceWorkOrderId === "string"
+          ? (await tx.get(root.collection("timeMappings").doc(key(account, raw.sourceWorkOrderId)))).data()
+          : undefined;
+        let verifiedParent: string | undefined;
+        if (mapped?.reviewedAttribution === true && mapped.account === account &&
+          mapped.jobcodeId === raw.sourceWorkOrderId && mapped.scopeProjectId === source.get("scopeProjectId")) {
+          const target = (await tx.get(root.collection("projects").doc(safeId(mapped.projectId)))).data();
+          if (target?.tenantId !== tenantId || target.schemaVersion !== 2 || target.id !== mapped.projectId) throw Error("Forbidden");
+          verifiedParent = target.delivery?.kind === "engagement" ? target.id : target.delivery?.parentId;
+        }
         if (bulk && (head.needsReview || head.portions.length || previous.length || raw.seconds === 0)) throw Error("Bulk entry not eligible");
+        const classification = bulk?.approveAutomatic ? automatic?.data() : undefined;
+        if (automatic?.exists && input.mode === "manual" && input.portions.length && subject !== this.platformAdminUid &&
+          portalSettings((await tx.get(root)).get("portalSettings")).ownerPublishes) throw Error("Forbidden");
+        if (bulk?.approveAutomatic && (headDoc.exists || !classification ||
+          classification.provenance !== "reviewed-quickbooks-time-mapping" ||
+          classification.sourceRevision !== raw.revision || classification.seconds !== raw.seconds ||
+          classification.account !== account || classification.jobcodeId !== raw.sourceWorkOrderId ||
+          classification.projectId !== bulk.projectId || mapped?.projectId !== bulk.projectId ||
+          !verifiedParent || classification.parentId !== verifiedParent)) throw Error("Bulk entry not eligible");
         const portions: Allocation[] = input.mode === "bulk"
           ? [{ projectId: input.projectId, seconds: raw.seconds, description: "" }]
           : input.portions;
         checkedAllocationSeconds(portions, raw.seconds);
-        const annotations = review?.annotations ?? head.annotations;
+        const annotations = classification ? { parentId: verifiedParent, areaId: classification.areaId,
+          reportingDescription: typeof classification.reportingDescription === "string" ? classification.reportingDescription.slice(0, 1000) : "",
+          internalNote: "" } : review?.annotations ?? head.annotations;
+        if (verifiedParent && review?.annotations.parentId && review.annotations.parentId !== verifiedParent)
+          throw Error("Invalid allocation parent");
         if (review?.annotations.parentId) {
           const parent = (await tx.get(root.collection("projects").doc(review.annotations.parentId))).data();
           if (parent?.schemaVersion !== 2 || parent.tenantId !== tenantId || parent.id !== review.annotations.parentId)
@@ -511,10 +543,15 @@ export class FirestoreTenantStore implements TenantStore {
           throw Error("Forbidden");
         if (this.expectedSchemaVersion === 2 && ps.some(d => d.data()!.schemaVersion !== 2 || d.data()!.tenantId !== tenantId || d.data()!.id !== d.id)) throw Error("Forbidden");
         for (const [position, project] of ps.entries()) {
-          if (canAllocateToDelivery(project.data()!.delivery)) continue;
           const id = ids[position];
           const intended = portions.find(part => part.projectId === id)?.seconds ?? 0;
           const applied = previous.find((part: Allocation) => part.projectId === id)?.seconds ?? 0;
+          const delivery = project.data()!.delivery;
+          if (classification && (delivery?.areaId !== classification.areaId ||
+            ["cancelled", "closed"].includes(project.get("status")))) throw Error("Bulk entry not eligible");
+          if (verifiedParent && intended > applied && (delivery?.kind !== "project" || delivery.parentId !== verifiedParent || !delivery.areaId))
+            throw Error(bulk ? "Bulk entry not eligible" : "Invalid allocation target");
+          if (canAllocateToDelivery(project.data()!.delivery)) continue;
           if (intended > applied) throw Error(bulk ? "Bulk entry not eligible" : "Invalid allocation target");
         }
         if (
@@ -552,6 +589,7 @@ export class FirestoreTenantStore implements TenantStore {
             portions,
             sourceRevision: raw.revision,
             ...(annotations ? { annotations } : {}),
+            ...(classification && { provenance: "approved-automatic" }),
             actor: subject,
             at: new Date(now).toISOString(),
           },
@@ -562,7 +600,9 @@ export class FirestoreTenantStore implements TenantStore {
           appliedPortions: portions,
           sourceRevision: raw.revision,
           ...(annotations ? { annotations } : {}),
+          ...(classification && { provenance: "approved-automatic" }),
         });
+        if (automatic?.exists) tx.delete(automatic.ref);
         ids.forEach((id, i) => {
           if (!views[i].exists) throw Error("Invalid reporting summary");
           if (this.expectedSchemaVersion === 2 && (views[i].data()!.tenantId !== tenantId || views[i].data()!.id !== id || views[i].data()!.schemaVersion !== 2 || (periods[i].exists && (periods[i].data()!.projectId !== id || periods[i].data()!.month !== month)))) throw Error("Invalid reporting summary");
@@ -595,7 +635,7 @@ export class FirestoreTenantStore implements TenantStore {
           id: auditId,
           tenantId,
           actor: subject,
-          action: "allocation-changed",
+          action: classification ? "automatic-time-approved" : "allocation-changed",
           entityId: sourceId,
           at: new Date(now).toISOString(),
           revision: nextRevision,

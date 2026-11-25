@@ -26,6 +26,17 @@ export interface TimeMapping {
   lifetimeRecordedSeconds?: number;
   lifetimeAllocatedSeconds?: number;
   sourceProject?: TimeProjectMetadata;
+  historicalProgress?: HistoricalClassificationProgress;
+}
+
+export interface HistoricalClassificationProgress {
+  total: number;
+  examined: number;
+  classified: number;
+  unchanged: number;
+  conflicts: number;
+  seconds: number;
+  done: boolean;
 }
 export interface TimeStatus {
   month?: string;
@@ -53,19 +64,41 @@ export type TimeMappingReview = {
   allocatedSeconds: number;
   parentId?: string;
   areaId?: string;
+  impactVersion?: string;
 };
+
+export interface TimeMappingImpact {
+  version: string;
+  workOrder: string;
+  project: string;
+  parent: string;
+  department?: string;
+  active: number;
+  recordedSeconds: number;
+  eligible: number;
+  eligibleSeconds: number;
+  classified: number;
+  manual: number;
+  split: number;
+  conflict: number;
+  excluded: number;
+  hierarchy: number;
+  unchanged: number;
+}
 
 export function parseTimeMappingReview(input: unknown): TimeMappingReview {
   if (typeof input !== "object" || !input || Array.isArray(input)) throw Error("Invalid Time request");
-  const { targetKind, previousProjectId, recordedSeconds, allocatedSeconds, parentId, areaId } = input as TimeMappingReview;
+  const { targetKind, previousProjectId, recordedSeconds, allocatedSeconds, parentId, areaId, impactVersion } = input as TimeMappingReview;
   const identifier = (id: unknown): id is string => typeof id === "string" && /^[-a-zA-Z0-9_]{1,128}$/.test(id);
-  if (Object.keys(input).some(field => !["targetKind", "previousProjectId", "recordedSeconds", "allocatedSeconds", "parentId", "areaId"].includes(field)) ||
+  if (Object.keys(input).some(field => !["targetKind", "previousProjectId", "recordedSeconds", "allocatedSeconds", "parentId", "areaId", "impactVersion"].includes(field)) ||
+    (impactVersion !== undefined && (typeof impactVersion !== "string" || !/^[a-f0-9]{64}$/.test(impactVersion))) ||
     (targetKind !== "engagement" && targetKind !== "project") ||
     !identifier(previousProjectId) ||
     (targetKind === "project" ? !identifier(parentId) || !identifier(areaId) : parentId !== undefined || areaId !== undefined) ||
     !Number.isSafeInteger(recordedSeconds) || !Number.isSafeInteger(allocatedSeconds) ||
     allocatedSeconds < 0 || recordedSeconds < allocatedSeconds) throw Error("Invalid Time request");
-  return { targetKind, previousProjectId, recordedSeconds, allocatedSeconds, ...(parentId && areaId ? { parentId, areaId } : {}) };
+  return { targetKind, previousProjectId, recordedSeconds, allocatedSeconds, ...(parentId && areaId ? { parentId, areaId } : {}),
+    ...(impactVersion && { impactVersion }) };
 }
 
 export function workOrderQueue(mapping: TimeMapping) {

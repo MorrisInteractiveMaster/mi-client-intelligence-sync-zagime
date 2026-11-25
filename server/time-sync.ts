@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import type { DocumentReference, Transaction } from "firebase-admin/firestore";
+import { FieldPath, type DocumentReference, type Timestamp, type Transaction } from "firebase-admin/firestore";
 import type { VerifiedIdentity } from "./contracts";
 import { safeId, sourceRecordId } from "./contracts";
 import { key } from "./firestore-store";
@@ -12,8 +12,10 @@ import {
 } from "./time-totals";
 import { readPortfolio } from "./portfolio";
 import type { Project } from "../src/projects/model";
-import type { TimeMappingReview, TimeProjectMetadata, TimeStatus } from "../src/projects/time";
-import { timeDetailsRef, type StoredTimeDetails } from "./time-details";
+import type { HistoricalClassificationProgress, TimeMappingImpact, TimeMappingReview, TimeProjectMetadata, TimeStatus } from "../src/projects/time";
+import { readTimeDetails, timeDetailsRef, type StoredTimeDetails } from "./time-details";
+import { automaticAllocation, automaticDestination, automaticTimeRef } from "./automatic-time";
+import { timeMappingImpact } from "./time-mapping-impact";
 import { enrichTimeDetails, inventoryTimeDetails, timeSourceRevision } from "./time-enrichment";
 import {
   type TimeClient,
@@ -78,6 +80,7 @@ type VerifiedJob = {
   descendants: Set<string>;
 };
 type Portion = { projectId: string; seconds: number };
+type HistoricalOperation = HistoricalClassificationProgress & { cutoff: Timestamp; cursor?: string };
 
 export class TimeSync {
   constructor(
@@ -107,6 +110,9 @@ export class TimeSync {
     return root
       .collection("syncCheckpoints")
       .doc(key("quickbooks-time", this.connection!.account, timeId(job)));
+  }
+  private historicalOperation(root: DocumentReference, job: string) {
+    return root.collection("timeHistoricalClassifications").doc(this.mapping(root, job).id);
   }
   /** A successful customer-wide run timestamp. Call only for an authorized report. */
   async reportFreshness(tenant: string): Promise<string | undefined> {
@@ -156,6 +162,9 @@ export class TimeSync {
             ...mappings.map((m) => this.checkpoint(root, m.jobcodeId)),
           )
         : [];
+      const progressJobs = this.allowed(tenant, who) && customerParentId ? mappings.filter(m => m.reviewedAttribution) : [];
+      const progress = new Map(progressJobs.length ? (await tx.getAll(...progressJobs.map(m => this.historicalOperation(root, m.jobcodeId))))
+        .map((doc, index) => [progressJobs[index].jobcodeId, doc.data() as HistoricalOperation | undefined]) : []);
       const anchors = [
         ...new Set(
           mappings.map((m) => safeId(m.scopeProjectId ?? m.projectId)),
@@ -208,6 +217,7 @@ export class TimeSync {
         );
       const rows = mappings.map((m, i) => {
         const s = states[i].data();
+        const history = progress.get(m.jobcodeId);
         const anchor = m.scopeProjectId;
         const rowMonth =
           anchor &&
@@ -229,6 +239,10 @@ export class TimeSync {
             : {}),
           jobcodeId: m.jobcodeId,
           projectId: m.projectId,
+          ...(history && { historicalProgress: {
+            total: history.total, examined: history.examined, classified: history.classified, unchanged: history.unchanged,
+            conflicts: history.conflicts, seconds: history.seconds, done: history.done,
+          } }),
           ...(m.sourceJob
             ? {
                 sourceName: m.sourceJob.name,
@@ -383,9 +397,99 @@ export class TimeSync {
   requiresMappingReview() {
     return Boolean(this.connection?.customerParentId);
   }
-  async confirmMapping(tenant: string, who: VerifiedIdentity, job: string, project: string, review: TimeMappingReview) {
+  async previewMapping(tenant: string, who: VerifiedIdentity, externalJob: string, project: string) {
     if (!this.allowed(tenant, who) || !this.connection?.customerParentId) throw Error("Forbidden");
-    return this.link(tenant, who, timeId(job), safeId(project), review);
+    const job = timeId(externalJob);
+    return this.store.db.runTransaction(async tx => {
+      const { root, staff } = await this.store.access(tx, tenant, who);
+      if (!staff) throw Error("Forbidden");
+      const [entry, target, binding] = await tx.getAll(this.mapping(root, job),
+        root.collection("projects").doc(safeId(project)), timeRun(root, this.catalogKey()));
+      const mapping = entry.data() as TimeMappingRecord | undefined;
+      const destination = target.data() as Project | undefined;
+      if (binding.get("customerBound") !== true || mapping?.catalog !== this.catalogKey() ||
+        mapping.account !== this.connection!.account || mapping.jobcodeId !== job || !mapping.sourceJob?.active ||
+        mapping.sourceJob.missing !== false || destination?.tenantId !== tenant || destination.schemaVersion !== 2 ||
+        destination.id !== project) throw Error("Forbidden");
+      return timeMappingImpact(tx, root, mapping, destination);
+    }, { readOnly: true });
+  }
+  async confirmMapping(tenant: string, who: VerifiedIdentity, job: string, project: string, review: TimeMappingReview, requireImpact = false) {
+    if (!this.allowed(tenant, who) || !this.connection?.customerParentId) throw Error("Forbidden");
+    const result = await this.link(tenant, who, timeId(job), safeId(project), review, requireImpact);
+    return { ...result, ...(review.targetKind === "project" && {
+      historical: await this.applyHistoricalMapping(tenant, who, job),
+    }) };
+  }
+  async applyHistoricalMapping(tenant: string, who: VerifiedIdentity, externalJob: string, after?: string) {
+    if (!this.allowed(tenant, who) || !this.connection?.customerParentId) throw Error("Forbidden");
+    const job = timeId(externalJob);
+    const size = 60;
+    return this.store.db.runTransaction(async tx => {
+      const { root, staff, meta } = await this.store.access(tx, tenant, who);
+      if (!staff) throw Error("Forbidden");
+      const [snapshot, binding] = await tx.getAll(this.mapping(root, job), timeRun(root, this.catalogKey()));
+      const mapping = snapshot.data() as TimeMappingRecord | undefined;
+      if (binding.get("customerBound") !== true || mapping?.catalog !== this.catalogKey() ||
+        mapping.account !== this.connection!.account || mapping.jobcodeId !== job) throw Error("Forbidden");
+      const destination = await automaticDestination(tx, root, mapping);
+      if (!destination) throw Error("Invalid Time mapping target");
+      const progressRef = this.historicalOperation(root, job);
+      const operation = (await tx.get(progressRef)).data() as HistoricalOperation | undefined;
+      const cursor = operation ? operation.cursor : after;
+      const publicProgress = (value: HistoricalOperation): HistoricalClassificationProgress => ({
+        total: value.total, examined: value.examined, classified: value.classified, unchanged: value.unchanged,
+        conflicts: value.conflicts, seconds: value.seconds, done: value.done,
+      });
+      if (operation?.done) return { classified: 0, examined: 0, conflicts: 0, seconds: 0, unchanged: 0, progress: publicProgress(operation) };
+      const query = root.collection("rawTime").where("record.sourceWorkOrderId", "==", job).orderBy(FieldPath.documentId());
+      const batch = await tx.get((cursor ? query.startAfter(safeId(cursor)) : query).limit(size + 1));
+      const included = batch.docs.slice(0, size).filter(doc => doc.get("source") === "quickbooks-time" &&
+        doc.get("sourceCompanyId") === mapping.account && doc.get("scopeProjectId") === mapping.scopeProjectId &&
+        doc.get("record.tenantId") === tenant && (!operation || doc.createTime.toMillis() <= operation.cutoff.toMillis()));
+      const changed = operation ? included.filter(doc => doc.updateTime.toMillis() > operation.cutoff.toMillis()) : [];
+      const changedIds = new Set(changed.map(doc => doc.id));
+      const sources = included.filter(doc => !changedIds.has(doc.id) && doc.get("schemaVersion") === 2 &&
+        doc.get("source") === "quickbooks-time" && doc.get("sourceCompanyId") === mapping.account &&
+        doc.get("scopeProjectId") === mapping.scopeProjectId && doc.get("record.tenantId") === tenant &&
+        typeof doc.get("record.revision") === "string" && typeof doc.get("externalId") === "string" && doc.get("deleted") === false &&
+        doc.id === sourceRecordId("quickbooks-time", mapping.account, doc.get("externalId")));
+      const current = await Promise.all(sources.map(async doc => {
+        const ref = automaticTimeRef(root, doc.id);
+        const revision = doc.get("record.revision") as string;
+        const [head, existing, details] = await tx.getAll(root.collection("allocationHeads").doc(doc.id), ref, timeDetailsRef(doc.ref, revision));
+        return { doc, ref, existing, value: automaticAllocation(destination, revision, doc.get("record.seconds"),
+          head.exists, readTimeDetails(details.data(), revision, doc.get("modifiedAt"))?.notes) };
+      }));
+      let classified = 0;
+      let conflicts = changed.length;
+      let seconds = 0;
+      for (const { doc, ref, existing, value } of current) {
+        if (!value) continue;
+        if (existing.exists) {
+          if (existing.get("projectId") !== value.projectId || existing.get("sourceRevision") !== value.sourceRevision ||
+            existing.get("seconds") !== value.seconds) conflicts++;
+          continue;
+        }
+        tx.set(ref, value);
+        this.audit(tx, root, who.subject, doc.id, "time-automatically-classified", meta.revision);
+        classified++;
+        seconds += value.seconds;
+      }
+      const examined = included.length;
+      const next = batch.size > size ? batch.docs[size - 1].id : undefined;
+      let progress: HistoricalClassificationProgress | undefined;
+      if (operation) {
+        const saved = { cutoff: operation.cutoff, total: operation.total, examined: operation.examined + examined,
+          classified: operation.classified + classified, conflicts: operation.conflicts + conflicts,
+          seconds: operation.seconds + seconds, unchanged: operation.unchanged + examined - classified - conflicts,
+          done: !next, ...(next && { cursor: next }) };
+        tx.set(progressRef, saved);
+        progress = publicProgress(saved);
+      }
+      return { classified, examined, conflicts, seconds, unchanged: examined - classified - conflicts,
+        ...(next && { next }), ...(progress && { progress }) };
+    }, { maxAttempts: 3 });
   }
   private async link(
     tenant: string,
@@ -393,6 +497,7 @@ export class TimeSync {
     job: string,
     project: string,
     review?: TimeMappingReview,
+    requireImpact = false,
   ) {
     return this.store.db.runTransaction(
       async (tx) => {
@@ -415,12 +520,14 @@ export class TimeSync {
           m.sourceJob?.missing !== false
         )
           throw Error("Forbidden");
+        let reviewedImpact: TimeMappingImpact | undefined;
         if (review) {
           const anchor = "time-" + key(m.account, job);
           if (m.reviewedAttribution === true) {
             if (m.projectId === project) return { changed: false };
             throw Error("Time mapping conflict");
           }
+          if (requireImpact && !review.impactVersion) throw Error("Time mapping conflict");
           if (m.projectId !== review.previousProjectId || m.projectId !== anchor ||
               m.scopeProjectId !== anchor || !m.sourceJob?.active) throw Error("Time mapping conflict");
           if (!p.delivery || p.delivery.kind !== review.targetKind ||
@@ -445,10 +552,21 @@ export class TimeSync {
           if (binding.get("customerBound") !== true) throw Error("Forbidden");
           if (checkpoint.get("failed") === true || (totals.get("recorded") ?? 0) !== review.recordedSeconds ||
               (totals.get("allocated") ?? 0) !== review.allocatedSeconds) throw Error("Time mapping conflict");
+          if (review.impactVersion) {
+            reviewedImpact = await timeMappingImpact(tx, root, m, p);
+            if (reviewedImpact.version !== review.impactVersion || reviewedImpact.recordedSeconds !== review.recordedSeconds)
+              throw Error("Time mapping conflict");
+          }
         } else if (m.projectId === project) return { changed: false };
         // Adoption keeps legacy totals intact, including when old jobcodes share an anchor.
         if (m.scopeProjectId !== "time-" + key(m.account, job))
           throw Error("Time mapping conflict");
+        if (reviewedImpact && review?.targetKind === "project") {
+          tx.create(this.historicalOperation(root, job), {
+            cutoff: entry.readTime, total: reviewedImpact.active + reviewedImpact.excluded,
+            examined: 0, classified: 0, unchanged: 0, conflicts: 0, seconds: 0, done: false,
+          });
+        }
         tx.update(entry.ref, { projectId: project, ...(review ? { reviewedAttribution: true } : {}) });
         this.audit(
           tx,
@@ -939,10 +1057,11 @@ export class TimeSync {
         target.data()!.schemaVersion !== 2
       )
         throw Error("Time scope mismatch");
-      if (this.connection!.customerParentId) {
-        const scoped = (
+      const scoped = this.connection!.customerParentId
+        ? (
           await tx.get(this.mapping(root, row.jobcodeId))
-        ).data() as TimeMappingRecord | undefined;
+        ).data() as TimeMappingRecord | undefined : undefined;
+      if (this.connection!.customerParentId) {
         if (
           scoped?.catalog !== this.catalogKey() ||
           scoped?.sourceJob?.missing !== false ||
@@ -984,6 +1103,11 @@ export class TimeSync {
       const held = allocation.data();
       if (held && (!old || held.sourceRevision !== old.record.revision))
         throw Error("Time allocation conflict");
+      const automaticRef = automaticTimeRef(root, id);
+      const savedAutomatic = old && !held ? await tx.get(automaticRef) : undefined;
+      const destination = !row.deleted && !held && scoped && scoped.account === mapping.account &&
+        scoped.jobcodeId === row.jobcodeId ? await automaticDestination(tx, root, scoped) : undefined;
+      const automatic = automaticAllocation(destination, revision, row.seconds, Boolean(held), row.details?.notes);
       const material =
         old &&
         (old.record.date !== row.date ||
@@ -1055,6 +1179,13 @@ export class TimeSync {
       }
       writeTotals();
       tx.set(source, envelope);
+      if (automatic) {
+        tx.set(automaticRef, automatic);
+        this.audit(tx, root, who?.subject ?? timeSystemActor, id, "time-automatically-classified", revisionBefore);
+      } else if (savedAutomatic?.exists) {
+        tx.delete(automaticRef);
+        this.audit(tx, root, who?.subject ?? timeSystemActor, id, "time-automatic-classification-removed", revisionBefore);
+      }
       if (held)
         tx.update(head, {
           sourceRevision: revision,

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Monitor, Moon, Sun } from "lucide-react";
 
 const themeKey = "morris-platform-theme";
 const themes = ["system", "light", "dark"] as const;
@@ -44,10 +45,11 @@ export function usePlatformTheme() {
   return { theme, change, appearance: theme === "system" ? (systemDark ? "dark" : "light") : theme };
 }
 
-export function ThemeSelector({ theme, onChange }: { theme: Theme; onChange: (value: Theme) => void }) {
-  return <label className="mi-theme-selector">
-    <span>Appearance</span>
-    <select value={theme} onChange={event => {
+export function ThemeSelector({ theme, onChange, compact = false }: { theme: Theme; onChange: (value: Theme) => void; compact?: boolean }) {
+  const Icon = theme === "system" ? Monitor : theme === "dark" ? Moon : Sun;
+  return <label className={"mi-theme-selector" + (compact ? " mi-theme-icon" : "")} title={compact ? "Appearance" : undefined}>
+    {compact ? <Icon size={17} aria-hidden="true" /> : <span>Appearance</span>}
+    <select aria-label="Appearance" value={theme} onChange={event => {
       const next = themes.find(value => value === event.target.value);
       if (next) onChange(next);
     }}>

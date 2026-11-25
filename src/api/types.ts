@@ -41,7 +41,11 @@ export interface StaffSource {
   workOrderName?: string;
   sourceProjectId?: string;
   reportingProjectId?: string;
+  reportingParentId?: string;
+  mappingStatus?: SourceMappingStatus;
+  automaticClassification?: { projectId: string; parentId: string; areaId: string; seconds: number; reportingDescription?: string };
   classifiedSeconds?: number;
+  approvedAutomaticSeconds?: number;
   sourcePersonId?: string;
   consultantName?: string;
   originalNotesState?: "populated" | "empty" | "unavailable" | "not-retrieved";
@@ -54,14 +58,24 @@ export interface StaffSource {
   conflict: boolean;
 }
 export const sourceStatuses = ["allocated", "partial", "unallocated", "review", "deleted"] as const;
+export const sourceMappingLabels = {
+  unmapped: "Unmapped", parent: "Parent mapped", delivery: "Delivery Project mapped",
+  pending: "Pending confirmation", conflict: "Mapping conflict", review: "Requires review",
+} as const;
+export type SourceMappingStatus = keyof typeof sourceMappingLabels;
 export type SourceStatus = typeof sourceStatuses[number];
 export interface SourceFilters {
   sort?: TimeEntrySortField;
   direction?: SortDirection;
   workOrder?: string;
   consultant?: string;
+  consultants?: string;
+  provenance?: "automatic" | "manual" | "unclassified";
+  selection?: "bulk" | "automatic";
   area?: string;
   project?: string;
+  parent?: string;
+  mapping?: SourceMappingStatus;
   from?: string;
   through?: string;
   status?: SourceStatus | "queue";
@@ -79,6 +93,8 @@ export interface SourceHours {
   attributedSeconds?: number;
   remainingAtParentSeconds?: number;
   classifiedSeconds?: number;
+  automaticallyClassifiedSeconds?: number;
+  approvedAutomaticSeconds?: number;
 }
 export interface SourceHoursGroup extends SourceHours {
   id: string | null;
@@ -106,6 +122,8 @@ export function sourceStatus(source: Pick<StaffSource, "deleted" | "needsReview"
   if (!source.unallocatedSeconds) return "allocated";
   return source.unallocatedSeconds === source.seconds ? "unallocated" : "partial";
 }
+export const canSelectTimeForBulk = (source: StaffSource) => source.seconds > 0 && !source.conflict &&
+  !source.deleted && !source.needsReview && !source.portions.length && !source.automaticClassification;
 export interface HistoryRow {
   revision: number;
   at: string;

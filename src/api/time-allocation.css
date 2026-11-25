@@ -93,11 +93,19 @@
 .nordic.secure-shell .delivery-allocation th[aria-sort] .mi-sort-header {
   background: var(--mi-time-soft); border-color: var(--mi-insight-fill, #497ca5);
 }
-.time-entries :is(th, td)[data-cell="Original provider notes"] { min-width: 144px; }
+.time-entries :is(th, td)[data-cell="Original QuickBooks Time Description"] { min-width: 156px; }
+.time-entries :is(th, td):first-child { width: 42px; }
+.nordic.secure-shell .time-entries tbody :is(th,td) { padding-block: 4px; vertical-align: middle; }
+.time-entries tbody tr:nth-child(even) { background: var(--mi-time-soft); }
+.mi-time-note-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .time-entries :is(th, td):last-child { position: sticky; inset-inline-end: 0; background: var(--mi-time-surface); box-shadow: -1px 0 var(--mi-time-line); }
 .time-entries [data-cell="Actions"] button { white-space: nowrap; min-height: 44px; }
 .time-entries [data-cell="Recorded"] { white-space: nowrap; }
-.time-entries [data-cell="Reporting"], .time-entries [data-cell="Original provider notes"] { overflow-wrap: anywhere; }
+.time-entries [data-cell="Reporting"], .time-entries [data-cell="Original QuickBooks Time Description"] { overflow-wrap: anywhere; }
+.time-advanced-grid fieldset label { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.nordic.secure-shell .delivery-allocation .time-advanced-grid fieldset input[type="checkbox"] {
+  width: 1.05rem; min-height: 1.05rem; flex: 0 0 auto;
+}
 .time-profile { display: flex; gap: 8px; align-items: center; }
 .time-profile img { border-radius: 50%; object-fit: cover; flex: 0 0 auto; }
 .nordic.secure-shell .time-alloc-drawer {

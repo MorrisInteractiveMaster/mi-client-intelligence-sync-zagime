@@ -93,6 +93,11 @@ test("Time search, choices, counts and cursor cover a complete period without ex
     assert.equal((await sources({ area: "hr", project: "synthetic-delivery" })).sourceSummary?.matched, 1);
     assert.equal((await sources({ status: "review" })).sources?.[0].id, src(2).id);
     assert.equal((await sources({ status: "queue" })).sourceSummary?.matched, 31);
+    const eligible = await sources({ status: "queue", selection: "bulk", limit: "25" });
+    assert.ok(eligible.sourceSummary!.matched > 25);
+    assert.equal(eligible.sources?.length, 25);
+    assert.ok(eligible.sources?.every(row => !row.deleted && !row.needsReview && row.portions.length === 0));
+    assert.equal((await request(`sources?month=${period}&selection=bulk`, "client")).status, 403);
     assert.equal((await request(`sources?month=${period}&status=review&cursor=${first.nextCursor}`)).status, 409);
     assert.equal((await request(`sources?month=${period}&from=2026-11-25`)).status, 400);
     assert.equal((await request(`sources?month=${period}&consultant=929&consultant=999`)).status, 400);
@@ -157,6 +162,16 @@ test("Time search, choices, counts and cursor cover a complete period without ex
       assert.notDeepEqual(asc.sources?.map(row => row.id), desc.sources?.map(row => row.id), field);
     }
     assert.equal((await request(`sources?month=${sortMonth}&sort=internalNote&direction=asc`)).status, 400);
+    await root.collection("projects").doc("synthetic-planning").update({ delivery: { kind: "engagement", type: "hourly" } });
+    await root.collection("timeMappings").doc(key("fixtures", "111")).set({
+      account: "fixtures", jobcodeId: "111", projectId: "synthetic-planning", scopeProjectId: "synthetic-planning",
+      reviewedAttribution: true, sourceJob: { id: "111", name: "Verified parent fixture", active: true, missing: false },
+    });
+    const parentMapped = await sources({ month: sortMonth, mapping: "parent", parent: "synthetic-planning", limit: "5" });
+    assert.ok(parentMapped.sourceSummary!.matched > 5);
+    assert.ok(parentMapped.sources!.every(row => row.reportingParentId === "synthetic-planning" && row.mappingStatus === "parent"));
+    assert.equal((await sources({ month: sortMonth, parent: "missing-parent", mapping: "parent" })).sourceSummary?.matched, 0);
+    assert.equal((await request(`sources?month=${sortMonth}&mapping=unknown`)).status, 400);
   } finally {
     server.close();
     await once(server, "close");

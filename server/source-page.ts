@@ -1,5 +1,5 @@
 import { FieldPath, type DocumentData, type DocumentReference, type DocumentSnapshot, type Transaction } from "firebase-admin/firestore";
-import { sourceStatus, sourceStatuses, type PageQuery, type SourceFilters, type SourceHours, type SourceHoursGroup, type SourceSummary, type StaffSource } from "../src/api/types";
+import { canSelectTimeForBulk, sourceMappingLabels, sourceStatus, sourceStatuses, type PageQuery, type SourceFilters, type SourceHours, type SourceHoursGroup, type SourceSummary, type StaffSource } from "../src/api/types";
 import { calendarDate } from "../src/projects/delivery";
 import { timeBucket, timeEntrySortFields, timeSortOrders, timeWindow, type TimeGrouping, type TimeWindow } from "../src/projects/time-history";
 import { compareValues, directions } from "../src/projects/sort";
@@ -10,12 +10,13 @@ import { key } from "./firestore-store";
 import { readPortfolio } from "./portfolio";
 import { readTimeDetails, timeDetailsRef } from "./time-details";
 import { readEmployeeProfiles, timeEmployeeKey } from "./employee-mapping";
+import { automaticTimeRef } from "./automatic-time";
 
 // Exact, consistent counts at the current tenant size. Oversized months fail
 // explicitly rather than presenting truncated matches as complete.
 export const sourceMonthLimit = 5000;
 export const sourceHistoryLimit = 12000;
-export const sourceFilterKeys = ["search", "workOrder", "consultant", "area", "project", "from", "through", "status",
+export const sourceFilterKeys = ["search", "workOrder", "consultant", "consultants", "provenance", "selection", "area", "project", "parent", "mapping", "from", "through", "status",
   "period", "start", "end", "order", "group", "entry", "sort", "direction"] as const;
 const filterId = /^[A-Za-z0-9_-]{1,128}$/;
 const normalized = (text: string) => text.normalize("NFKC").trim().toLowerCase();
@@ -23,9 +24,16 @@ const normalized = (text: string) => text.normalize("NFKC").trim().toLowerCase()
 export function sourceFilters(query: PageQuery) {
   const f = query.sourceFilters ?? {};
   const window = timeWindow(query.month, f.period, f.start, f.end);
-  for (const value of [f.workOrder, f.consultant, f.area, f.project, f.entry]) {
+  for (const value of [f.workOrder, f.consultant, f.area, f.project, f.parent, f.entry]) {
     if (value !== undefined && !filterId.test(value)) throw Error("Invalid source filter");
   }
+  if (f.mapping !== undefined && !Object.hasOwn(sourceMappingLabels, f.mapping)) throw Error("Invalid mapping filter");
+  if (f.consultants !== undefined) {
+    const ids = f.consultants.split(",");
+    if (ids.length > 20 || ids.some(id => !filterId.test(id)) || new Set(ids).size !== ids.length) throw Error("Invalid consultant filter");
+  }
+  if (f.provenance !== undefined && !["automatic", "manual", "unclassified"].includes(f.provenance)) throw Error("Invalid source classification");
+  if (f.selection !== undefined && f.selection !== "bulk" && f.selection !== "automatic") throw Error("Invalid source selection");
   for (const date of [f.from, f.through]) {
     if (date !== undefined && (!calendarDate(date) || !includesDate(window, date))) throw Error("Invalid source date filter");
   }
@@ -51,7 +59,7 @@ async function fetchByPath(tx: Transaction, refs: DocumentReference[]): Promise<
   return values;
 }
 
-type SourceNames = { title: string; areaId?: string; kind?: string };
+type SourceNames = { title: string; areaId?: string; kind?: string; parentId?: string };
 const emptyHours = (): SourceHours => ({ recordedSeconds: 0, allocatedSeconds: 0, unallocatedSeconds: 0 });
 function addHours(total: SourceHours, row: StaffSource) {
   total.recordedSeconds += row.seconds;
@@ -61,6 +69,9 @@ function addHours(total: SourceHours, row: StaffSource) {
   total.attributedSeconds = (total.attributedSeconds ?? 0) + (isMapped ? row.seconds : 0);
   total.remainingAtParentSeconds = (total.remainingAtParentSeconds ?? 0) + (isMapped ? row.seconds - (row.classifiedSeconds ?? 0) : 0);
   total.classifiedSeconds = (total.classifiedSeconds ?? 0) + (row.classifiedSeconds ?? 0);
+  if (row.automaticClassification) total.automaticallyClassifiedSeconds =
+    (total.automaticallyClassifiedSeconds ?? 0) + row.automaticClassification.seconds;
+  if (row.approvedAutomaticSeconds) total.approvedAutomaticSeconds = (total.approvedAutomaticSeconds ?? 0) + row.approvedAutomaticSeconds;
   if (!Number.isSafeInteger(total.recordedSeconds)) throw Error("Invalid scoped source hours");
 }
 function addGroup(groups: Map<string | null, SourceHoursGroup>, id: string | null, label: string, row: StaffSource) {
@@ -80,6 +91,7 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
   const byWorkOrder = new Map<string | null, SourceHoursGroup>();
   const byPeriod = new Map<string | null, SourceHoursGroup>();
   const grouping: TimeGrouping = filters.group ?? "month";
+  const selectedConsultants = new Set(filters.consultants?.split(","));
   for (const row of rows) {
     const workOrder = row.sourceWorkOrderId;
     const person = row.sourcePersonId;
@@ -87,8 +99,16 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
     if (person && filterId.test(person) && (row.consultantName || !consultants.has(person))) consultants.set(person, row.consultantName || person);
     if (filters.workOrder && filters.workOrder !== workOrder ||
       filters.consultant && (filters.consultant === "unavailable" ? Boolean(person) : filters.consultant !== person) ||
+      selectedConsultants.size > 0 && (!person || !selectedConsultants.has(person)) ||
+      filters.provenance && filters.provenance !== (row.automaticClassification ? "automatic" :
+        (row.classifiedSeconds ?? 0) > 0 ? "manual" : "unclassified") ||
       filters.from && row.date < filters.from || filters.through && row.date > filters.through ||
-      filters.area && row.annotations?.areaId !== filters.area && !row.portions.some(p => projects.get(p.projectId)?.areaId === filters.area) ||
+      filters.mapping && row.mappingStatus !== filters.mapping ||
+      filters.parent && row.reportingParentId !== filters.parent && row.annotations?.parentId !== filters.parent &&
+        !row.portions.some(part => projects.get(part.projectId)?.parentId === filters.parent) ||
+      filters.area && row.annotations?.areaId !== filters.area && row.automaticClassification?.areaId !== filters.area &&
+        (!row.reportingProjectId || projects.get(row.reportingProjectId)?.areaId !== filters.area) &&
+        !row.portions.some(p => projects.get(p.projectId)?.areaId === filters.area) ||
       filters.project && row.sourceProjectId !== filters.project && row.reportingProjectId !== filters.project && !row.portions.some(p => p.projectId === filters.project)) continue;
     const searchable = [workOrder, row.workOrderName, person, row.consultantName, row.description, row.annotations?.reportingDescription,
       row.annotations?.parentId && projects.get(row.annotations.parentId)?.title, ...row.portions.map(p => projects.get(p.projectId)?.title)];
@@ -96,9 +116,11 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
     const status = sourceStatus(row);
     counts.total++;
     counts[status]++;
-    const remaining = !row.deleted && row.unallocatedSeconds > 0;
+    const remaining = !row.deleted && !row.automaticClassification && row.unallocatedSeconds > 0;
     if (remaining) counts.remaining++;
     if (filters.status && (filters.status === "queue" ? !remaining : status !== filters.status)) continue;
+    if (filters.selection === "bulk" && !canSelectTimeForBulk(row)) continue;
+    if (filters.selection === "automatic" && (!row.automaticClassification || row.automaticClassification.projectId !== filters.project)) continue;
     matches.push(row);
     // Corrected current rows may have temporarily unapplied ledger portions.
     // Deleted rows are shown for review but do not contribute recorded seconds.
@@ -192,17 +214,31 @@ export async function readSourcePage(tx: Transaction, root: DocumentReference, s
     if (data.sourceCompanyId && data.record?.sourceWorkOrderId) mappingRefs.set(doc.id, root.collection("timeMappings").doc(key(data.sourceCompanyId, data.record.sourceWorkOrderId)));
     if (!data.deleted && typeof data.record?.revision === "string" && data.record.revision) detailsRefs.set(doc.id, timeDetailsRef(doc.ref, data.record.revision));
   }
-  const [projects, mappings, details, portfolio] = await Promise.all([
-    fetchByPath(tx, [...projectRefs.values()]), fetchByPath(tx, [...mappingRefs.values()]),
+  const [mappings, details, portfolio] = await Promise.all([
+    fetchByPath(tx, [...mappingRefs.values()]),
     fetchByPath(tx, [...detailsRefs.values()]), readPortfolio(tx, root),
   ]);
+  for (const mapping of mappings.values()) {
+    if (typeof mapping?.projectId === "string" && filterId.test(mapping.projectId))
+      projectRefs.set(mapping.projectId, root.collection("projects").doc(mapping.projectId));
+  }
+  const projects = await fetchByPath(tx, [...projectRefs.values()]);
+  const automatic = await fetchByPath(tx, docs.flatMap(doc => {
+    const mapping = mappingRefs.get(doc.id);
+    return mapping && mappings.get(mapping.path)?.reviewedAttribution === true &&
+      doc.get("deleted") !== true && !heads.get(root.collection("allocationHeads").doc(doc.id).path)
+      ? [automaticTimeRef(root, doc.id)] : [];
+  }));
   const profiles = await readEmployeeProfiles(tx, root, portfolio);
   const placement = new Map(portfolio.placements.map(item => [item.id, item.areaId]));
   const projectNames = new Map<string, SourceNames>();
   for (const [id, ref] of projectRefs) {
     const project = projects.get(ref.path);
     if (project?.tenantId === root.id && project?.schemaVersion === 2) {
-      projectNames.set(id, { title: String(project.name ?? ""), areaId: project.delivery?.areaId ?? placement.get(id), kind: project.delivery?.kind });
+      const owner = projects.get(root.collection("projects").doc(filterId.test(project.delivery?.parentId ?? "") ? project.delivery.parentId : id).path);
+      const parentId = owner?.delivery?.kind === "service-area" ? owner.delivery.parentId : project.delivery?.parentId;
+      projectNames.set(id, { title: String(project.name ?? ""), areaId: project.delivery?.areaId ?? placement.get(id),
+        kind: project.delivery?.kind, parentId });
     }
   }
   const rows = docs.map(doc => {
@@ -218,9 +254,29 @@ export async function readSourcePage(tx: Transaction, root: DocumentReference, s
     const reportingProjectId = mapping?.reviewedAttribution === true && mapping.scopeProjectId === data.scopeProjectId &&
       mapping.account === data.sourceCompanyId && mapping.jobcodeId === data.record?.sourceWorkOrderId
       ? safeId(mapping.projectId) : undefined;
-    return projectSource(doc, heads.get(root.collection("allocationHeads").doc(doc.id).path), root.id,
+    const head = heads.get(root.collection("allocationHeads").doc(doc.id).path);
+    const classification = automatic.get(automaticTimeRef(root, doc.id).path);
+    const row = projectSource(doc, head, root.id,
       mapRef ? mappings.get(mapRef.path)?.sourceJob?.name : projects.get(scopedProject.path)?.workOrderReference,
       sourceDetails, profile, projectNames, reportingProjectId);
+    const destination = projectNames.get(reportingProjectId ?? data.scopeProjectId);
+    row.reportingParentId = destination?.kind === "engagement" ? reportingProjectId ?? data.scopeProjectId : destination?.parentId;
+    row.mappingStatus = !mapping ? "unmapped"
+      : mapping.account !== data.sourceCompanyId || mapping.jobcodeId !== row.sourceWorkOrderId ||
+        mapping.scopeProjectId && mapping.scopeProjectId !== data.scopeProjectId ? "conflict"
+      : mapping.sourceJob?.missing || mapping.sourceJob?.active === false || row.needsReview ? "review"
+      : mapping.catalog && mapping.projectId === data.scopeProjectId && mapping.projectId === "time-" + key(mapping.account, mapping.jobcodeId) ? "pending"
+      : destination?.kind === "engagement" ? "parent"
+      : destination?.kind === "project" && destination.parentId && destination.areaId ? "delivery" : "review";
+    if (!head && !row.deleted && classification?.provenance === "reviewed-quickbooks-time-mapping" &&
+      classification.projectId === reportingProjectId && classification.account === data.sourceCompanyId &&
+      classification.jobcodeId === row.sourceWorkOrderId && classification.sourceRevision === row.sourceRevision &&
+      classification.seconds === row.seconds) {
+      row.automaticClassification = { projectId: classification.projectId, parentId: classification.parentId,
+        areaId: classification.areaId, seconds: classification.seconds,
+        ...(classification.reportingDescription && { reportingDescription: classification.reportingDescription }) };
+    }
+    return row;
   });
   const { matches, summary } = summarize(rows, filters, projectNames, window);
   // Include the matching row identities so a sidecar-only enrichment can
@@ -266,6 +322,7 @@ function projectSource(doc: DocumentSnapshot, head: DocumentData | undefined, te
       const kind = projects.get(part.projectId)?.kind;
       return kind !== "engagement" && kind !== "service-area";
     }).reduce((total, part) => total + part.seconds, 0),
+    ...(head?.provenance === "approved-automatic" && { approvedAutomaticSeconds: applied.reduce((sum, part) => sum + part.seconds, 0) }),
     ...(personId ? { sourcePersonId: personId } : {}),
     ...(sourceDetails?.consultantName ? { consultantName: sourceDetails.consultantName } : {}),
     ...(wordpressProfile ? { wordpressProfile } : {}),

@@ -11,6 +11,7 @@ import { chromium, firefox, webkit, type Browser, type Page } from "playwright";
 import type { ReportingBackend } from "../server/backend";
 import { firebaseRuntime } from "../server/firebase";
 import { key } from "../server/firestore-store";
+import { sourceRecordId } from "../server/contracts";
 import { apiServer, RequestLimit } from "../server/http";
 import { seedProjectSynthetic } from "../server/project-operator";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
@@ -77,11 +78,9 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
         function Portal({workspace}) {
           const {theme,change,appearance}=usePlatformTheme(); const month=useReportingMonth("${month}"), [dirty,setDirty]=useState(false);
           return <section className="nordic secure-shell platform-shell" data-theme={appearance}>
-            <header className="secure-masthead"><div className="secure-brandmarks">
-              <img src="/branding/zagime/zagime.jpeg" alt="Zagime Anishinabek First Nation"/>
-              <img src="/branding/morris/morris-wordmark.png" alt="Morris Interactive"/>
-            </div><div className="secure-identity"><p>{location.pathname.startsWith("/clients/") ? "Client portal" : "Morris workspace"}</p></div>
-            <div className="mi-masthead-actions"><div id="mi-workspace-commands"/><ThemeSelector theme={theme} onChange={change}/></div></header>
+            <header className="secure-masthead mi-compact-masthead">
+              <div className="secure-identity"><h1>{location.pathname.startsWith("/clients/") ? "Zagimē A. FN Workshop" : "Morris workspace"}</h1></div>
+              <div className="mi-masthead-actions"><div id="mi-workspace-commands"/><ThemeSelector theme={theme} onChange={change} compact/></div></header>
             <div id="auth-status" role="status"></div>
             <PlatformApplication client={client} workspace={workspace} month={month} unsaved={dirty} onUnsavedChange={setDirty} onDenied={denied}/>
           </section>;
@@ -117,13 +116,25 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     }, { issuer: "fixture", audience: "fixture", now: () => now }),
   };
   const server = apiServer(undefined as unknown as ReportingBackend, options);
+  const errors: string[] = [];
+  const inFlight = new Set<Promise<void>>();
+  const [handleRequest] = server.listeners("request");
+  server.removeAllListeners("request");
+  server.on("request", (req, res) => {
+    // Closing a browser socket can leave its async handler reading Firestore.
+    const request: Promise<void> = handleRequest(req, res);
+    inFlight.add(request);
+    void request.then(
+      () => inFlight.delete(request),
+      error => { inFlight.delete(request); errors.push(String(error)); },
+    );
+  });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   options.allowedOrigin = origin;
   const evidence = resolve("test-results/platform-routes-browser");
   await mkdir(evidence, { recursive: true });
-  const errors: string[] = [];
   let mainBrowser: Browser | undefined;
   async function session(browser: Browser, token: "owner" | "staff" | "client", width = 1440) {
     const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 1000 }, reducedMotion: "reduce" });
@@ -139,7 +150,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     return { page, context };
   }
   const route = (path: string, extra = "") => origin + path + "?month=" + month + extra;
-  async function captureExperience(page: Page, name: string) {
+  async function captureExperience(page: Page, name: string, focus?: string) {
     const matrix = join(evidence, "experience-v2");
     await mkdir(matrix, { recursive: true });
     const appearance = page.getByRole("combobox", { name: "Appearance" });
@@ -150,6 +161,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       for (const [width, height] of [[1920, 1080], [1440, 900], [1366, 768], [1024, 768], [768, 1024], [390, 844], [320, 568]]) {
         await page.setViewportSize({ width, height });
         await page.evaluate(() => window.scrollTo(0, 0));
+        if (focus) await page.locator(focus).evaluate(element => element.scrollIntoView({ block: "start" }));
         const overflow = await page.evaluate(() => {
           if (document.documentElement.scrollWidth <= innerWidth) return [];
           return [...document.querySelectorAll("body *")].filter(element => element.getBoundingClientRect().right > innerWidth + 1)
@@ -335,7 +347,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await distribution.getByText("4 · 66.7%", { exact: true }).waitFor();
       await distribution.getByText("0 · 0%", { exact: true }).first().waitFor();
       await sample.page.getByRole("button", { name: "Explain Approved projects", exact: true }).click();
-      await sample.page.getByRole("tooltip").filter({ hasText: /Parent engagement containers are excluded/ }).waitFor();
+      await sample.page.getByRole("tooltip").filter({ hasText: /Parent project containers are excluded/ }).waitFor();
       await sample.page.screenshot({ path: join(scaleEvidence, "v41-kpi-tooltip.png"), animations: "disabled" });
       await sample.page.keyboard.press("Escape");
       await hr.getByRole("button", { name: "HR", exact: true }).focus();
@@ -818,7 +830,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     }
     await captureReference(client.page, "04-leadership-layout-1649x844", 1649, 844);
     await auditViewport(client.page, "Leadership engagement section", 1647, 868, { compactSidebar: true });
-    const engagements = client.page.getByRole("region", { name: "Parent engagements" }).first();
+    const engagements = client.page.getByRole("region", { name: "Parent projects" }).first();
     await engagements.scrollIntoViewIfNeeded();
     await client.page.screenshot({ path: join(referenceEvidence, "03-leadership-engagements-1647x868.png"), animations: "disabled" });
     const effort = client.page.getByRole("group", { name: "Effort display", exact: true });
@@ -1005,6 +1017,18 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     });
     setup.set(root.collection("timeProjectTotals").doc(mappingAnchor).collection("periods").doc(month), { recorded: 18900, allocated: 3600 });
     setup.set(root.collection("timeProjectTotals").doc(mappingAnchor).collection("periods").doc("lifetime"), { recorded: 18900, allocated: 3600 });
+    const anchorProject = { ...(await parentRef.get()).data(), id: mappingAnchor, tenantId: tenant, schemaVersion: 2,
+      name: "Internal reporting and facilitation", published: false } as Project;
+    setup.set(root.collection("projects").doc(mappingAnchor), anchorProject);
+    setup.set(root.collection("projectViews").doc(mappingAnchor), projectView(anchorProject, 0));
+    for (const [externalId, seconds] of [["6001", 15300], ["6002", 3600]] as const) {
+      const id = sourceRecordId("quickbooks-time", account, externalId);
+      setup.set(root.collection("rawTime").doc(id), { schemaVersion: 2, source: "quickbooks-time", sourceCompanyId: account,
+        externalId, scopeProjectId: mappingAnchor, modifiedAt: new Date(now).toISOString(), deleted: false,
+        record: { id, seconds, tenantId: tenant, sourceWorkOrderId: mappedJob, date: month + "-01", revision: "preview-fixture" } });
+      if (externalId === "6002") setup.set(root.collection("allocationHeads").doc(id), { revision: 1, sourceRevision: "preview-fixture",
+        portions: [{ projectId: parentId, seconds, description: "" }] });
+    }
     setup.update(parentRef, { delivery: { kind: "engagement", structure: 3, type: "hourly", managerIds: [], teamIds: [] } });
     await setup.commit();
     const timeOwner = await session(mainBrowser, "owner");
@@ -1016,8 +1040,11 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await target.fill("Regular Consulting");
     await target.press("Enter");
     await mappingArea.getByText(/4.25 h of source time/).waitFor();
+    await mappingArea.getByText("Eligible entries", { exact: true }).waitFor();
+    await mappingArea.getByText("Will remain unchanged", { exact: true }).waitFor();
     assert.equal(await mappingArea.getByRole("button", { name: "Confirm mapping" }).isDisabled(), true);
     await timeOwner.page.screenshot({ path: join(evidence, "quickbooks-time-mapping.png"), fullPage: true, animations: "disabled" });
+    await captureExperience(timeOwner.page, "v5-mapping-impact", ".mi-mapping-preview h4");
     await timeOwner.page.getByRole("combobox", { name: "Appearance" }).selectOption("dark");
     await timeOwner.page.setViewportSize({ width: 390, height: 844 });
     assert.ok(await timeOwner.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -1039,6 +1066,40 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     assert.equal(await arrangement.getByRole("option", { name: "Training & Workshops", exact: true }).count(), 1);
     assert.equal(await newWizard.getByLabel(/hour cap|budgeted hours/i).count(), 0);
     await captureReference(publisher.page, "06-training-schedule-1209x907", 1209, 907);
+    await newWizard.getByText("Delivery activity dates and venue", { exact: true }).click();
+    await newWizard.getByLabel("Delivery days", { exact: true }).selectOption("consecutive");
+    assert.equal(await newWizard.getByLabel("Program length in days").count(), 0, "delivery dates replace the legacy training date form");
+    for (const [label, date] of [["First delivery date", "5"], ["Last delivery date", "6"]]) {
+      await newWizard.getByRole("button", { name: new RegExp("^" + label) }).click();
+      await publisher.page.getByRole("dialog", { name: label, exact: true })
+        .locator('button[data-other-month="false"]').filter({ hasText: new RegExp("^" + date + "$") }).click();
+    }
+    await newWizard.getByText("2 of 2 delivery days selected", { exact: true }).waitFor();
+    await newWizard.getByRole("checkbox", { name: "Use the same venue for all dates", exact: true }).uncheck();
+    assert.equal(await newWizard.getByRole("combobox", { name: /Venue for/ }).count(), 2);
+    await newWizard.getByRole("combobox", { name: /Venue for/ }).first().selectOption("physical");
+    await newWizard.getByRole("textbox", { name: "Staff-only venue details" }).fill("Synthetic delivery venue");
+    await newWizard.screenshot({ path: join(evidence, "v5-consecutive-schedule-and-venues.png"), animations: "disabled" });
+    const activityMode = newWizard.getByLabel("Delivery days", { exact: true });
+    await activityMode.selectOption("single");
+    await newWizard.getByRole("button", { name: /^Delivery date/ }).click();
+    await publisher.page.getByRole("dialog", { name: "Delivery date", exact: true })
+      .locator('button[data-other-month="false"]').filter({ hasText: /^7$/ }).click();
+    await newWizard.getByText("1 of 1 delivery days selected", { exact: true }).waitFor();
+    await newWizard.screenshot({ path: join(evidence, "v5-single-delivery-date.png"), animations: "disabled" });
+    await activityMode.selectOption("separate");
+    await newWizard.getByRole("checkbox", { name: "Use the same venue for all dates", exact: true }).check();
+    for (const [label, date] of [["Delivery date 1", "5"], ["Delivery date 2", "8"]]) {
+      await newWizard.getByRole("button", { name: new RegExp("^" + label + " ") }).click();
+      await publisher.page.getByRole("dialog", { name: label, exact: true })
+        .locator('button[data-other-month="false"]').filter({ hasText: new RegExp("^" + date + "$") }).click();
+    }
+    await newWizard.getByText("2 of 2 delivery days selected", { exact: true }).waitFor();
+    await newWizard.screenshot({ path: join(evidence, "v5-separate-dates-shared-venue.png"), animations: "disabled" });
+    await activityMode.selectOption("unscheduled");
+    await arrangement.selectOption("hourly");
+    assert.equal(await newWizard.getByLabel("Number of delivery days").count(), 0);
+    await newWizard.screenshot({ path: join(evidence, "v5-ongoing-unscheduled.png"), animations: "disabled" });
     const staleEdit = await reviewProjectEdit(publisher.page, "This outdated edit should stay private.");
     const openedRevision = (await root.get()).get("revision");
     const concurrentSave = await publisher.context.request.patch(projectApi, {
@@ -1151,21 +1212,22 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await scheduledClient.page.getByRole("region", { name: "HR delivery metrics", exact: true }).waitFor();
       await captureReference(scheduledClient.page, "02-hr-department-1674x887", 1674, 887);
       await scheduledClient.page.goto(route("/clients/zagime"));
-      await scheduledClient.page.getByRole("region", { name: "Parent engagements", exact: true }).waitFor();
+      await scheduledClient.page.getByRole("region", { name: "Parent projects", exact: true }).waitFor();
       await auditViewport(scheduledClient.page, "Leadership parent cards", 1647, 868, { compactSidebar: true });
-      await scheduledClient.page.getByRole("region", { name: "Parent engagements", exact: true }).scrollIntoViewIfNeeded();
+      await scheduledClient.page.getByRole("region", { name: "Parent projects", exact: true }).scrollIntoViewIfNeeded();
       await scheduledClient.page.screenshot({ path: join(referenceEvidence, "03-leadership-engagements-1647x868.png"), animations: "disabled" });
     } finally {
       await scheduledClient.context.close();
     }
 
     await verifyExplorerScale();
-    assert.deepEqual(errors, []);
   } finally {
     await mainBrowser?.close();
     server.close();
     await once(server, "close");
+    await Promise.allSettled(inFlight);
     await rm(directory, { recursive: true, force: true });
     await runtime.close();
   }
+  assert.deepEqual(errors, []);
 });
