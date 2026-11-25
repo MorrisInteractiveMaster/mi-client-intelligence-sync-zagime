@@ -27,6 +27,7 @@ import { creationKey } from "./idempotency";
 import { FirestoreTenantStore, key } from "./firestore-store";
 import { allocateTimeBatch } from "./bulk-allocation";
 import { reviewProjectDeletion } from "./project-deletion";
+import { readPendingMappedEffort } from "./time-staff-effort";
 import {
   approvedProjectContent,
   managedProject,
@@ -116,6 +117,7 @@ export class ProjectStore {
         ...(a.staff
           ? {
               canPublish: a.platformAdmin || !portalSettings(a.meta.portalSettings).ownerPublishes,
+              operatorKey: key("time-allocation-session", tenant, who.subject),
               integrations: {
                 accounting: "disabled" as const,
                 time: "disabled" as const,
@@ -755,6 +757,9 @@ export class ProjectStore {
         const drafts = new Map((draftDocs.length ? await tx.getAll(...draftDocs) : []).map(d => [d.id, readProjectDraft(d, tenant)]));
         const effort = await readWorkOrderEffort(tx, a.root, docs.map(d => d.id), query.month,
           docs.map((d, i) => periodSeconds(periods[i], d.id, query.month)));
+        const pendingMapped = await readPendingMappedEffort(tx, a.root,
+          docs.filter((doc, index) => doc.get("delivery.kind") === "project" && effort[index].lifetimeRemainingSeconds > 0)
+            .map(doc => doc.id), query.month);
         const summaries = docs.map((d, i) => {
           if (d.data().tenantId !== tenant || d.data().id !== d.id)
             throw Error("Forbidden");
@@ -773,6 +778,7 @@ export class ProjectStore {
             ...projectView(project, views[i].data()!.lifetimeSeconds + effort[i].lifetimeRemainingSeconds),
             seconds: effort[i].assignedSeconds + effort[i].remainingSeconds,
             ...(effort[i].lifetimeRecordedSeconds || effort[i].recordedSeconds ? { workOrderEffort: effort[i] } : {}),
+            ...(pendingMapped.has(d.id) && { pendingMappedEffort: pendingMapped.get(d.id) }),
             ...(draft && { draft: draftMetadata(draft) }),
             ...(draftCaps && !isDeepStrictEqual(draftCaps, project.delivery && deliveryCaps(project.delivery)) ? { draftCaps } : {}),
             ...(d.data().delivery ? { delivery: d.data().delivery as Delivery } : {}),
@@ -943,7 +949,7 @@ export class ProjectBackend {
       requestIdentity.getStore()?.identity !== who
     )
       throw Error("Forbidden");
-    return new FirestoreTenantStore(this.store.db, 2).allocateReporting(
+    return new FirestoreTenantStore(this.store.db, 2, this.store.platformAdminUid).allocateReporting(
       tenant,
       who.subject,
       sourceId,
@@ -958,6 +964,6 @@ export class ProjectBackend {
     const who = await this.identity(token);
     if (!who.corporatePolicy || who.staffTenantId !== tenant || requestIdentity.getStore()?.identity !== who) throw Error("Forbidden");
     assertProductionTenant(target, tenant);
-    return allocateTimeBatch(new FirestoreTenantStore(this.store.db, 2), tenant, who.subject, input, idempotencyKey, this.policy.now(), signal);
+    return allocateTimeBatch(new FirestoreTenantStore(this.store.db, 2, this.store.platformAdminUid), tenant, who.subject, input, idempotencyKey, this.policy.now(), signal);
   }
 }

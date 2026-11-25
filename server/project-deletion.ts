@@ -46,7 +46,8 @@ export async function reviewProjectDeletion(
     if (children) blockers.push("Child projects");
     if (mapped || anchored || data.delivery?.workOrderIds?.length) blockers.push("QuickBooks Time mappings");
     if (source || data.source) blockers.push("Imported source records");
-    if (history || automatic || visibility.get("lifetimeSeconds") !== 0) blockers.push("Time allocation or reporting history");
+    if (automatic) blockers.push("Automatically classified time");
+    if (history || visibility.get("lifetimeSeconds") !== 0) blockers.push("Manual allocations, splits or reporting history");
     if (members) blockers.push("Client access assignments");
     if (portfolio.placements.some(item => item.id === id) || portfolio.directory.some(item => item.projectIds.includes(id)))
       blockers.push("Portfolio placements or directory assignments");

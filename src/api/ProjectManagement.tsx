@@ -10,7 +10,7 @@ import {
 import type { ServiceArea } from "../projects/portfolio";
 import { CalendarPicker } from "./CalendarPicker";
 import { ApiError, type SecuredApiClient } from "./client";
-import { projectStatus, reportDay, today } from "./dashboard-format";
+import { projectStatus, reportDay, reportHours, today } from "./dashboard-format";
 import { SearchableCombobox } from "./SearchableCombobox";
 import { SortControls, useSortedRows } from "./SortHeader";
 import "./project-management.css";
@@ -72,6 +72,7 @@ export function ProjectManagement({ client, tenant, selected, projects, areas, c
       {options.length > 1 && <SortControls fields={{ name: "Name", location: "Parent and department", workOrder: "Work order", status: "Status" }}
         sort={sorted.sort} onSort={sorted.setSort} label="Sort project choices" />}
     </div>
+    {Boolean(summary?.pendingMappedEffort?.monthly) && <p>{reportHours(summary!.pendingMappedEffort!.monthly)} h automatically classified and awaiting approval in the selected month.</p>}
     {selected ? <ProgressEditor key={selected} id={selected} path={path} client={client} tenant={tenant} areas={areas}
       legacyArea={summary?.reportPreview?.placement?.areaId}
       canPublish={canPublish} onSetup={onSetup} onDirty={onDirty} onDenied={onDenied} onSaved={onSaved} /> :

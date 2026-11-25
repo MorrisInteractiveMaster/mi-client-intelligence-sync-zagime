@@ -1,12 +1,15 @@
 import { readWorkOrderEffort } from "../server/time-totals";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { firebaseRuntime } from "../server/firebase";
 import { ProjectStore } from "../server/project-workspace";
 import { seedProjectSynthetic } from "../server/project-operator";
 import { TimeClient } from "../server/time-client";
 import { TimeSync } from "../server/time-sync";
-import { key } from "../server/firestore-store";
+import { FirestoreTenantStore, key } from "../server/firestore-store";
+import { allocateTimeBatch } from "../server/bulk-allocation";
+import { requestIdentity } from "../server/request-identity";
 import { sourceRecordId, type VerifiedIdentity } from "../server/contracts";
 
 test("verified customer discovery, registration, linking, daily reconciliation and recovery", async () => {
@@ -163,9 +166,10 @@ test("verified customer discovery, registration, linking, daily reconciliation a
           const update =
             job.id === 104 || (job.id === 101 && mode !== "initial");
           if (deleted !== (job.id === 101 && update)) return [];
-          const id = 600 + job.id;
+          const future = job.id === 104 && mode === "after-mapping";
+          const id = (future ? 1600 : 600) + job.id;
           const modified = update
-            ? "2026-11-07T11:00:00Z"
+            ? future ? "2026-11-08T11:00:00Z" : "2026-11-07T11:00:00Z"
             : "2026-11-06T11:00:00Z";
           if (
             Date.parse(modified) < Date.parse(query.get("modified_since")!) ||
@@ -401,9 +405,18 @@ test("verified customer discovery, registration, linking, daily reconciliation a
     const rawRef = root.collection("rawTime").doc(historicalId);
     const rawBefore = (await rawRef.get()).data()!;
     const checkpointBefore = (await checkpoint("104").get()).data();
-    const mapped = await sync.confirmMapping(tenant, who, "104", deliveryId, deliveryReview);
+    const impact = await sync.previewMapping(tenant, who, "104", deliveryId);
+    assert.equal(impact.active, 1);
+    assert.equal(impact.eligible, 1);
+    assert.equal(impact.recordedSeconds, 61);
+    assert.equal(impact.eligibleSeconds, 61);
+    const staleImpact = { ...deliveryReview, impactVersion: "a".repeat(64) };
+    await assert.rejects(sync.confirmMapping(tenant, who, "104", deliveryId, staleImpact), /Time mapping conflict/);
+    assert.equal((await map("104").get()).get("projectId"), pending.projectId);
+    const mapped = await sync.confirmMapping(tenant, who, "104", deliveryId, { ...deliveryReview, impactVersion: impact.version });
     assert.equal(mapped.changed, true);
     assert.equal(mapped.historical?.classified, 1);
+    assert.equal(mapped.historical?.progress?.done, true);
     const classification = (await root.collection("automaticTimeAllocations").doc(historicalId).get()).data()!;
     assert.equal(classification.seconds, 61);
     assert.equal(classification.projectId, deliveryId);
@@ -418,6 +431,42 @@ test("verified customer discovery, registration, linking, daily reconciliation a
     await assert.rejects(sync.confirmMapping(tenant, who, "104", existingProject, { ...deliveryReview, targetKind: "engagement" }), /Time mapping conflict/);
     assert.equal((await map("104").get()).get("scopeProjectId"), pending.projectId);
     assert.equal((await sync.status(tenant, who, "2026-11")).recordedSeconds, 244);
+    const deliveryView = root.collection("projectViews").doc(deliveryId);
+    const projects = new ProjectStore(runtime.db);
+    await root.collection("memberships").doc(key("approved-client")).set({
+      schemaVersion: 2, tenantId: tenant, subject: "approved-client", role: "client", approved: true,
+      enabled: true, projectIds: [deliveryId],
+    });
+    // Synthetic fixture publication keeps the approved report scoped to a
+    // single delivery project while staff-review Time remains private.
+    await deliveryProject.update({ published: true });
+    await deliveryView.update({ published: true });
+    const clientIdentity = { ...identity("approved-client"), corporatePolicy: undefined, staffTenantId: undefined };
+    const report = () => projects.report(tenant, clientIdentity, "2026-11");
+    assert.equal((await report()).projects.find(project => project.id === deliveryId)?.seconds, 0);
+
+    mode = "after-mapping";
+    now = Date.parse("2026-11-08T12:00:00Z");
+    await sync.daily(tenant);
+    const arrivedId = sourceRecordId("quickbooks-time", account, "1704");
+    const arrived = (await root.collection("automaticTimeAllocations").doc(arrivedId).get()).data()!;
+    assert.equal(arrived.projectId, deliveryId);
+    assert.equal(arrived.seconds, 61);
+    assert.equal((await report()).projects.find(project => project.id === deliveryId)?.seconds, 0);
+    const approvalKey = now + "-" + randomUUID();
+    const approval = () => requestIdentity.run({ identity: who }, () => allocateTimeBatch(
+      new FirestoreTenantStore(runtime.db, 2), tenant, who.subject, {
+        projectId: deliveryId, approveAutomatic: true, entries: [classification, arrived].map((item, index) => ({
+          sourceId: index ? arrivedId : historicalId, expectedSourceRevision: item.sourceRevision, expectedAllocationRevision: 0,
+        })),
+      }, approvalKey, now,
+    ));
+    assert.deepEqual((await approval()).outcomes.map(item => item.status), ["saved", "saved"]);
+    assert.deepEqual((await approval()).outcomes.map(item => item.status), ["already_saved", "already_saved"]);
+    assert.equal((await report()).projects.find(project => project.id === deliveryId)?.seconds, 122);
+    assert.equal((await root.collection("allocationHeads").doc(arrivedId).get()).get("provenance"), "approved-automatic");
+    assert.equal((await root.collection("automaticTimeAllocations").doc(arrivedId).get()).exists, false);
+    assert.deepEqual((await rawRef.get()).data(), rawBefore);
     const audits = await root.collection("audits").get();
     assert.equal(
       audits.docs.filter(

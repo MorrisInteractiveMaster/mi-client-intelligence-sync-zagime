@@ -3,6 +3,14 @@ import { deliveryKindNames } from "../projects/delivery";
 import type { ProjectDeletionReview } from "../projects/model";
 import type { SecuredApiClient } from "./client";
 import { ManagementDialog } from "./ManagementDialog";
+import { PlatformLink } from "./PlatformHome";
+
+function dependencyDestination(reason: string, id: string) {
+  if (/child/i.test(reason)) return { path: "/workspace/projects?project-parent=" + id, label: "Review child projects" };
+  if (/mapping|imported source/i.test(reason)) return { path: "/workspace/time/mapping", label: "Review work-order mapping" };
+  if (/classified|allocations|splits/i.test(reason)) return { path: "/workspace/time", label: "Review Time Allocation" };
+  return { path: "/workspace/project-management/" + id, label: "Review project status and publication" };
+}
 
 export function ProjectDeletion({ id, client, tenant, close, onDeleted }: {
   id: string;
@@ -46,7 +54,11 @@ export function ProjectDeletion({ id, client, tenant, close, onDeleted }: {
       <p>{review.published ? "Published" : "Private"} · {review.milestones} milestones · {review.activeBlocker ? "Active blocker" : "No active blocker"}</p>
       {review.blockers.length ? <>
         <p>These dependencies prevent permanent deletion.</p>
-        <ul>{review.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul>
+        <ul>{review.blockers.map(blocker => {
+          const target = dependencyDestination(blocker, id);
+          return <li key={blocker}>{blocker} <PlatformLink href={target.path} onClick={close}>{target.label}</PlatformLink></li>;
+        })}</ul>
+        <p>For a project that must retain its history, review its delivery status in Project Management. Closing the project preserves reporting history.</p>
       </> : <>
         <p>This permanently removes the project, including its milestones and updates.</p>
         <label>Type the exact project name<input autoComplete="off" value={name} onChange={event => setName(event.target.value)} /></label>

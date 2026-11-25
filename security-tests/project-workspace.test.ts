@@ -928,6 +928,12 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       const initialTimeViewport = first.page.viewportSize()!;
       const timeLayout = [await auditViewport(first.page, "Legacy Time Allocation", 1440, 1000, { compactSidebar: true })];
       await first.page.screenshot({ path: join(evidence, "time-allocation.png"), fullPage: true, animations: "disabled" });
+      const filterForm = first.page.getByRole("form", { name: "Time entry filters" });
+      await filterForm.getByText("Advanced filters", { exact: true }).click();
+      await filterForm.getByRole("combobox", { name: "Parent Project", exact: true }).waitFor();
+      await filterForm.getByRole("combobox", { name: "Mapping status", exact: true }).waitFor();
+      await filterForm.screenshot({ path: join(evidence, "v5-time-parent-and-mapping-filters.png"), animations: "disabled" });
+      await filterForm.getByText("Advanced filters", { exact: true }).click();
       assert.equal(await staffNavigation.getByRole("button", { name: "Time Allocation", exact: true }).getAttribute("aria-current"), "page");
       for (const [width, height] of [[1024, 768], [768, 1024], [390, 844], [320, 568]]) {
         timeLayout.push(await auditViewport(first.page, "Legacy Time Allocation", width, height, { compactSidebar: true }));

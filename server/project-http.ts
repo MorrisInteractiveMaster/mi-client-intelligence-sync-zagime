@@ -77,7 +77,7 @@ export async function projectRequest(
     return { status: 200, body: sourceUpdatedAt ? { ...report, sourceUpdatedAt } : report };
   }
   const timeRoute =
-    /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/time(?:\/(mapping|sync|classify-history))?$/.exec(
+    /^\/api\/v2\/tenants\/([-a-zA-Z0-9_]{1,128})\/time(?:\/(mapping|mapping-impact|sync|classify-history))?$/.exec(
       url.pathname,
     );
   if (timeRoute && time) {
@@ -116,7 +116,7 @@ export async function projectRequest(
         Object.keys(body).some(
           (k) =>
             !(
-              action === "mapping" ? ["jobcodeId", "projectId", "review"] :
+              action === "mapping" ? ["jobcodeId", "projectId", "review"] : action === "mapping-impact" ? ["jobcodeId", "projectId"] :
                 action === "classify-history" ? ["jobcodeId", "after"] : ["jobcodeId"]
             ).includes(k),
         )
@@ -124,6 +124,10 @@ export async function projectRequest(
         throw Error("Invalid Time request");
       if (action === "mapping" && typeof body.projectId !== "string")
         throw Error("Invalid project ID");
+      if (action === "mapping-impact") {
+        if (typeof body.projectId !== "string") throw Error("Invalid project ID");
+        return { status: 200, body: await time.previewMapping(tenant, who, body.jobcodeId, body.projectId) };
+      }
       if (action === "classify-history") {
         if (body.after !== undefined && typeof body.after !== "string") throw Error("Invalid classification cursor");
         return { status: 200, body: await time.applyHistoricalMapping(tenant, who, body.jobcodeId, body.after) };
@@ -133,7 +137,7 @@ export async function projectRequest(
         body:
           action === "mapping"
             ? time.requiresMappingReview()
-              ? await time.confirmMapping(tenant, who, body.jobcodeId, body.projectId, parseTimeMappingReview(body.review))
+              ? await time.confirmMapping(tenant, who, body.jobcodeId, body.projectId, parseTimeMappingReview(body.review), true)
               : await time.approve(tenant, who, body.jobcodeId, body.projectId, disconnected)
             : await time.sync(tenant, who, body.jobcodeId, disconnected),
       };

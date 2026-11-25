@@ -106,6 +106,7 @@ export type ProjectView = Pick<
 export type StaffProjectSummary = ProjectView & {
   seconds: number;
   workOrderEffort?: import("./effort").WorkOrderEffort;
+  pendingMappedEffort?: { monthly: number; lifetime: number };
   draft?: ProjectDraftMetadata;
   draftCaps?: DeliveryCaps;
   delivery?: Delivery;
@@ -132,6 +133,7 @@ export interface ProjectWorkspace {
   integrations?: { accounting: "disabled"; time: "disabled" };
   platformAdmin?: true;
   canPublish?: boolean;
+  operatorKey?: string;
 }
 export interface ProjectReport {
   month: string;

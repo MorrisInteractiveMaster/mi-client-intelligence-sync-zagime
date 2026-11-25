@@ -9,12 +9,13 @@ import { precedingTimeMonth, reportingTimeMonth, timeEntrySortFields, timeSortOr
 import { SortHeader, type SortState } from "./SortHeader";
 import { ApiError, type SecuredApiClient } from "./client";
 import { reportDay, reportHours, reportMonth, reportTimestamp } from "./dashboard-format";
-import { canSelectTimeForBulk, sourceStatus, type AllocationAnnotations, type HistoryRow, type SourceFilters, type SourceSummary, type StaffSource } from "./types";
+import { canSelectTimeForBulk, sourceMappingLabels, sourceStatus, type AllocationAnnotations, type HistoryRow, type SourceFilters, type SourceSummary, type StaffSource } from "./types";
 import { BulkAllocationResults } from "./BulkAllocationResults";
 import { TimeHistorySummary } from "./TimeHistorySummary";
 import { CsvExport } from "./CsvExport";
 import { allAuthorizedRows, authorizedPages, sourceCsv } from "./report-csv";
 import { PlatformLink } from "./PlatformHome";
+import { SearchableCombobox } from "./SearchableCombobox";
 import { MAX_BULK_ALLOCATION_ENTRIES, type BulkAllocationRequest, type BulkAllocationResponse } from "../projects/bulk-allocation";
 import "./time-allocation.css";
 
@@ -26,6 +27,20 @@ const entryLabels: Record<TimeEntrySortField, string> = {
 };
 type AppliedFilters = SourceFilters & { search?: string };
 type BulkBatch = { key: string; body: BulkAllocationRequest; labels: Record<string, string> };
+function recoverBulk(key?: string): BulkBatch | undefined {
+  if (!key) return;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return;
+    const value = JSON.parse(raw) as BulkBatch;
+    const started = Number(value.key.split("-")[0]);
+    if (!Number.isSafeInteger(started) || Date.now() - started >= 86_400_000 || !value.body.entries.length) {
+      sessionStorage.removeItem(key);
+      return;
+    }
+    return { ...value, labels: {} };
+  } catch { return; }
+}
 const timePresets = {
   all: "All History", current: "This Month", previous: "Previous Month", year: "This Year",
   priorYear: "Last Year", specific: "Specific month", quarter: "Specific quarter", range: "Custom Date Range",
@@ -50,6 +65,8 @@ type Props = {
   onDenied: () => void; onSaved: () => void;
   sourceLink?: { id?: string; href(id: string): string; backHref: string };
   onUnsavedChange?: (dirty: boolean) => void;
+  canPublish?: boolean;
+  operatorKey?: string;
   initialConsultant?: string;
   initialWorkOrder?: string;
   initialPeriod?: string | null;
@@ -61,7 +78,8 @@ export function TimeAllocation(props: Props) {
   return <MonthAllocation key={JSON.stringify([props.tenant, props.month, props.sourceLink?.id, props.initialConsultant, props.initialWorkOrder, props.initialPeriod, props.initialStart, props.initialEnd, props.initialStatus])} {...props} />;
 }
 
-function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied, onSaved, sourceLink, onUnsavedChange, initialConsultant, initialWorkOrder, initialPeriod, initialStart, initialEnd, initialStatus }: Props) {
+function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied, onSaved, sourceLink, onUnsavedChange, initialConsultant, initialWorkOrder, initialPeriod, initialStart, initialEnd, initialStatus, canPublish, operatorKey }: Props) {
+  const journalKey = operatorKey ? "morris-time-pending-" + operatorKey : undefined;
   const linkedConsultant = initialConsultant && /^[A-Za-z0-9_-]{1,128}$/.test(initialConsultant) ? initialConsultant : "";
   const linkedWorkOrder = initialWorkOrder && /^[A-Za-z0-9_-]{1,128}$/.test(initialWorkOrder) ? initialWorkOrder : "";
   const linkedStart = initialPeriod === "range" && calendarDate(initialStart) && calendarDate(initialEnd) && initialStart <= initialEnd ? initialStart : undefined;
@@ -91,21 +109,29 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   const [consultant, setConsultant] = useState(linkedConsultant);
   const [consultants, setConsultants] = useState<string[]>([]);
   const [area, setArea] = useState("");
+  const routeFilters = new URLSearchParams(window.location.search);
+  const initialParent = routeFilters.get("time-parent");
+  const initialMapping = routeFilters.get("time-mapping");
+  const [parentFilter, setParentFilter] = useState(initialParent && /^[a-zA-Z0-9_-]{1,128}$/.test(initialParent) ? initialParent : "");
+  const [mappingFilter, setMappingFilter] = useState<SourceFilters["mapping"]>(
+    initialMapping && Object.hasOwn(sourceMappingLabels, initialMapping) ? initialMapping as SourceFilters["mapping"] : undefined);
   const [projectFilter, setProjectFilter] = useState("");
   const [provenance, setProvenance] = useState<SourceFilters["provenance"]>();
   const [from, setFrom] = useState("");
   const [through, setThrough] = useState("");
   const [selected, setSelected] = useState<StaffSource[]>([]);
   const [bulkProject, setBulkProject] = useState("");
-  const [batch, setBatch] = useState<BulkBatch>();
+  const [bulkDepartment, setBulkDepartment] = useState("");
+  const [approveAutomatic, setApproveAutomatic] = useState(false);
+  const [bulkProcessed, setBulkProcessed] = useState(0);
+  const [batch, setBatch] = useState<BulkBatch | undefined>(() => recoverBulk(journalKey));
   const [bulkResult, setBulkResult] = useState<BulkAllocationResponse>();
-  const [unconfirmed, setUnconfirmed] = useState<BulkAllocationRequest>();
+  const [unconfirmed, setUnconfirmed] = useState<BulkAllocationRequest | undefined>(() => batch?.body);
   const bulkInFlight = useRef(false);
   const [editor, setEditor] = useState<StaffSource>();
   const [portions, setPortions] = useState<Allocation[]>([]);
   const [annotations, setAnnotations] = useState<AllocationAnnotations>(blank);
   const [projectSearch, setProjectSearch] = useState("");
-  const [parentSearch, setParentSearch] = useState("");
   const [parent, setParent] = useState("");
   const [classification, setClassification] = useState("");
   const [history, setHistory] = useState<HistoryRow[]>();
@@ -151,7 +177,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       setApplied(requestFilters);
       setAppliedMonth(anchor);
       setCursor(page.nextCursor);
-      if (!next && !keepSelection) setSelected([]);
+      if (!next && !keepSelection) { setSelected([]); setApproveAutomatic(false); }
       if (openLinked && page.sources?.[0]) edit(page.sources[0]);
     } catch (e) { if (!controller.signal.aborted) failed(e); }
     finally { if (!controller.signal.aborted) setBusy(false); }
@@ -162,7 +188,8 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     setSearch(""); setStatus(linkedStatus); setWorkOrder(linkedWorkOrder); setConsultant(linkedConsultant); setArea(""); setProjectFilter("");
     setFrom(""); setThrough(""); setEditor(undefined); setSelected([]); setUndo(undefined); setNotice("");
     const initialFilters: AppliedFilters = linkedId ? { period: "all", entry: linkedId }
-      : { period: linkedPeriod, start: linkedStart, end: linkedEnd, status: linkedStatus, consultant: linkedConsultant, workOrder: linkedWorkOrder };
+      : { period: linkedPeriod, start: linkedStart, end: linkedEnd, status: linkedStatus, consultant: linkedConsultant,
+        workOrder: linkedWorkOrder, parent: parentFilter, mapping: mappingFilter };
     const params = new URLSearchParams(window.location.search);
     const linkedSort = timeEntrySortFields.find(field => field === params.get("entry-sort"));
     if (!linkedId && linkedSort) Object.assign(initialFilters, { sort: linkedSort, direction: params.get("entry-direction") === "desc" ? "desc" : "asc" });
@@ -179,6 +206,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   const draftAnnotations = { reportingDescription: annotations.reportingDescription, internalNote: annotations.internalNote,
     ...(parent ? { parentId: parent } : {}), ...(classification ? { areaId: classification } : {}) };
   const defaultParent = (source: StaffSource) => {
+    if (source.reportingParentId) return source.reportingParentId;
     if (source.automaticClassification) return source.automaticClassification.parentId;
     const target = projects.find(project => project.id === (source.reportingProjectId ?? source.sourceProjectId));
     if (target?.delivery?.kind === "engagement") return target.id;
@@ -204,7 +232,6 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     setHistory(undefined);
     setHistoryCursor(undefined);
     setProjectSearch("");
-    setParentSearch("");
     setParent(source.annotations?.parentId ?? defaultParent(source));
     setClassification(source.annotations?.areaId ?? defaultDepartment(source));
   }
@@ -265,6 +292,8 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     applied.consultants ? applied.consultants.split(",").length + " consultants selected" : "",
     applied.provenance ? "Classification: " + applied.provenance : "",
     applied.area ? "Department: " + areaLabel(applied.area) : "",
+    applied.parent ? "Parent Project: " + projectName(applied.parent) : "",
+    applied.mapping ? "Mapping: " + sourceMappingLabels[applied.mapping] : "",
     applied.project ? "Project: " + projectName(applied.project) : "",
     applied.from ? "From " + reportDay(applied.from) : "",
     applied.through ? "Through " + reportDay(applied.through) : "",
@@ -284,28 +313,29 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   };
   const header = (field: TimeEntrySortField) => linkedId ? <th scope="col">{entryLabels[field]}</th> :
     <SortHeader field={field} label={entryLabels[field]} sort={entrySort} onSort={sortEntries} disabled={busy} />;
-  const canBulk = selectedRows.length > 0 && selectedRows.length <= MAX_BULK_ALLOCATION_ENTRIES && bulkProject &&
-    selectedRows.every(canSelectTimeForBulk);
-  async function selectMatches() {
+  const bulkParents = new Set(selectedRows.map(row => row.reportingParentId).filter(Boolean));
+  const bulkTargets = projects.filter(project => canAllocateToDelivery(project.delivery) &&
+    (!bulkParents.size || bulkParents.size === 1 && bulkParents.has(resolvedParent(project.id))) &&
+    (!bulkDepartment || resolvedArea(project.id) === bulkDepartment));
+  const canBulk = selectedRows.length > 0 && (approveAutomatic ? canPublish && bulkProject &&
+    selectedRows.every(row => row.automaticClassification?.projectId === bulkProject) :
+    bulkTargets.some(project => project.id === bulkProject) && selectedRows.every(canSelectTimeForBulk));
+  async function selectMatches(automatic = false) {
     if (busy || !summary?.matched) return;
     const controller = new AbortController();
     request.current = controller;
     setBusy(true);
     setError("");
     try {
-      const query = new URLSearchParams({ month: appliedMonth, limit: String(MAX_BULK_ALLOCATION_ENTRIES), selection: "bulk" });
+      const query = new URLSearchParams({ month: appliedMonth, selection: automatic ? "automatic" : "bulk" });
       for (const [name, value] of Object.entries(applied)) if (value) query.set(name, value);
-      const results = await client.call<ProjectPage>(tenant, "sources?" + query, { signal: controller.signal });
+      const available = await allAuthorizedRows("sources", query, controller.signal, authorizedPages(client, tenant));
       if (!mounted.current || controller.signal.aborted) return;
-      const count = results.sourceSummary?.matched;
-      if (count === undefined) throw Error("The server did not provide selection counts.");
-      if (count > MAX_BULK_ALLOCATION_ENTRIES) {
-        setError(count + " eligible entries match. Narrow the filters to " + MAX_BULK_ALLOCATION_ENTRIES + " or select individual entries.");
-        return;
-      }
-      const available = results.sources ?? [];
-      if (available.length !== count || available.some(row => !canSelectTimeForBulk(row))) throw Error("The selection changed. Try again.");
+      if (available.some(row => automatic ? !row.automaticClassification || row.automaticClassification.projectId !== applied.project :
+        !canSelectTimeForBulk(row))) throw Error("The selection changed. Try again.");
       setSelected(available);
+      setApproveAutomatic(automatic);
+      if (automatic && applied.project) setBulkProject(applied.project);
       setNotice(available.length + " eligible entries selected across all matches.");
     } catch (reason) {
       if (mounted.current && !controller.signal.aborted) failed(reason);
@@ -333,26 +363,47 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     if (bulkInFlight.current) return;
     bulkInFlight.current = true;
     setBusy(true); setError(""); setNotice(""); setUndo(undefined);
+    setBulkProcessed(0);
+    let offset = 0;
+    let changed = false;
+    const retryableEntries: BulkAllocationRequest["entries"] = [];
+    function journal(entries: BulkAllocationRequest["entries"]) {
+      if (!journalKey) return;
+      try {
+        if (entries.length) sessionStorage.setItem(journalKey, JSON.stringify({ key: current.key, body: { ...body, entries } }));
+        else sessionStorage.removeItem(journalKey);
+      } catch { /* Retry remains available within the open workspace. */ }
+    }
+    journal(body.entries);
     try {
-      const response = await client.call<BulkAllocationResponse>(tenant, "allocations/bulk", { method: "POST", key: current.key, body });
+      while (offset < body.entries.length && mounted.current) {
+        const entries = body.entries.slice(offset, offset + MAX_BULK_ALLOCATION_ENTRIES);
+        const response = await client.call<BulkAllocationResponse>(tenant, "allocations/bulk", {
+          method: "POST", key: current.key, body: { ...body, entries },
+        });
+        if (!mounted.current) return;
+        const returned = new Set(response.outcomes.map(row => row.sourceId));
+        if (returned.size !== entries.length || response.outcomes.length !== entries.length ||
+          entries.some(entry => !returned.has(entry.sourceId))) throw Error("Incomplete bulk result");
+        const retryable = new Set(response.outcomes.filter(row => row.status === "retryable").map(row => row.sourceId));
+        retryableEntries.push(...entries.filter(entry => retryable.has(entry.sourceId)));
+        offset += entries.length;
+        journal([...retryableEntries, ...body.entries.slice(offset)]);
+        setBulkProcessed(offset);
+        changed ||= response.outcomes.some(outcome => outcome.status === "saved" || outcome.status === "already_saved");
+        setBulkResult(previous => {
+          const outcomes = new Map(previous?.outcomes.map(outcome => [outcome.sourceId, outcome]));
+          for (const outcome of response.outcomes) outcomes.set(outcome.sourceId, outcome);
+          return { outcomes: [...outcomes.values()] };
+        });
+      }
       if (!mounted.current) return;
-      const returned = new Set(response.outcomes.map(row => row.sourceId));
-      if (returned.size !== body.entries.length || response.outcomes.length !== body.entries.length ||
-        body.entries.some(entry => !returned.has(entry.sourceId))) throw Error("Incomplete bulk result");
       setUnconfirmed(undefined);
-      setBulkResult(previous => {
-        const outcomes = new Map(previous?.outcomes.map(outcome => [outcome.sourceId, outcome]));
-        for (const outcome of response.outcomes) outcomes.set(outcome.sourceId, outcome);
-        return { outcomes: current.body.entries.flatMap(entry => {
-          const outcome = outcomes.get(entry.sourceId);
-          return outcome ? [outcome] : [];
-        }) };
-      });
-      if (response.outcomes.some(outcome => outcome.status === "saved" || outcome.status === "already_saved")) onSaved();
+      if (changed) onSaved();
       await load();
     } catch (e) {
       if (!mounted.current) return;
-      setUnconfirmed(body);
+      setUnconfirmed({ ...body, entries: [...retryableEntries, ...body.entries.slice(offset)] });
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) failed(e);
       else setError("The server outcome could not be confirmed. Check the result with the same request.");
     } finally {
@@ -361,10 +412,13 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     }
   }
   function bulk() {
-    if (!canBulk || unconfirmed || !confirm("Assign all recorded time on " + selectedRows.length + " selected entries to " + projectName(bulkProject) + "?")) return;
+    const confirmation = approveAutomatic
+      ? "Approve the selected mapped hours for reporting? Authorized clients can see approved effort on published projects."
+      : "Assign all recorded time on " + selectedRows.length + " selected entries to " + projectName(bulkProject) + "?";
+    if (!canBulk || unconfirmed || !confirm(confirmation)) return;
     const current = {
       key: Date.now() + "-" + crypto.randomUUID(),
-      body: { projectId: bulkProject, entries: selectedRows.map(source => ({
+      body: { projectId: bulkProject, ...(approveAutomatic && { approveAutomatic: true as const }), entries: selectedRows.map(source => ({
         sourceId: source.id, expectedSourceRevision: source.sourceRevision, expectedAllocationRevision: source.allocationRevision,
       })) },
       labels: Object.fromEntries(selectedRows.map(source => [source.id,
@@ -408,8 +462,13 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     </form>
     <form className="time-filter-form" aria-label="Time entry filters" onSubmit={event => {
       event.preventDefault();
+      const url = new URL(window.location.href);
+      for (const [key, value] of [["time-parent", parentFilter], ["time-mapping", mappingFilter]] as const) {
+        if (value) url.searchParams.set(key, value); else url.searchParams.delete(key);
+      }
+      window.history.replaceState(window.history.state, "", url);
       void load(undefined, { ...applied, search: search.trim(), status, workOrder, consultant, consultants: consultants.join(","),
-        provenance, area, project: projectFilter, from, through });
+        provenance, parent: parentFilter, mapping: mappingFilter, area, project: projectFilter, from, through });
     }}>
       <label>{summary?.period.kind === "month" || !summary ? "Search month" : "Search period"}<input type="search" value={search} maxLength={120} onChange={e => setSearch(e.target.value)} /></label>
       <details className="time-advanced time-filter-options"><summary>Advanced filters</summary><div className="time-advanced-grid">
@@ -434,8 +493,19 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
         <option value="">All</option><option value="automatic">Automatic mapping</option>
         <option value="manual">Manual allocation</option><option value="unclassified">No delivery classification</option>
       </select></label>
-      <label>Department<select value={area} onChange={e => setArea(e.target.value)}><option value="">All</option>{portfolio?.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-      <label>Project<select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}><option value="">All</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+      <label>Parent Project<select value={parentFilter} onChange={e => {
+        setParentFilter(e.target.value); setArea(""); setProjectFilter("");
+      }}><option value="">All</option>{projects.filter(p => p.delivery?.kind === "engagement" && !p.delivery.parentId)
+        .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+      <label>Department<select value={area} onChange={e => { setArea(e.target.value); setProjectFilter(""); }}><option value="">All</option>{portfolio?.areas
+        .filter(item => !parentFilter || projects.some(p => resolvedParent(p.id) === parentFilter && resolvedArea(p.id) === item.id))
+        .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+      <label>Delivery Project<select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}><option value="">All</option>{projects
+        .filter(p => p.delivery?.kind !== "engagement" && p.delivery?.kind !== "service-area" &&
+          (!parentFilter || resolvedParent(p.id) === parentFilter) && (!area || resolvedArea(p.id) === area))
+        .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+      <label>Mapping status<select value={mappingFilter ?? ""} onChange={e => setMappingFilter((e.target.value || undefined) as SourceFilters["mapping"])}><option value="">All</option>
+        {Object.entries(sourceMappingLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
       <label>Allocation status<select value={status ?? ""} onChange={e => setStatus((e.target.value || undefined) as SourceFilters["status"])}><option value="">All</option><option value="queue">Has unallocated time</option>{Object.entries(sourceStatusLabels).map(([id,label]) => <option key={id} value={id}>{label}</option>)}</select></label>
       <label>From<input type="date" min={summary?.period.start} max={summary?.period.end} value={from} onChange={e => setFrom(e.target.value)} /></label>
       <label>Through<input type="date" min={from || summary?.period.start} max={summary?.period.end} value={through} onChange={e => setThrough(e.target.value)} /></label>
@@ -443,6 +513,10 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       <button type="submit" disabled={busy}>Apply filters</button>
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
         setSearch(""); setStatus(undefined); setWorkOrder(""); setConsultant(""); setConsultants([]); setProvenance(undefined);
+        setParentFilter(""); setMappingFilter(undefined);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("time-parent"); url.searchParams.delete("time-mapping");
+        window.history.replaceState(window.history.state, "", url);
         setArea(""); setProjectFilter(""); setFrom(""); setThrough("");
         const { period, start, end, order, group, sort, direction } = applied;
         void load(undefined, { period, start, end, order, group, sort, direction });
@@ -484,18 +558,36 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     {undo && <button type="button" className="secure-secondary" disabled={busy} onClick={() => { const prior = undo; setUndo(undefined); void save(prior.source, prior.source.portions, prior.source.annotations ?? blank, prior.revision, false); }}>Undo last change</button>}
     {!!rows?.length && !linkedId && <div className="secure-actions" aria-label="Select time entries">
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
+        setApproveAutomatic(false);
         setSelected(lastPage.filter(canSelectTimeForBulk));
       }}>Select eligible entries on this page</button>
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => void selectMatches()}>Select all eligible matches</button>
-      {selected.length > 0 && <button type="button" className="secure-secondary" disabled={busy} onClick={() => setSelected([])}>Clear selection</button>}
+      {canPublish && applied.project && <button type="button" className="secure-secondary" disabled={busy}
+        onClick={() => void selectMatches(true)}>Select this project’s automatic classifications</button>}
+      {selected.length > 0 && <button type="button" className="secure-secondary" disabled={busy}
+        onClick={() => { setSelected([]); setApproveAutomatic(false); }}>Clear selection</button>}
     </div>}
     {selected.length > 0 && <div className="delivery-section-heading">
-      <label>Assign {selected.length} unallocated entries<select value={bulkProject} onChange={e => setBulkProject(e.target.value)}><option value="">Choose project</option>{projects.filter(p => canAllocateToDelivery(p.delivery)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+      {!approveAutomatic && <><label>Destination department<select value={bulkDepartment} onChange={e => { setBulkDepartment(e.target.value); setBulkProject(""); }}>
+        <option value="">All compatible departments</option>{portfolio?.areas.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <label>Assign {selected.length} unallocated entries<select value={bulkProject} onChange={e => setBulkProject(e.target.value)}><option value="">Choose project</option>{bulkTargets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label></>}
+      <p>{selectedRows.length} selected · {reportHours(selectedRows.reduce((sum, row) => sum + row.seconds, 0))} h recorded ·
+        {" "}{reportHours(selectedRows.reduce((sum, row) => sum + row.unallocatedSeconds, 0))} h available</p>
+      {bulkParents.size > 1 && <p>Selected entries belong to different Parent Projects. Filter to one parent before assigning.</p>}
       {bulkProject && <p>{reportHours(selectedRows.reduce((sum, row) => sum + row.unallocatedSeconds, 0))} h to classify ·
         {" "}{[resolvedParent(bulkProject) && projectName(resolvedParent(bulkProject)), resolvedArea(bulkProject) && areaLabel(resolvedArea(bulkProject)),
           projectName(bulkProject)].filter(Boolean).join(" / ")}</p>}
-      <button type="button" disabled={busy || !canBulk || Boolean(unconfirmed)} onClick={bulk}>Assign selected time</button></div>}
-    {batch && unconfirmed && <button type="button" disabled={busy} onClick={() => void submitBulk(batch, unconfirmed)}>Check this bulk request again</button>}
+      <button type="button" disabled={busy || !canBulk || Boolean(unconfirmed)} onClick={bulk}>{approveAutomatic ? "Approve selected effort" : "Assign selected time"}</button></div>}
+    {busy && batch && <p role="status">{bulkProcessed} entries checked in this request.</p>}
+    {batch && unconfirmed && <div className="secure-actions">
+      <span>{unconfirmed.entries.length} entries in the saved operation</span>
+      <button type="button" disabled={busy} onClick={() => void submitBulk(batch, unconfirmed)}>Check this bulk request again</button>
+      <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
+        if (!confirm("Discard this pending request? Previous successful allocations stay saved.")) return;
+        try { if (journalKey) sessionStorage.removeItem(journalKey); } catch { /* The request can be cleared from this view. */ }
+        setUnconfirmed(undefined);
+      }}>Discard pending request</button>
+    </div>}
     {batch && bulkResult && <BulkAllocationResults result={bulkResult} describeEntry={id => batch.labels[id] ?? id} busy={busy}
       onRetry={unconfirmed ? undefined : () => {
         const retryable = new Set(bulkResult.outcomes.filter(outcome => outcome.status === "retryable").map(outcome => outcome.sourceId));
@@ -514,7 +606,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       <table role="table"><thead role="rowgroup"><tr role="row"><th scope="col">Select</th>{header("date")}{showConsultant && header("consultant")}{showNotes && header("notes")}
         {header("workOrder")}{header("recorded")}{header("reporting")}{header("assignment")}{header("status")}<th scope="col">Actions</th></tr></thead>
       <tbody role="rowgroup">{rows.map(source => <tr key={source.id} role="row">
-        <td role="cell" data-cell="Select"><input aria-label={"Select entry on " + source.date} type="checkbox" disabled={!canSelectTimeForBulk(source)}
+        <td role="cell" data-cell="Select"><input aria-label={"Select entry on " + source.date} type="checkbox" disabled={approveAutomatic || !canSelectTimeForBulk(source)}
           checked={selected.some(row => row.id === source.id)} onChange={e => setSelected(old => e.target.checked ? [...old, source] : old.filter(row => row.id !== source.id))} /></td>
         <td role="cell" data-cell="Date">{reportDay(source.date)}</td>
         {showConsultant && <td role="cell" data-cell="Consultant"><div className="time-profile">
@@ -529,6 +621,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
           </div> : "Unassigned"}
           {(source.annotations?.parentId || source.annotations?.areaId) && <small>Reporting: {source.annotations.parentId ? projectName(source.annotations.parentId) + " · " : ""}{areaLabel(source.annotations.areaId ?? "")}</small>}</td>
         <td role="cell" data-cell="Status">{source.automaticClassification ? "Automatically classified · staff only" : sourceStatusLabels[sourceStatus(source)]}<small>{reportHours(source.unallocatedSeconds)} h awaiting approved allocation</small>
+          {source.mappingStatus && <small>{sourceMappingLabels[source.mappingStatus]}</small>}
           <small>{approvalLabel(source)}</small></td>
         <td role="cell" data-cell="Actions"><button type="button" className="platform-primary-action" disabled={busy} onClick={() => edit(source)}>Manage Time</button></td>
       </tr>)}</tbody></table></div>}
@@ -536,10 +629,10 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     {editor && <dialog className="time-alloc-drawer" ref={drawer} aria-label="Time allocation" onCancel={e => { e.preventDefault(); if (!busy) close(); }}>
       <div className="delivery-section-heading time-drawer-heading"><h3 ref={heading} tabIndex={-1}>Allocate {reportHours(editor.seconds)} recorded hours</h3><button type="button" className="secure-secondary" aria-label="Close allocation" disabled={busy} onClick={() => close()}><X size={18} aria-hidden="true" /></button></div>
       <p>{reportDay(editor.date)} · {editor.workOrderName || editor.sourceWorkOrderId} · {editor.seconds.toLocaleString("en-CA")} original seconds</p>
+      {editor.description && <div className="time-original-note"><strong>Original QuickBooks Time Description</strong><p>{editor.description}</p></div>}
       <details><summary>Original source details</summary><dl>
         {editor.consultantName && <div><dt>Consultant name</dt><dd>{editor.consultantName}</dd></div>}
         {editor.sourcePersonId && <div><dt>Consultant identifier</dt><dd>{editor.sourcePersonId}</dd></div>}
-        {editor.description && <div><dt>Original QuickBooks Time Description</dt><dd className="time-original-note">{editor.description}</dd></div>}
         <div><dt>Accounting approval</dt><dd>{approvalLabel(editor)}</dd></div>
         <div><dt>Source revision</dt><dd><code>{editor.sourceRevision}</code></dd></div>
         {editor.modifiedAt && <div><dt>Source last modified</dt><dd>{reportTimestamp(editor.modifiedAt)}</dd></div>}
@@ -549,11 +642,11 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       {error && <p className="secure-message secure-error" role="alert">{error}</p>}
       <div className="delivery-filters">
         <label>Reporting description<textarea aria-label="Reporting description" value={annotations.reportingDescription} maxLength={1000} onChange={e => setAnnotations({ ...annotations, reportingDescription: e.target.value })} /></label>
-        {defaultParent(editor) ? <p>Parent Project <strong>{projectName(defaultParent(editor))}</strong></p> : <>
-        <label>Find a Parent Project<input type="search" value={parentSearch} onChange={e => setParentSearch(e.target.value)} /></label>
-        <label>Parent Project<select value={parent} onChange={e => { setParent(e.target.value); setClassification(""); }}><option value="">None selected</option>{projects.filter(p => p.id === parent || ((p.delivery?.kind === "engagement" || projects.some(child => child.delivery?.parentId === p.id)) &&
-          p.name.toLocaleLowerCase().includes(parentSearch.trim().toLocaleLowerCase()))).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        </>}
+        {defaultParent(editor) ? <p>Parent Project <strong>{projectName(defaultParent(editor))}</strong></p> :
+          <SearchableCombobox label="Parent Project" value={parent}
+            options={projects.filter(p => p.id === parent || p.delivery?.kind === "engagement" || projects.some(child => child.delivery?.parentId === p.id))
+              .map(p => ({ value: p.id, label: p.name }))}
+            onChange={id => { setParent(id); setClassification(""); }} placeholder="Find a Parent Project" />}
         <label>Department<select value={classification} onChange={e => setClassification(e.target.value)}><option value="">None selected</option>{portfolio?.areas
           .filter(a => !parent || a.id === classification || projects.some(p => resolvedParent(p.id) === parent && resolvedArea(p.id) === a.id))
           .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>

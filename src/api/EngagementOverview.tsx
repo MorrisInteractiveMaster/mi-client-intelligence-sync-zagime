@@ -83,6 +83,8 @@ export function EngagementOverview({ projects, areas = [], month, onOpen }: {
     <dl className="secure-metrics">
       {!service && <div><dt>Work-order recorded</dt><dd>{reportHours(parent.workOrderEffort?.recordedSeconds ?? 0)} h</dd></div>}
       <div><dt>Reported effort for branch</dt><dd>{reportHours(monthlyEffort)} h</dd></div>
+      {branchProjects.some(project => project.pendingMappedEffort?.monthly) && <div><dt>Automatically classified, awaiting approval</dt>
+        <dd>{reportHours(branchProjects.reduce((total, project) => total + (project.pendingMappedEffort?.monthly ?? 0), 0))} h</dd></div>}
       {branch?.delivery?.monthlyCap !== undefined && <div><dt>Monthly hours charged to cap</dt><dd>{reportHours(cap.monthly)} h</dd></div>}
       <div><dt>Monthly hours remaining</dt><dd>{health.monthlyRemaining === undefined ? "No cap" : reportHours(health.monthlyRemaining) + " h"}</dd></div>
       <div><dt>Lifetime hours remaining</dt><dd>{health.lifetimeRemaining === undefined ? "No cap" : reportHours(health.lifetimeRemaining) + " h"}</dd></div>

@@ -917,7 +917,7 @@ export function ProjectStaffWorkspace({
               </dl>
             ))}
         {area === "hours" && <TimeAllocation client={client} tenant={tenant} month={month} projects={allProjects}
-          portfolio={portfolio} onDenied={onDenied} onSaved={() => setEpoch(value => value + 1)}
+          portfolio={portfolio} canPublish={workspace.canPublish} operatorKey={workspace.operatorKey} onDenied={onDenied} onSaved={() => setEpoch(value => value + 1)}
           initialConsultant={location.get("consultant") ?? undefined} initialPeriod={location.get("period")}
           initialStart={location.get("start")} initialEnd={location.get("end")} initialStatus={location.get("time-status")}
           initialWorkOrder={location.get("workOrder") ?? undefined} onUnsavedChange={setTimeDirty}

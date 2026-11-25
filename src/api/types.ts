@@ -41,8 +41,11 @@ export interface StaffSource {
   workOrderName?: string;
   sourceProjectId?: string;
   reportingProjectId?: string;
+  reportingParentId?: string;
+  mappingStatus?: SourceMappingStatus;
   automaticClassification?: { projectId: string; parentId: string; areaId: string; seconds: number; reportingDescription?: string };
   classifiedSeconds?: number;
+  approvedAutomaticSeconds?: number;
   sourcePersonId?: string;
   consultantName?: string;
   originalNotesState?: "populated" | "empty" | "unavailable" | "not-retrieved";
@@ -55,6 +58,11 @@ export interface StaffSource {
   conflict: boolean;
 }
 export const sourceStatuses = ["allocated", "partial", "unallocated", "review", "deleted"] as const;
+export const sourceMappingLabels = {
+  unmapped: "Unmapped", parent: "Parent mapped", delivery: "Delivery Project mapped",
+  pending: "Pending confirmation", conflict: "Mapping conflict", review: "Requires review",
+} as const;
+export type SourceMappingStatus = keyof typeof sourceMappingLabels;
 export type SourceStatus = typeof sourceStatuses[number];
 export interface SourceFilters {
   sort?: TimeEntrySortField;
@@ -63,9 +71,11 @@ export interface SourceFilters {
   consultant?: string;
   consultants?: string;
   provenance?: "automatic" | "manual" | "unclassified";
-  selection?: "bulk";
+  selection?: "bulk" | "automatic";
   area?: string;
   project?: string;
+  parent?: string;
+  mapping?: SourceMappingStatus;
   from?: string;
   through?: string;
   status?: SourceStatus | "queue";
@@ -84,6 +94,7 @@ export interface SourceHours {
   remainingAtParentSeconds?: number;
   classifiedSeconds?: number;
   automaticallyClassifiedSeconds?: number;
+  approvedAutomaticSeconds?: number;
 }
 export interface SourceHoursGroup extends SourceHours {
   id: string | null;

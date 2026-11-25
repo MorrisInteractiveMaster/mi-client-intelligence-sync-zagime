@@ -9,6 +9,7 @@ export interface BulkAllocationEntry {
 export interface BulkAllocationRequest {
   projectId: string;
   entries: BulkAllocationEntry[];
+  approveAutomatic?: true;
 }
 
 export interface BulkAllocationOutcome {

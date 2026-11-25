@@ -142,10 +142,11 @@ export function publishedProjectCsv(report: ProjectReport, projects: ClientProje
 export function staffProjectCsv(month: string, projects: StaffProjectSummary[]): CsvData {
   return {
     headers: ["Month", "Project", "Work order", "Delivery status", "Publication", "Progress percent", "Work-order recorded hours",
-      "Reported hours", "Lifetime reported hours", "Monthly cap hours", "Lifetime cap hours", "Start date", "Deadline"],
+      "Reported hours", "Lifetime reported hours", "Monthly cap hours", "Lifetime cap hours", "Start date", "Deadline", "Automatically classified hours awaiting approval"],
     rows: projects.map(item => [month, item.name, item.workOrderReference, projectStatus[item.status], item.published ? "Published" : "Private",
       item.progress, csvHours(item.workOrderEffort?.recordedSeconds), csvHours(item.seconds), csvHours(item.lifetimeSeconds),
-      csvHours(item.delivery?.monthlyCap), csvHours(item.delivery?.lifetimeCap), item.delivery?.start, item.delivery?.deadline]),
+      csvHours(item.delivery?.monthlyCap), csvHours(item.delivery?.lifetimeCap), item.delivery?.start, item.delivery?.deadline,
+      csvHours(item.pendingMappedEffort?.monthly)]),
   };
 }
 

@@ -1014,6 +1014,8 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await target.fill("Regular Consulting");
     await target.press("Enter");
     await mappingArea.getByText(/4.25 h of source time/).waitFor();
+    await mappingArea.getByText("Eligible entries", { exact: true }).waitFor();
+    await mappingArea.getByText("Will remain unchanged", { exact: true }).waitFor();
     assert.equal(await mappingArea.getByRole("button", { name: "Confirm mapping" }).isDisabled(), true);
     await timeOwner.page.screenshot({ path: join(evidence, "quickbooks-time-mapping.png"), fullPage: true, animations: "disabled" });
     await timeOwner.page.getByRole("combobox", { name: "Appearance" }).selectOption("dark");
@@ -1051,6 +1053,26 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await newWizard.getByRole("combobox", { name: /Venue for/ }).first().selectOption("physical");
     await newWizard.getByRole("textbox", { name: "Staff-only venue details" }).fill("Synthetic delivery venue");
     await newWizard.screenshot({ path: join(evidence, "v5-consecutive-schedule-and-venues.png"), animations: "disabled" });
+    const activityMode = newWizard.getByLabel("Delivery days", { exact: true });
+    await activityMode.selectOption("single");
+    await newWizard.getByRole("button", { name: /^Delivery date/ }).click();
+    await publisher.page.getByRole("dialog", { name: "Delivery date", exact: true })
+      .locator('button[data-other-month="false"]').filter({ hasText: /^7$/ }).click();
+    await newWizard.getByText("1 of 1 delivery days selected", { exact: true }).waitFor();
+    await newWizard.screenshot({ path: join(evidence, "v5-single-delivery-date.png"), animations: "disabled" });
+    await activityMode.selectOption("separate");
+    await newWizard.getByRole("checkbox", { name: "Use the same venue for all dates", exact: true }).check();
+    for (const [label, date] of [["Delivery date 1", "5"], ["Delivery date 2", "8"]]) {
+      await newWizard.getByRole("button", { name: new RegExp("^" + label + " ") }).click();
+      await publisher.page.getByRole("dialog", { name: label, exact: true })
+        .locator('button[data-other-month="false"]').filter({ hasText: new RegExp("^" + date + "$") }).click();
+    }
+    await newWizard.getByText("2 of 2 delivery days selected", { exact: true }).waitFor();
+    await newWizard.screenshot({ path: join(evidence, "v5-separate-dates-shared-venue.png"), animations: "disabled" });
+    await activityMode.selectOption("unscheduled");
+    await arrangement.selectOption("hourly");
+    assert.equal(await newWizard.getByLabel("Number of delivery days").count(), 0);
+    await newWizard.screenshot({ path: join(evidence, "v5-ongoing-unscheduled.png"), animations: "disabled" });
     const staleEdit = await reviewProjectEdit(publisher.page, "This outdated edit should stay private.");
     const openedRevision = (await root.get()).get("revision");
     const concurrentSave = await publisher.context.request.patch(projectApi, {

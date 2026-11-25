@@ -300,7 +300,8 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
         <td>{portfolio?.areas.find(a => a.id === area)?.name ?? "Unclassified"}<small>{p.delivery?.kind ? deliveryKindNames[p.delivery.kind] : "Legacy project"} · {p.delivery?.type ?? "Engagement type not configured"}</small></td>
         <td>{managers.map(id => people.get(id)).filter(Boolean).join(", ") || "Unassigned"}</td>
         <td>{reportHours(sum.monthly)} h monthly<small>{reportHours(sum.lifetime)} h lifetime</small>
-          {p.workOrderEffort && <small>{reportHours(p.workOrderEffort.recordedSeconds)} h work-order recorded · {reportHours(p.workOrderEffort.remainingSeconds)} h remaining at work order</small>}</td>
+          {p.workOrderEffort && <small>{reportHours(p.workOrderEffort.recordedSeconds)} h work-order recorded · {reportHours(p.workOrderEffort.remainingSeconds)} h remaining at work order</small>}
+          {Boolean(p.pendingMappedEffort?.monthly) && <small>{reportHours(p.pendingMappedEffort!.monthly)} h automatically classified, awaiting approval</small>}</td>
         <td>{result.monthlyRemaining === undefined ? "No monthly cap" : reportHours(result.monthlyRemaining) + " h monthly"}
           <small>{result.lifetimeRemaining === undefined ? "No lifetime cap" : reportHours(result.lifetimeRemaining) + " h lifetime"}</small>
           {p.delivery?.monthlyCap !== undefined && <small>{reportHours(cap.monthly)} of {reportHours(p.delivery.monthlyCap)} h used monthly</small>}
