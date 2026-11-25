@@ -211,18 +211,18 @@
 .time-col-hours { width: 88px; }
 .time-col-reporting { width: 9%; }
 .time-col-assignment { width: 12%; }
-.time-col-status { width: 105px; }
+.time-col-status { width: 112px; }
 .time-col-actions { width: 98px; }
 .nordic.secure-shell .time-entries :is(th, td) {
   box-sizing: border-box; padding: 5px 8px; font-size: .81rem; line-height: 1.27; text-align: start;
 }
-.nordic.secure-shell .time-entries tbody td { height: 46px; padding-block: 6px; }
+.nordic.secure-shell .time-entries tbody td { height: 46px; padding-block: 4px; line-height: 1.15; }
 .nordic.secure-shell .time-entries .time-select-cell { width: 40px; padding-inline: 0; text-align: center; }
 .nordic.secure-shell .time-entries .time-select-cell input {
   appearance: auto; display: block; width: 17px; height: 17px; padding: 0; margin: auto;
   accent-color: light-dark(#225985, #9dceff); cursor: pointer;
 }
-.nordic.secure-shell .time-entries td small { display: block; margin: 0; font-size: .72rem; line-height: 1.28; color: var(--mi-time-muted); }
+.nordic.secure-shell .time-entries td small { display: block; margin: 0; font-size: .72rem; line-height: 1.2; color: var(--mi-time-muted); }
 .time-entries :is([data-cell="Date"], [data-cell="Recorded"]) { white-space: nowrap; }
 .nordic.secure-shell .delivery-allocation .time-entries .mi-sort-header {
   min-inline-size: 0; min-height: 32px; padding: 3px; margin: 0; gap: 3px; text-align: start;
@@ -231,11 +231,11 @@
 .time-entries [data-sort-field="recorded"] .mi-sort-header svg { width: 11px; }
 .nordic.secure-shell .time-entries .time-description {
   display: block; padding: 0; margin: 0; background: transparent; border: 0; color: inherit;
-  min-height: 0; text-align: start; border-radius: 3px; line-height: 1.72; font-weight: 450;
+  min-height: 0; text-align: start; border-radius: 3px; font-size: inherit; line-height: 1.8; font-weight: 450;
 }
 .time-description:hover { text-decoration: underline; }
 .nordic.secure-shell .time-entries .time-manage {
-  white-space: nowrap; min-height: 32px; padding: 4px 8px; margin: 0; font-size: .74rem;
+  display: flex; white-space: nowrap; min-height: 32px; padding: 4px 8px; margin: 0; font-size: .74rem; line-height: 1.2;
 }
 .time-table-filters, .time-consultants, .time-consultant-chips, .time-selection-tools, .time-bulk-summary, .time-drawer-utilities, .time-drawer-footer {
   display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; min-width: 0;

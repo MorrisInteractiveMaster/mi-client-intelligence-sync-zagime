@@ -1805,8 +1805,16 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         if (width >= 1440) {
           assert.ok(cells[0].width >= 36 && cells[0].width <= 44, "Selection column is compact");
           assert.ok(cells.find(cell => cell.label === "Original description")!.width >= 190, JSON.stringify(cells));
-          const heights = await table.locator("tbody tr").evaluateAll(nodes => nodes.slice(0, 12).map(node => node.getBoundingClientRect().height));
-          assert.ok(heights.some(height => height >= 44 && height <= 52), JSON.stringify(heights));
+          const rowGeometry = await table.locator("tbody tr").evaluateAll(nodes => nodes.slice(0, 12).map(node => ({
+            height: node.getBoundingClientRect().height,
+            cells: [...node.querySelectorAll("td")].map(cell => {
+              const content = document.createRange();
+              content.selectNodeContents(cell);
+              return [cell.getAttribute("data-cell"), content.getBoundingClientRect().height];
+            }),
+          })));
+          const heights = rowGeometry.map(({ height }) => height);
+          assert.ok(heights.some(height => height >= 44 && height <= 52), JSON.stringify({ width, rowGeometry }));
           assert.ok(heights.every(height => height <= 72), JSON.stringify(heights));
         }
       }
