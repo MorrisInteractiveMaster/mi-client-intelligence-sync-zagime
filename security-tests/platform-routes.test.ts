@@ -116,13 +116,25 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     }, { issuer: "fixture", audience: "fixture", now: () => now }),
   };
   const server = apiServer(undefined as unknown as ReportingBackend, options);
+  const errors: string[] = [];
+  const inFlight = new Set<Promise<void>>();
+  const [handleRequest] = server.listeners("request");
+  server.off("request", handleRequest);
+  server.on("request", (req, res) => {
+    // Closing a browser socket can leave its async handler reading Firestore.
+    const request: Promise<void> = handleRequest(req, res);
+    inFlight.add(request);
+    void request.then(
+      () => inFlight.delete(request),
+      error => { inFlight.delete(request); errors.push(String(error)); },
+    );
+  });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   options.allowedOrigin = origin;
   const evidence = resolve("test-results/platform-routes-browser");
   await mkdir(evidence, { recursive: true });
-  const errors: string[] = [];
   let mainBrowser: Browser | undefined;
   async function session(browser: Browser, token: "owner" | "staff" | "client", width = 1440) {
     const context = await browser.newContext({ viewport: { width, height: width < 600 ? 844 : 1000 }, reducedMotion: "reduce" });
@@ -1209,12 +1221,13 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     }
 
     await verifyExplorerScale();
-    assert.deepEqual(errors, []);
   } finally {
     await mainBrowser?.close();
     server.close();
     await once(server, "close");
+    await Promise.allSettled(inFlight);
     await rm(directory, { recursive: true, force: true });
     await runtime.close();
   }
+  assert.deepEqual(errors, []);
 });
