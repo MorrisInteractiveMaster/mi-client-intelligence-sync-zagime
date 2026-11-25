@@ -174,17 +174,23 @@
 .nordic.secure-shell .platform-control-card .mi-control-toolbar :is(form, label) { margin-block: 0; }
 .reporting-period__actions { display: contents; }
 @media (max-width: 850px) {
-  .reporting-period__main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 8px; }
-  .reporting-period__actions { grid-column: 1 / -1; grid-row: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-  .reporting-period__main > .mi-page-tools { grid-column: 2; grid-row: 1; justify-self: end; flex-wrap: nowrap; gap: 4px; }
+  .reporting-period__main { gap: 5px 8px; }
+  .reporting-period__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+  .reporting-period__main > .mi-page-tools { flex-wrap: nowrap; gap: 4px; }
   .reporting-period__main .reporting-period__label { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }
-  .reporting-period__main .reporting-period__stepper { grid-column: 1; grid-row: 1; max-width: 330px; }
+  .reporting-period__main .reporting-period__stepper { max-width: 330px; }
   .reporting-period__main .reporting-period__month { flex: 1 1 0; }
   .nordic.secure-shell .reporting-period__main .reporting-period__month select { width: 100%; padding-inline: 4px; font-size: .82rem; }
   .nordic.secure-shell .reporting-period__main .reporting-period__stepper button { min-width: 27px; min-height: 34px; margin: 0; }
   .nordic.secure-shell.platform-shell .reporting-period__main .mi-page-tools :is(.mi-theme-icon, .mi-account summary, .mi-workspace-tools button) {
     width: 33px; height: 35px; min-width: 33px; min-height: 35px;
   }
+}
+@media (max-width: 680px) {
+  .nordic.secure-shell .reporting-period__main { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .reporting-period__main .reporting-period__stepper { grid-column: 1; grid-row: 1; }
+  .reporting-period__main > .mi-page-tools { grid-column: 2; grid-row: 1; justify-self: end; }
+  .reporting-period__actions { grid-column: 1 / -1; grid-row: 2; }
 }
 @media (max-width: 360px) {
   .nordic.secure-shell.platform-shell .mi-page-tools .mi-workspace-tools button.mi-toolbar-search { display: none; }
