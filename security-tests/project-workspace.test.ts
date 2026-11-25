@@ -24,6 +24,7 @@ import { apiServer, RequestLimit } from "../server/http";
 import type { ReportingBackend } from "../server/backend";
 import { staffTestFixture } from "../server/testing/morris-staff-fixture";
 import { staffSegments } from "../src/api/platform-routes";
+import { projectView, type Project } from "../src/projects/model";
 import { auditViewport } from "./viewport-audit";
 
 test(
@@ -1689,11 +1690,22 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         links: ["611", "612"].map(userId => ({ employeeKey: timeEmployeeKey(account, userId), account, userId,
           profileId: profile.id, updatedAt: modified })),
       });
-      setup.set(root.collection("timeMappings").doc(key(account, workOrder)), {
-        account, jobcodeId: workOrder, projectId: parent.id, scopeProjectId: parent.id, reviewedAttribution: true,
-        sourceJob: { id: workOrder, name: "WO1267 Consulting", active: true, missing: false },
+      const workOrderKey = key(account, workOrder);
+      const anchorId = "time-" + workOrderKey;
+      const anchor: Project = {
+        schemaVersion: 2, tenantId: tenant, id: anchorId, source: null, name: "WO1267 Consulting",
+        status: "planned", progress: 0, description: "", internalNotes: "", plan: { basis: "fixed", targetSeconds: 0 },
+        published: false, createdAt: modified, updatedAt: modified,
+        createdBy: "system:quickbooks-time", updatedBy: "system:quickbooks-time",
+      };
+      setup.set(root.collection("projects").doc(anchorId), anchor);
+      setup.set(root.collection("projectViews").doc(anchorId), projectView(anchor, 0));
+      setup.set(root.collection("timeMappings").doc(workOrderKey), {
+        account, catalog: "browser-time-catalog", jobcodeId: workOrder, projectId: parent.id,
+        scopeProjectId: anchorId, reviewedAttribution: true,
+        sourceJob: { id: workOrder, name: anchor.name, active: true, missing: false },
       });
-      const makeBulkEntry = (external: string, person: string, description: string, name = profile.name, scope = parent.id, job = workOrder) => {
+      const makeBulkEntry = (external: string, person: string, description: string, name = profile.name, scope = anchorId, job = workOrder) => {
         const id = sourceRecordId("quickbooks-time", account, external);
         const ref = root.collection("rawTime").doc(id);
         const raw = { ...bulkFixture(id, "21", "QuickBooks Time"), source: "quickbooks-time", sourceCompanyId: account,
@@ -1720,12 +1732,13 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       const priorMonth = (await monthTotal.get()).data();
       setup.set(monthTotal, { recorded: (priorMonth?.recorded ?? 0) + 109 * 1800, allocated: priorMonth?.allocated ?? 0 });
       for (const period of ["2026-11", "lifetime"]) {
-        setup.set(root.collection("timeProjectTotals").doc(parent.id).collection("periods").doc(period),
+        setup.set(root.collection("timeProjectTotals").doc(anchorId).collection("periods").doc(period),
           { recorded: 108 * 1800, allocated: 0 });
         setup.set(root.collection("timeProjectTotals").doc(otherParent.id).collection("periods").doc(period),
           { recorded: 1800, allocated: 0 });
       }
       await setup.commit();
+      await json(await request("projects?month=2026-11"));
       const bulkPage = hierarchyBrowser.page;
       await bulkPage.reload();
       await bulkPage.getByRole("button", { name: "Time Allocation", exact: true }).click();
