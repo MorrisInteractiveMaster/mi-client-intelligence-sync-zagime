@@ -209,13 +209,14 @@
 .time-col-consultant { width: 128px; }
 .time-col-work-order { width: 117px; }
 .time-col-hours { width: 88px; }
-.time-col-reporting { width: 80px; }
-.time-col-assignment { width: 12%; }
+.time-col-reporting { width: 94px; }
+.time-col-assignment { width: 120px; }
 .time-col-status { width: 120px; }
 .time-col-actions { width: 110px; }
 .nordic.secure-shell .time-entries :is(th, td) {
   box-sizing: border-box; padding: 5px 8px; font-size: .81rem; line-height: 1.27; text-align: start;
 }
+.nordic.secure-shell .time-entries thead th { padding-inline: 4px; }
 .nordic.secure-shell .time-entries tbody td { height: 46px; padding-block: 4px; line-height: 1.15; }
 .nordic.secure-shell .time-entries .time-select-cell { width: 40px; padding-inline: 0; text-align: center; }
 .nordic.secure-shell .time-entries .time-select-cell input {
@@ -225,7 +226,7 @@
 .nordic.secure-shell .time-entries td small { display: block; margin: 0; font-size: .72rem; line-height: 1.2; color: var(--mi-time-muted); }
 .time-entries :is([data-cell="Date"], [data-cell="Recorded"]) { white-space: nowrap; }
 .nordic.secure-shell .delivery-allocation .time-entries .mi-sort-header {
-  min-inline-size: 0; min-height: 32px; padding: 3px; margin: 0; gap: 3px; text-align: start;
+  min-inline-size: 0; max-inline-size: 100%; min-height: 32px; padding: 3px; margin: 0; gap: 3px; text-align: start;
   white-space: normal; font-size: .77rem; line-height: 1.2;
 }
 .time-entries [data-sort-field="recorded"] .mi-sort-header svg { width: 11px; }
