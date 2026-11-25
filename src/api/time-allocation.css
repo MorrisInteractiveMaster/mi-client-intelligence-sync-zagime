@@ -209,10 +209,10 @@
 .time-col-consultant { width: 128px; }
 .time-col-work-order { width: 117px; }
 .time-col-hours { width: 88px; }
-.time-col-reporting { width: 9%; }
+.time-col-reporting { width: 80px; }
 .time-col-assignment { width: 12%; }
-.time-col-status { width: 112px; }
-.time-col-actions { width: 98px; }
+.time-col-status { width: 120px; }
+.time-col-actions { width: 110px; }
 .nordic.secure-shell .time-entries :is(th, td) {
   box-sizing: border-box; padding: 5px 8px; font-size: .81rem; line-height: 1.27; text-align: start;
 }
@@ -235,7 +235,7 @@
 }
 .time-description:hover { text-decoration: underline; }
 .nordic.secure-shell .time-entries .time-manage {
-  display: flex; white-space: nowrap; min-height: 32px; padding: 4px 8px; margin: 0; font-size: .74rem; line-height: 1.2;
+  display: flex; white-space: nowrap; min-height: 32px; padding: 4px 6px; margin: 0; font-size: .74rem; line-height: 1.2;
 }
 .time-table-filters, .time-consultants, .time-consultant-chips, .time-selection-tools, .time-bulk-summary, .time-drawer-utilities, .time-drawer-footer {
   display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; min-width: 0;

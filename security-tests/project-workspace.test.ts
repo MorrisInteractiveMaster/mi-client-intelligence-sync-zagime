@@ -1816,6 +1816,12 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           const heights = rowGeometry.map(({ height }) => height);
           assert.ok(heights.some(height => height >= 44 && height <= 52), JSON.stringify({ width, rowGeometry }));
           assert.ok(heights.every(height => height <= 72), JSON.stringify(heights));
+          const manage = table.getByRole("button", { name: "Manage Time", exact: true }).first();
+          assert.equal(await manage.evaluate(button => {
+            const bounds = button.getBoundingClientRect();
+            const tableRegion = button.closest(".time-entries")!.getBoundingClientRect();
+            return bounds.right <= tableRegion.right && button.scrollWidth <= button.clientWidth;
+          }), true, "Manage Time is fully visible in the desktop table");
         }
       }
       await bulkPage.setViewportSize({ width: 1440, height: 900 });
