@@ -1014,7 +1014,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
         externalId, scopeProjectId: mappingAnchor, modifiedAt: new Date(now).toISOString(), deleted: false,
         record: { id, seconds, tenantId: tenant, sourceWorkOrderId: mappedJob, date: month + "-01", revision: "preview-fixture" } });
       if (externalId === "6002") setup.set(root.collection("allocationHeads").doc(id), { revision: 1, sourceRevision: "preview-fixture",
-        portions: [{ projectId: parent, seconds, description: "" }] });
+        portions: [{ projectId: parentId, seconds, description: "" }] });
     }
     setup.update(parentRef, { delivery: { kind: "engagement", structure: 3, type: "hourly", managerIds: [], teamIds: [] } });
     await setup.commit();
