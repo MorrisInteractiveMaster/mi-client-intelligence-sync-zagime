@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import type { DocumentReference, Transaction } from "firebase-admin/firestore";
+import { FieldPath, type DocumentReference, type Transaction } from "firebase-admin/firestore";
 import type { VerifiedIdentity } from "./contracts";
 import { safeId, sourceRecordId } from "./contracts";
 import { key } from "./firestore-store";
@@ -13,7 +13,8 @@ import {
 import { readPortfolio } from "./portfolio";
 import type { Project } from "../src/projects/model";
 import type { TimeMappingReview, TimeProjectMetadata, TimeStatus } from "../src/projects/time";
-import { timeDetailsRef, type StoredTimeDetails } from "./time-details";
+import { readTimeDetails, timeDetailsRef, type StoredTimeDetails } from "./time-details";
+import { automaticAllocation, automaticDestination, automaticTimeRef } from "./automatic-time";
 import { enrichTimeDetails, inventoryTimeDetails, timeSourceRevision } from "./time-enrichment";
 import {
   type TimeClient,
@@ -385,7 +386,48 @@ export class TimeSync {
   }
   async confirmMapping(tenant: string, who: VerifiedIdentity, job: string, project: string, review: TimeMappingReview) {
     if (!this.allowed(tenant, who) || !this.connection?.customerParentId) throw Error("Forbidden");
-    return this.link(tenant, who, timeId(job), safeId(project), review);
+    const result = await this.link(tenant, who, timeId(job), safeId(project), review);
+    return { ...result, ...(review.targetKind === "project" && {
+      historical: await this.applyHistoricalMapping(tenant, who, job),
+    }) };
+  }
+  async applyHistoricalMapping(tenant: string, who: VerifiedIdentity, externalJob: string, after?: string) {
+    if (!this.allowed(tenant, who) || !this.connection?.customerParentId) throw Error("Forbidden");
+    const job = timeId(externalJob);
+    const size = 60;
+    return this.store.db.runTransaction(async tx => {
+      const { root, staff, meta } = await this.store.access(tx, tenant, who);
+      if (!staff) throw Error("Forbidden");
+      const [snapshot, binding] = await tx.getAll(this.mapping(root, job), timeRun(root, this.catalogKey()));
+      const mapping = snapshot.data() as TimeMappingRecord | undefined;
+      if (binding.get("customerBound") !== true || mapping?.catalog !== this.catalogKey() ||
+        mapping.account !== this.connection!.account || mapping.jobcodeId !== job) throw Error("Forbidden");
+      const destination = await automaticDestination(tx, root, mapping);
+      if (!destination) throw Error("Invalid Time mapping target");
+      const query = root.collection("rawTime").where("record.sourceWorkOrderId", "==", job).orderBy(FieldPath.documentId());
+      const batch = await tx.get((after ? query.startAfter(safeId(after)) : query).limit(size + 1));
+      const sources = batch.docs.slice(0, size).filter(doc => doc.get("schemaVersion") === 2 &&
+        doc.get("source") === "quickbooks-time" && doc.get("sourceCompanyId") === mapping.account &&
+        doc.get("scopeProjectId") === mapping.scopeProjectId && doc.get("record.tenantId") === tenant &&
+        typeof doc.get("record.revision") === "string" && typeof doc.get("externalId") === "string" && doc.get("deleted") === false &&
+        doc.id === sourceRecordId("quickbooks-time", mapping.account, doc.get("externalId")));
+      const current = await Promise.all(sources.map(async doc => {
+        const ref = automaticTimeRef(root, doc.id);
+        const revision = doc.get("record.revision") as string;
+        const [head, existing, details] = await tx.getAll(root.collection("allocationHeads").doc(doc.id), ref, timeDetailsRef(doc.ref, revision));
+        return { doc, ref, existing, value: automaticAllocation(destination, revision, doc.get("record.seconds"),
+          head.exists, readTimeDetails(details.data(), revision, doc.get("modifiedAt"))?.notes) };
+      }));
+      let classified = 0;
+      for (const { doc, ref, existing, value } of current) {
+        if (!value || isDeepStrictEqual(value, existing.data())) continue;
+        tx.set(ref, value);
+        this.audit(tx, root, who.subject, doc.id, "time-automatically-classified", meta.revision);
+        classified++;
+      }
+      return { classified, examined: batch.docs.slice(0, size).length,
+        ...(batch.size > size && { next: batch.docs[size - 1].id }) };
+    }, { maxAttempts: 3 });
   }
   private async link(
     tenant: string,
@@ -939,10 +981,11 @@ export class TimeSync {
         target.data()!.schemaVersion !== 2
       )
         throw Error("Time scope mismatch");
-      if (this.connection!.customerParentId) {
-        const scoped = (
+      const scoped = this.connection!.customerParentId
+        ? (
           await tx.get(this.mapping(root, row.jobcodeId))
-        ).data() as TimeMappingRecord | undefined;
+        ).data() as TimeMappingRecord | undefined : undefined;
+      if (this.connection!.customerParentId) {
         if (
           scoped?.catalog !== this.catalogKey() ||
           scoped?.sourceJob?.missing !== false ||
@@ -984,6 +1027,11 @@ export class TimeSync {
       const held = allocation.data();
       if (held && (!old || held.sourceRevision !== old.record.revision))
         throw Error("Time allocation conflict");
+      const automaticRef = automaticTimeRef(root, id);
+      const savedAutomatic = old && !held ? await tx.get(automaticRef) : undefined;
+      const destination = !row.deleted && !held && scoped && scoped.account === mapping.account &&
+        scoped.jobcodeId === row.jobcodeId ? await automaticDestination(tx, root, scoped) : undefined;
+      const automatic = automaticAllocation(destination, revision, row.seconds, Boolean(held), row.details?.notes);
       const material =
         old &&
         (old.record.date !== row.date ||
@@ -1055,6 +1103,13 @@ export class TimeSync {
       }
       writeTotals();
       tx.set(source, envelope);
+      if (automatic) {
+        tx.set(automaticRef, automatic);
+        this.audit(tx, root, who?.subject ?? timeSystemActor, id, "time-automatically-classified", revisionBefore);
+      } else if (savedAutomatic?.exists) {
+        tx.delete(automaticRef);
+        this.audit(tx, root, who?.subject ?? timeSystemActor, id, "time-automatic-classification-removed", revisionBefore);
+      }
       if (held)
         tx.update(head, {
           sourceRevision: revision,

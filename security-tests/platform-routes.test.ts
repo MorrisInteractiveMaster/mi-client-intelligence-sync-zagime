@@ -77,11 +77,9 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
         function Portal({workspace}) {
           const {theme,change,appearance}=usePlatformTheme(); const month=useReportingMonth("${month}"), [dirty,setDirty]=useState(false);
           return <section className="nordic secure-shell platform-shell" data-theme={appearance}>
-            <header className="secure-masthead"><div className="secure-brandmarks">
-              <img src="/branding/zagime/zagime.jpeg" alt="Zagime Anishinabek First Nation"/>
-              <img src="/branding/morris/morris-wordmark.png" alt="Morris Interactive"/>
-            </div><div className="secure-identity"><p>{location.pathname.startsWith("/clients/") ? "Client portal" : "Morris workspace"}</p></div>
-            <div className="mi-masthead-actions"><div id="mi-workspace-commands"/><ThemeSelector theme={theme} onChange={change}/></div></header>
+            <header className="secure-masthead mi-compact-masthead">
+              <div className="secure-identity"><h1>{location.pathname.startsWith("/clients/") ? "Zagimē A. FN Workshop" : "Morris Interactive"}</h1></div>
+              <div className="mi-masthead-actions"><div id="mi-workspace-commands"/><ThemeSelector theme={theme} onChange={change} compact/></div></header>
             <div id="auth-status" role="status"></div>
             <PlatformApplication client={client} workspace={workspace} month={month} unsaved={dirty} onUnsavedChange={setDirty} onDenied={denied}/>
           </section>;
@@ -335,7 +333,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await distribution.getByText("4 · 66.7%", { exact: true }).waitFor();
       await distribution.getByText("0 · 0%", { exact: true }).first().waitFor();
       await sample.page.getByRole("button", { name: "Explain Approved projects", exact: true }).click();
-      await sample.page.getByRole("tooltip").filter({ hasText: /Parent engagement containers are excluded/ }).waitFor();
+      await sample.page.getByRole("tooltip").filter({ hasText: /Parent project containers are excluded/ }).waitFor();
       await sample.page.screenshot({ path: join(scaleEvidence, "v41-kpi-tooltip.png"), animations: "disabled" });
       await sample.page.keyboard.press("Escape");
       await hr.getByRole("button", { name: "HR", exact: true }).focus();
@@ -818,7 +816,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     }
     await captureReference(client.page, "04-leadership-layout-1649x844", 1649, 844);
     await auditViewport(client.page, "Leadership engagement section", 1647, 868, { compactSidebar: true });
-    const engagements = client.page.getByRole("region", { name: "Parent engagements" }).first();
+    const engagements = client.page.getByRole("region", { name: "Parent projects" }).first();
     await engagements.scrollIntoViewIfNeeded();
     await client.page.screenshot({ path: join(referenceEvidence, "03-leadership-engagements-1647x868.png"), animations: "disabled" });
     const effort = client.page.getByRole("group", { name: "Effort display", exact: true });
@@ -1151,9 +1149,9 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await scheduledClient.page.getByRole("region", { name: "HR delivery metrics", exact: true }).waitFor();
       await captureReference(scheduledClient.page, "02-hr-department-1674x887", 1674, 887);
       await scheduledClient.page.goto(route("/clients/zagime"));
-      await scheduledClient.page.getByRole("region", { name: "Parent engagements", exact: true }).waitFor();
+      await scheduledClient.page.getByRole("region", { name: "Parent projects", exact: true }).waitFor();
       await auditViewport(scheduledClient.page, "Leadership parent cards", 1647, 868, { compactSidebar: true });
-      await scheduledClient.page.getByRole("region", { name: "Parent engagements", exact: true }).scrollIntoViewIfNeeded();
+      await scheduledClient.page.getByRole("region", { name: "Parent projects", exact: true }).scrollIntoViewIfNeeded();
       await scheduledClient.page.screenshot({ path: join(referenceEvidence, "03-leadership-engagements-1647x868.png"), animations: "disabled" });
     } finally {
       await scheduledClient.context.close();

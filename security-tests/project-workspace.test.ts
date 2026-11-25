@@ -1175,7 +1175,9 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await previewCard.getByText(/Approved synthetic contact.*Project manager/).waitFor();
       assert.doesNotMatch(await previewCard.innerText(), /PRIVATE|INTERNAL/);
       await previewPage.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Client Preview", exact: true }).click();
-      await previewPage.getByText("LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW", { exact: true }).waitFor();
+      await previewPage.getByLabel("Preview mode").waitFor();
+      assert.equal(await previewPage.getByLabel("Preview mode").inputValue(), "published");
+      assert.equal(await previewPage.getByText("LIVE PUBLISHED VIEW · MORRIS STAFF PREVIEW", { exact: true }).count(), 0);
       await previewPage.getByRole("heading", { name: "Leadership summary", exact: true }).waitFor();
       await previewPage.getByLabel("Preview mode").selectOption("draft");
       await previewPage.getByText("DRAFT PREVIEW · MORRIS STAFF ONLY", { exact: true }).waitFor();
@@ -1871,7 +1873,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       const legacyClientAudit: Awaited<ReturnType<typeof auditViewport>>[] = [];
       try {
         const views = [
-          ["overview", "Leadership summary"], ["projects", "Projects"], ["engagements", "Parent engagements"],
+          ["overview", "Leadership summary"], ["projects", "Projects"], ["engagements", "Parent projects"],
           ["areas", "Departments"], ["area:health", "Health"], ["project:" + persisted.id, "Browser saved project"],
           ["timeline:" + persisted.id, "Project timeline"], ["milestones", "Milestones"],
           ["milestone:" + persisted.id + ":browser-approved-milestone", "Approved milestone"],
@@ -1885,8 +1887,8 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           await page.getByRole("heading", { name: heading, exact: true, level: 2 }).waitFor();
           assert.equal(await page.getByText("This link is unavailable for your approved report.").count(), 0, view);
           if (view === "engagements") {
-            await page.getByRole("region", { name: "Parent engagements" }).waitFor();
-            legacyClientAudit.push(await auditViewport(page, "legacy client parent engagement cards", 1661, 930, { compactSidebar: true }));
+            await page.getByRole("region", { name: "Parent projects" }).waitFor();
+            legacyClientAudit.push(await auditViewport(page, "legacy client parent project cards", 1661, 930, { compactSidebar: true }));
             await page.screenshot({ path: join(evidence, "04-parent-engagements-1661x930.png"), animations: "disabled" });
           }
           for (const [width, height] of [[1440, 900], [390, 844], [320, 568]]) {

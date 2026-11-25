@@ -397,7 +397,24 @@ test("verified customer discovery, registration, linking, daily reconciliation a
       parentId: existingProject, areaId: "hr",
     };
     await assert.rejects(sync.confirmMapping(tenant, who, "104", deliveryId, { ...deliveryReview, areaId: "training" }), /Time mapping conflict/);
-    assert.equal((await sync.confirmMapping(tenant, who, "104", deliveryId, deliveryReview)).changed, true);
+    const historicalId = sourceRecordId("quickbooks-time", account, "704");
+    const rawRef = root.collection("rawTime").doc(historicalId);
+    const rawBefore = (await rawRef.get()).data()!;
+    const checkpointBefore = (await checkpoint("104").get()).data();
+    const mapped = await sync.confirmMapping(tenant, who, "104", deliveryId, deliveryReview);
+    assert.equal(mapped.changed, true);
+    assert.equal(mapped.historical?.classified, 1);
+    const classification = (await root.collection("automaticTimeAllocations").doc(historicalId).get()).data()!;
+    assert.equal(classification.seconds, 61);
+    assert.equal(classification.projectId, deliveryId);
+    assert.equal(classification.parentId, existingProject);
+    assert.equal(classification.areaId, "hr");
+    assert.equal(classification.sourceRevision, rawBefore.record.revision);
+    assert.equal((await sync.applyHistoricalMapping(tenant, who, "104")).classified, 0);
+    assert.deepEqual((await rawRef.get()).data(), rawBefore);
+    assert.deepEqual((await checkpoint("104").get()).data(), checkpointBefore);
+    assert.equal((await root.collection("allocationHeads").doc(historicalId).get()).exists, false);
+    assert.equal((await root.collection("projectViews").doc(deliveryId).get()).get("lifetimeSeconds"), 0);
     await assert.rejects(sync.confirmMapping(tenant, who, "104", existingProject, { ...deliveryReview, targetKind: "engagement" }), /Time mapping conflict/);
     assert.equal((await map("104").get()).get("scopeProjectId"), pending.projectId);
     assert.equal((await sync.status(tenant, who, "2026-11")).recordedSeconds, 244);

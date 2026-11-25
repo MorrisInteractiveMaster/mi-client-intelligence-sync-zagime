@@ -18,6 +18,7 @@ const queues = {
 } as const;
 const mappingSort = { name: "Work order name", jobcode: "Jobcode", status: "Mapping status", recorded: "Recorded this month",
   history: "Historical recorded", allocated: "Existing allocations", synced: "Last successful sync" } as const;
+type HistoricalBatch = { classified: number; examined: number; next?: string };
 
 export function QuickBooksTimeMapping({ client, tenant, month, projects, portfolio, onDenied, onSaved }: {
   client: SecuredApiClient;
@@ -35,6 +36,7 @@ export function QuickBooksTimeMapping({ client, tenant, month, projects, portfol
   const [queue, setQueue] = useState<keyof typeof queues | "all">("all");
   const [selected, select] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [history, setHistory] = useState<Record<string, HistoricalBatch>>({});
   const sorted = useSortedRows<TimeMapping, keyof typeof mappingSort>(status?.mappings ?? [], { key: "name", direction: "asc" },
     (row, field) => ({ name: row.sourceName ?? projects.find(project => project.id === row.projectId)?.name ?? row.jobcodeId,
       jobcode: row.jobcodeId, status: queues[workOrderQueue(row)], recorded: row.recordedSeconds, history: row.lifetimeRecordedSeconds,
@@ -58,20 +60,40 @@ export function QuickBooksTimeMapping({ client, tenant, month, projects, portfol
     setError("");
     setNotice("");
     try {
-      await client.call(tenant, "time/mapping", {
+      const result = await client.call<{ historical?: HistoricalBatch }>(tenant, "time/mapping", {
         method: "POST",
         body: { jobcodeId: mapping.jobcodeId, projectId, review },
       });
-      setNotice("Mapping saved. Source records and existing classifications were preserved.");
-      select(undefined);
+      if (result.historical) setHistory(current => ({ ...current, [mapping.jobcodeId]: result.historical! }));
+      setNotice(result.historical
+        ? "Mapping saved. Historical staff classifications are being reviewed in batches."
+        : "Mapping saved. Source records and existing classifications were preserved.");
       setRequest(value => value + 1);
       onSaved();
     } catch (reason) {
       if (reason instanceof ApiError && reason.status === 401) onDenied();
       setError(reason instanceof ApiError && reason.status === 409
         ? "The mapping or recorded hours changed during review. Open the work order again to review the latest information."
-        : "The mapping could not be saved. Verify your permissions and the selected project.");
+        : "The operation could not be confirmed. Refresh the mapping before retrying historical classification.");
       setRequest(value => value + 1);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyHistory(jobcodeId: string) {
+    setBusy(true);
+    setError("");
+    try {
+      const after = history[jobcodeId]?.next;
+      const result = await client.call<HistoricalBatch>(tenant, "time/classify-history", {
+        method: "POST", body: { jobcodeId, ...(after && { after }) },
+      });
+      setHistory(current => ({ ...current, [jobcodeId]: result }));
+      onSaved();
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.status === 401) onDenied();
+      setError("Historical classification could not be confirmed. You can retry the same batch.");
     } finally {
       setBusy(false);
     }
@@ -125,6 +147,13 @@ export function QuickBooksTimeMapping({ client, tenant, month, projects, portfol
                 <div><dt>Existing allocations</dt><dd>{mapping.lifetimeAllocatedSeconds === undefined ? "—" : reportHours(mapping.lifetimeAllocatedSeconds) + " h"}</dd></div>
               </dl>
               {mapping.lastSuccess && <p>Last successful work-order sync {reportTimestamp(mapping.lastSuccess)}</p>}
+              {status.canManage && mapping.mappingState === "linked" && current?.delivery?.kind === "project" && <>
+                {history[mapping.jobcodeId] && <p role="status">{history[mapping.jobcodeId].examined} records checked in the last batch.
+                  {" "}{history[mapping.jobcodeId].classified} staff-only classifications saved.</p>}
+                <button type="button" className="secure-secondary" disabled={busy} onClick={() => void applyHistory(mapping.jobcodeId)}>
+                  {history[mapping.jobcodeId]?.next ? "Continue historical classification" : "Check historical entries"}
+                </button>
+              </>}
               {mapping.failed && <p className="secure-error">The latest sync failed. Review sync status before confirming a mapping.</p>}
               {mapping.canReview && !mapping.failed && status.canManage
                 ? <MappingReview mapping={mapping} projects={projects} portfolio={portfolio} month={month} busy={busy} confirm={confirm} />
@@ -145,8 +174,12 @@ function MappingReview({ mapping, projects, portfolio, month, busy, confirm }: {
   busy: boolean;
   confirm: (mapping: TimeMapping, projectId: string, review: TimeMappingReview) => Promise<void>;
 }) {
-  const [kind, setKind] = useState<TimeMappingReview["targetKind"] | "">("");
-  const [target, setTarget] = useState("");
+  const requested = projects.filter(project => project.delivery?.pendingTimeJobcodeId === mapping.jobcodeId &&
+    (project.delivery.kind === "engagement" || project.delivery.kind === "project"));
+  const suggestion = requested.length === 1 ? requested[0] : undefined;
+  const [kind, setKind] = useState<TimeMappingReview["targetKind"] | "">(
+    suggestion?.delivery?.kind === "engagement" ? "engagement" : suggestion ? "project" : "");
+  const [target, setTarget] = useState(suggestion?.id ?? "");
   const [approved, setApproved] = useState(false);
   const candidates = projects.filter(project => project.status !== "closed" && project.status !== "cancelled" &&
     project.delivery?.kind === kind && (kind === "engagement" ? !project.delivery.parentId : Boolean(
@@ -164,6 +197,7 @@ function MappingReview({ mapping, projects, portfolio, month, busy, confirm }: {
     void confirm(mapping, selected.id, { targetKind: kind, previousProjectId: mapping.projectId, recordedSeconds, allocatedSeconds,
       ...(parent && department ? { parentId: parent.id, areaId: department.id } : {}) });
   }}>
+    {requested.length > 0 && <p>Projects requesting this work order {requested.map(project => project.name).join(", ")}.</p>}
     <div className="secure-editor-grid">
       <label>Work-order type
         <select value={kind} required onChange={event => {
@@ -184,9 +218,9 @@ function MappingReview({ mapping, projects, portfolio, month, busy, confirm }: {
     {selected && recordedSeconds !== undefined && allocatedSeconds !== undefined && <div className="mi-mapping-preview">
       <h4>Review reporting impact</h4>
       <p>{selected.name}{parent && department && " · " + parent.name + " / " + department.name}</p>
-      <p>{reportHours(recordedSeconds - allocatedSeconds)} h of source time without a delivery classification will appear under this project.
+      <p>{reportHours(recordedSeconds - allocatedSeconds)} h of source effort will be attributed in the Morris workspace.
         {allocatedSeconds > 0 && " The existing " + reportHours(allocatedSeconds) + " h of allocations stay assigned where they are."}
-        {selected.published && " Authorized client reporting for this published project is affected."}</p>
+        {kind === "project" && " Eligible entries receive a staff-only classification. Approved client effort stays unchanged."}</p>
       <label className="secure-check"><input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)} />
         I reviewed the project and affected hours.</label>
     </div>}

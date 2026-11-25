@@ -18,6 +18,7 @@ import { canAllocateToDelivery } from "../src/projects/delivery";
 import type { AllocationAnnotations } from "../src/api/types";
 import { approvedMember, canAccessProject } from "./authorization";
 import { readPortfolio } from "./portfolio";
+import { automaticTimeRef } from "./automatic-time";
 import {
   safeId,
   type TenantStore,
@@ -464,12 +465,28 @@ export class FirestoreTenantStore implements TenantStore {
         if (!Array.isArray(head.portions) || head.portions.length > 10 || !Array.isArray(previous) || previous.length > 10)
           throw Error("Reporting capacity exceeded");
         if (bulk && head.revision !== bulk.entry.expectedAllocationRevision) throw Error("Bulk allocation revision conflict");
+        const automatic = this.expectedSchemaVersion === 2 && source.get("source") === "quickbooks-time"
+          ? await tx.get(automaticTimeRef(root, sourceId)) : undefined;
+        if (bulk && automatic?.get("sourceRevision") === raw.revision) throw Error("Bulk entry not eligible");
+        const account = source.get("sourceCompanyId");
+        const mapped = automatic && typeof account === "string" && typeof raw.sourceWorkOrderId === "string"
+          ? (await tx.get(root.collection("timeMappings").doc(key(account, raw.sourceWorkOrderId)))).data()
+          : undefined;
+        let verifiedParent: string | undefined;
+        if (mapped?.reviewedAttribution === true && mapped.account === account &&
+          mapped.jobcodeId === raw.sourceWorkOrderId && mapped.scopeProjectId === source.get("scopeProjectId")) {
+          const target = (await tx.get(root.collection("projects").doc(safeId(mapped.projectId)))).data();
+          if (target?.tenantId !== tenantId || target.schemaVersion !== 2 || target.id !== mapped.projectId) throw Error("Forbidden");
+          verifiedParent = target.delivery?.kind === "engagement" ? target.id : target.delivery?.parentId;
+        }
         if (bulk && (head.needsReview || head.portions.length || previous.length || raw.seconds === 0)) throw Error("Bulk entry not eligible");
         const portions: Allocation[] = input.mode === "bulk"
           ? [{ projectId: input.projectId, seconds: raw.seconds, description: "" }]
           : input.portions;
         checkedAllocationSeconds(portions, raw.seconds);
         const annotations = review?.annotations ?? head.annotations;
+        if (verifiedParent && review?.annotations.parentId && review.annotations.parentId !== verifiedParent)
+          throw Error("Invalid allocation parent");
         if (review?.annotations.parentId) {
           const parent = (await tx.get(root.collection("projects").doc(review.annotations.parentId))).data();
           if (parent?.schemaVersion !== 2 || parent.tenantId !== tenantId || parent.id !== review.annotations.parentId)
@@ -511,10 +528,13 @@ export class FirestoreTenantStore implements TenantStore {
           throw Error("Forbidden");
         if (this.expectedSchemaVersion === 2 && ps.some(d => d.data()!.schemaVersion !== 2 || d.data()!.tenantId !== tenantId || d.data()!.id !== d.id)) throw Error("Forbidden");
         for (const [position, project] of ps.entries()) {
-          if (canAllocateToDelivery(project.data()!.delivery)) continue;
           const id = ids[position];
           const intended = portions.find(part => part.projectId === id)?.seconds ?? 0;
           const applied = previous.find((part: Allocation) => part.projectId === id)?.seconds ?? 0;
+          const delivery = project.data()!.delivery;
+          if (verifiedParent && intended > applied && (delivery?.kind !== "project" || delivery.parentId !== verifiedParent || !delivery.areaId))
+            throw Error(bulk ? "Bulk entry not eligible" : "Invalid allocation target");
+          if (canAllocateToDelivery(project.data()!.delivery)) continue;
           if (intended > applied) throw Error(bulk ? "Bulk entry not eligible" : "Invalid allocation target");
         }
         if (
@@ -563,6 +583,7 @@ export class FirestoreTenantStore implements TenantStore {
           sourceRevision: raw.revision,
           ...(annotations ? { annotations } : {}),
         });
+        if (automatic?.exists) tx.delete(automatic.ref);
         ids.forEach((id, i) => {
           if (!views[i].exists) throw Error("Invalid reporting summary");
           if (this.expectedSchemaVersion === 2 && (views[i].data()!.tenantId !== tenantId || views[i].data()!.id !== id || views[i].data()!.schemaVersion !== 2 || (periods[i].exists && (periods[i].data()!.projectId !== id || periods[i].data()!.month !== month)))) throw Error("Invalid reporting summary");

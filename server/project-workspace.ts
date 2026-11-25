@@ -26,6 +26,7 @@ import { requestIdentity, rememberIdentity } from "./request-identity";
 import { creationKey } from "./idempotency";
 import { FirestoreTenantStore, key } from "./firestore-store";
 import { allocateTimeBatch } from "./bulk-allocation";
+import { reviewProjectDeletion } from "./project-deletion";
 import {
   approvedProjectContent,
   managedProject,
@@ -269,6 +270,13 @@ export class ProjectStore {
             checkDeliveryStructure(graph);
           }
           const jobs = delivery?.workOrderIds;
+          const pendingJob = delivery?.pendingTimeJobcodeId;
+          if (pendingJob && pendingJob !== old?.delivery?.pendingTimeJobcodeId) {
+            const candidates = await tx.get(a.root.collection("timeMappings").where("jobcodeId", "==", pendingJob).limit(100));
+            if (!candidates.docs.some(doc => doc.get("catalog") && doc.get("sourceJob.active") === true &&
+              doc.get("sourceJob.missing") === false && doc.get("reviewedAttribution") !== true))
+              throw Error("Invalid work order selection");
+          }
           if (!old && delivery?.structure === 3 && jobs?.length) throw Error("Invalid work order selection");
           if (jobs?.length && !isDeepStrictEqual(jobs, old?.delivery?.workOrderIds)) {
             const verified = await tx.get(a.root.collection("timeMappings").where("jobcodeId", "in", jobs).limit(100));
@@ -577,6 +585,7 @@ export class ProjectStore {
             ...(settings.lifetimeCap !== undefined ? { lifetimeCap: settings.lifetimeCap, lifetimeCapUsed: cap.lifetime } : {}),
             ...(settings.start ? { start: settings.start } : {}),
             ...(settings.deadline ? { deadline: settings.deadline } : {}),
+            ...(settings.activity ? { activityDates: settings.activity.dates } : {}),
           } : {}),
         };
       }
@@ -895,6 +904,9 @@ export class ProjectBackend {
   }
   async detail(token: string, tenant: string, id: string) {
     return this.store.detail(tenant, await this.identity(token), id);
+  }
+  async deleteProject(token: string, tenant: string, id: string, confirmation?: { expectedRevision: number; name: string }) {
+    return reviewProjectDeletion(this.store, tenant, await this.identity(token), id, confirmation);
   }
   async save(
     token: string,

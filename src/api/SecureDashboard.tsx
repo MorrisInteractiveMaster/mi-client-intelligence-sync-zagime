@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import type { Auth } from "firebase/auth";
 import { SecuredApiClient } from "./client";
 import { branding, brandAsset } from "../config/branding";
+import { ZAGIME_NATION_NAME } from "../config/client-identity";
 import { ProjectClientReport } from "./ProjectClientReport";
 import { today } from "./dashboard-format";
 import { usePlatformRoute, useReportingMonth } from "./portal-location";
@@ -203,12 +204,12 @@ export function SecureDashboard() {
         content.tabIndex = -1;
         content.focus();
       }}>Skip to content</a>}
-      <header className="secure-masthead">
-        <div className="secure-brandmarks">
+      <header className={"secure-masthead" + (signedIn && workspace && modernShell ? " mi-compact-masthead" : "")}>
+        {!(signedIn && workspace && modernShell) && <div className="secure-brandmarks">
           {branding.clientLogo && (
             <img
               src={brandAsset(branding.clientLogo)}
-              alt={branding.clientName}
+              alt={ZAGIME_NATION_NAME}
             />
           )}
           {branding.partnerLogo && (
@@ -217,7 +218,7 @@ export function SecureDashboard() {
               alt={branding.partnerName}
             />
           )}
-        </div>
+        </div>}
         <div className="secure-identity">
           <h1>
             {route ? (route.kind === "client" ? branding.clientName : "Morris Interactive") : workspace?.role === "client"
@@ -228,10 +229,10 @@ export function SecureDashboard() {
         </div>
         <div className="mi-masthead-actions">
           {modernShell && signedIn && <div id="mi-workspace-commands" />}
-          <ThemeSelector theme={theme} onChange={change} />
+          <ThemeSelector theme={theme} onChange={change} compact={Boolean(signedIn && workspace && modernShell)} />
           {signedIn && (
           <details className="mi-account">
-            <summary><UserRound size={17} aria-hidden="true" /> Account</summary>
+            <summary aria-label="Account" title="Account"><UserRound size={17} aria-hidden="true" /></summary>
             <div className="mi-account-menu"><p>{workspace?.role === "staff" ? "Morris workspace" : "Protected session"}</p><button
             className="secure-secondary"
             onClick={async () => {

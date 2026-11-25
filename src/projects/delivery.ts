@@ -1,3 +1,5 @@
+import { dateOnly, parseActivitySchedule, type ActivitySchedule } from "./activity-schedule";
+
 export const MAX_DELIVERY_PROJECTS = 600;
 export const MAX_PROJECT_DEPTH = 24;
 export const engagementTypes = ["hourly", "fixed-fee", "training", "workshop"] as const;
@@ -10,6 +12,7 @@ export interface Delivery {
   areaId?: string;
   groupId?: string;
   workOrderIds?: string[];
+  pendingTimeJobcodeId?: string;
   /** Older projects retain their historical structure until staff deliberately convert them. */
   structure?: 2 | 3;
   kind: typeof deliveryKinds[number];
@@ -24,6 +27,7 @@ export interface Delivery {
   deadline?: string;
   publishSummary?: boolean;
   publishStartStatus?: boolean;
+  activity?: ActivitySchedule;
   blocker?: { active: boolean; message: string; internal: string; resolvedOn?: string };
   managerIds: string[];
   teamIds: string[];
@@ -50,12 +54,9 @@ function uniqueIds(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > 32 || new Set(value).size !== value.length) return invalid();
   return value.map(id => optionalId(id) ?? invalid());
 }
-export function calendarDate(value: unknown): value is string {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
-    && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
-}
+export const calendarDate = dateOnly;
 export function parseDelivery(input: unknown): Delivery {
-  const v = object(input, ["parentId", "areaId", "groupId", "structure", "kind", "type", "monthlyCap", "lifetimeCap", "manualCompletion", "completedOn", "start", "deadline", "publishSummary", "publishStartStatus", "managerIds", "teamIds", "training", "workOrderIds", "countAgainstParentCap", "allowDirectAllocation", "blocker"]);
+  const v = object(input, ["parentId", "areaId", "groupId", "structure", "kind", "type", "monthlyCap", "lifetimeCap", "manualCompletion", "completedOn", "start", "deadline", "publishSummary", "publishStartStatus", "managerIds", "teamIds", "training", "workOrderIds", "pendingTimeJobcodeId", "countAgainstParentCap", "allowDirectAllocation", "blocker", "activity"]);
   let blocker: Delivery["blocker"];
   if (v.blocker !== undefined) {
     const state = object(v.blocker, ["active", "message", "internal", "resolvedOn"]);
@@ -81,6 +82,8 @@ export function parseDelivery(input: unknown): Delivery {
   if (v.publishStartStatus !== undefined && typeof v.publishStartStatus !== "boolean") return invalid();
   const workOrderIds = v.workOrderIds === undefined ? undefined : uniqueIds(v.workOrderIds);
   if (workOrderIds && (workOrderIds.length > 10 || workOrderIds.some(id => !/^\d{1,32}$/.test(id)))) return invalid();
+  const pendingJob = v.pendingTimeJobcodeId;
+  if (pendingJob !== undefined && (typeof pendingJob !== "string" || !/^\d{1,32}$/.test(pendingJob) || v.kind === "service-area")) return invalid();
   const compact = <K extends string, T>(key: K, value?: T) => value === undefined ? {} : { [key]: value } as Record<K, T>;
   let training: Delivery["training"];
   if (v.training !== undefined) {
@@ -109,9 +112,11 @@ export function parseDelivery(input: unknown): Delivery {
     ...compact("structure", v.structure),
     ...compact("parentId", optionalId(v.parentId)), ...compact("areaId", optionalId(v.areaId)), ...compact("groupId", optionalId(v.groupId)),
     ...compact("workOrderIds", workOrderIds),
+    ...compact("pendingTimeJobcodeId", pendingJob),
     ...compact("monthlyCap", number(v.monthlyCap, 3_600_000_000)), ...compact("lifetimeCap", number(v.lifetimeCap, 3_600_000_000)),
     ...compact("manualCompletion", number(v.manualCompletion, 100)), ...compact("completedOn", date(v.completedOn)),
     ...compact("start", start), ...compact("deadline", deadline),
+    ...compact("activity", v.activity === undefined ? undefined : parseActivitySchedule(v.activity)),
     ...compact("publishSummary", v.publishSummary), ...compact("publishStartStatus", v.publishStartStatus),
     ...compact("training", training), ...compact("blocker", blocker),
     ...compact("countAgainstParentCap", v.countAgainstParentCap), ...compact("allowDirectAllocation", v.allowDirectAllocation) };

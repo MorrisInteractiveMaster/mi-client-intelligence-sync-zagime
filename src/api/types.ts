@@ -41,6 +41,7 @@ export interface StaffSource {
   workOrderName?: string;
   sourceProjectId?: string;
   reportingProjectId?: string;
+  automaticClassification?: { projectId: string; parentId: string; areaId: string; seconds: number; reportingDescription?: string };
   classifiedSeconds?: number;
   sourcePersonId?: string;
   consultantName?: string;
@@ -60,6 +61,8 @@ export interface SourceFilters {
   direction?: SortDirection;
   workOrder?: string;
   consultant?: string;
+  consultants?: string;
+  provenance?: "automatic" | "manual" | "unclassified";
   area?: string;
   project?: string;
   from?: string;
@@ -79,6 +82,7 @@ export interface SourceHours {
   attributedSeconds?: number;
   remainingAtParentSeconds?: number;
   classifiedSeconds?: number;
+  automaticallyClassifiedSeconds?: number;
 }
 export interface SourceHoursGroup extends SourceHours {
   id: string | null;

@@ -28,6 +28,19 @@ export interface ProjectUpdate {
 }
 
 /** Project-only persisted model. Legacy reporting/demo types remain separate. */
+export interface ProjectDeletionReview {
+  revision: number;
+  name: string;
+  kind: "engagement" | "service-area" | "project";
+  published: boolean;
+  blockers: string[];
+  milestones: number;
+  activeBlocker: boolean;
+  parent: string | null;
+  department: string | null;
+  deleted?: true;
+}
+
 export interface Project {
   schemaVersion: 2;
   id: string;
@@ -135,6 +148,7 @@ export interface ProjectReport {
     monthlyCap?: number; lifetimeCap?: number; monthlyCapUsed?: number; lifetimeCapUsed?: number; managerIds?: string[];
     blocker?: { active: boolean; message: string; resolvedOn?: string };
     completedOn?: string;
+    activityDates?: string[];
   }>;
   projects: (Omit<
     ProjectView,

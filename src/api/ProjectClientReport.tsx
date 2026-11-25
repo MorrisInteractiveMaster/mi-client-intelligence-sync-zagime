@@ -194,7 +194,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
   const contact = kind === "contact" ? report?.portfolio?.directory.find(p => p.id === id) : undefined;
   const milestone = kind === "milestone" ? project?.milestones?.find(m => m.id === itemId) : undefined;
   const labels: Record<string, string> = { overview: "Leadership summary", projects: nativeClient ? "Project Explorer" : "Projects", directory: "MI Directory",
-    history: "Reporting history", milestones: "Milestones", notes: "Executive notes", engagements: "Parent engagements", areas: "Departments" };
+    history: "Reporting history", milestones: "Milestones", notes: "Executive notes", engagements: "Parent projects", areas: "Departments" };
   const standardTitle = Object.hasOwn(labels, view) ? labels[view] : undefined;
   const title = area?.name ?? engagement?.name ?? contact?.name ?? milestone?.title ?? (project && kind === "timeline" ? "Project timeline" : project?.name) ?? standardTitle ?? "Report unavailable";
   useEffect(() => {
@@ -358,12 +358,12 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
           </div>
         </section>}
         {unavailable && <p className="intel-empty" role="status">This link is unavailable for your approved report.</p>}
-        {(view === "engagements" || (view === "projects" && !useExplorer)) && delivery.parentRows.length > 0 && <section className="mi-exec-panel" aria-label="Parent engagements">
-          <div className="mi-exec-heading"><div><h3>Parent engagements</h3><p>Open an engagement or select a count to see its delivery projects.</p></div></div>
+        {(view === "engagements" || (view === "projects" && !useExplorer)) && delivery.parentRows.length > 0 && <section className="mi-exec-panel" aria-label="Parent projects">
+          <div className="mi-exec-heading"><div><h3>Parent projects</h3><p>Open an engagement or select a count to see its delivery projects.</p></div></div>
           <div className="mi-engagement-grid">{delivery.parentRows.map(group => <ParentEngagementCard key={group.id} engagement={group} period={period}
             onOpen={() => choose("group:" + group.id)} onFilter={filter => choose("group:" + group.id, undefined, filter)} />)}</div>
         </section>}
-        {view === "engagements" && !delivery.parentRows.length && <p className="intel-empty">There are no approved parent engagements.</p>}
+        {view === "engagements" && !delivery.parentRows.length && <p className="intel-empty">There are no approved parent projects.</p>}
         {view === "areas" && nativeClient && <DepartmentAnalytics report={report} delivery={delivery} unit={effortUnit}
           onLink={choose} showDirectoryLink={false} onUnit={unit => portalNavigate({ "effort-unit": unit === "hours" ? unit : null }, true)} />}
         {view === "areas" && !nativeClient && <section className="mi-exec-panel" aria-label="Published departments">

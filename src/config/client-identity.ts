@@ -1,4 +1,5 @@
-export const ZAGIME_CLIENT_DISPLAY_NAME = "Zagime Anishinabek First Nation";
+export const ZAGIME_NATION_NAME = "Zagimē Anishinabēk First Nation";
+export const ZAGIME_CLIENT_DISPLAY_NAME = "Zagimē A. FN Workshop";
 
 export function isZagimeClient(id: string) {
   return id === "zagime-production" || id === "zagime";

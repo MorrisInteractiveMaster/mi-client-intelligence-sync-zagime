@@ -2,6 +2,8 @@ import { ArrowUpRight, ChevronDown, ChevronsLeft, ChevronsRight, Menu, Search, X
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { branding, brandAsset } from "../config/branding";
+import { ZAGIME_NATION_NAME } from "../config/client-identity";
 import "./premium-shell.css";
 import "./experience-shell.css";
 
@@ -35,6 +37,8 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
   const search = useRef<HTMLDialogElement>(null);
   const mobileButton = useRef<HTMLButtonElement>(null);
   const searchButton = useRef<HTMLButtonElement>(null);
+  const sidebarSearch = useRef<HTMLButtonElement>(null);
+  const searchOpener = useRef<HTMLElement | null>(null);
   const menuSelection = useRef(false);
   const searchSelection = useRef(false);
   const [query, setQuery] = useState("");
@@ -51,7 +55,11 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
   const results = needle ? [...destinations, ...searchResults].filter(item => normalized(item.label + " " + item.context).includes(needle)).slice(0, 14)
     : destinations.slice(0, 7);
   function showSearch() {
-    if (!search.current?.open) search.current?.showModal();
+    if (!search.current?.open) {
+      searchOpener.current = document.activeElement instanceof HTMLElement && document.activeElement.tagName === "BUTTON"
+        ? document.activeElement : sidebarSearch.current?.getClientRects().length ? sidebarSearch.current : searchButton.current;
+      search.current?.showModal();
+    }
     setQuery("");
   }
   useEffect(() => {
@@ -98,17 +106,24 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
   const commands = <div className="mi-workspace-tools">
     <button type="button" className="secure-secondary mi-mobile-navigation" ref={mobileButton}
       aria-haspopup="dialog" onClick={() => menu.current?.showModal()}><Menu aria-hidden="true" /> <span>{mobileLabel}</span></button>
-    <button type="button" className="secure-secondary" ref={searchButton} onClick={showSearch} aria-label={searchLabel}><Search aria-hidden="true" />
+    <button type="button" className="secure-secondary mi-toolbar-search" ref={searchButton} onClick={showSearch} aria-label={searchLabel}><Search aria-hidden="true" />
       <span>{searchLabel}</span>{!embedded && <kbd>Ctrl K</kbd>}</button>
   </div>;
   return <div className={"mi-workspace-frame" + (embedded ? " mi-workspace-embedded" : "")} data-collapsed={collapsed}>
     {!embedded && <aside className="mi-workspace-sidebar">
+      <div className="mi-sidebar-brand">
+        {branding.partnerLogo && <img src={brandAsset(branding.partnerLogo)} alt={branding.partnerName} width="640" height="200" />}
+        <img src={brandAsset("branding/zagime/zagime-main-logo.png")} alt={ZAGIME_NATION_NAME} width="495" height="155" />
+      </div>
       <div className="mi-sidebar-heading"><span>{heading}</span>
         <button type="button" className="mi-collapse" onClick={onCollapse} aria-expanded={!collapsed}
           aria-label={(collapsed ? "Expand " : "Collapse ") + collapseLabel} title={(collapsed ? "Expand " : "Collapse ") + collapseLabel}>
           {collapsed ? <ChevronsRight aria-hidden="true" /> : <ChevronsLeft aria-hidden="true" />}
         </button>
       </div>
+      <button type="button" className="mi-sidebar-search" ref={sidebarSearch} onClick={showSearch} aria-label={searchLabel}>
+        <Search size={18} aria-hidden="true" /><span>Search workspace</span><kbd>Ctrl K</kbd>
+      </button>
       {navigation()}
     </aside>}
     <div className="mi-workspace-body">
@@ -124,7 +139,7 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
     </dialog>
     <dialog className="mi-search-dialog" aria-label={searchLabel} ref={search}
       onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); search.current?.close(); } }} onClose={() => {
-        if (!searchSelection.current) searchButton.current?.focus();
+        if (!searchSelection.current) searchOpener.current?.focus();
         searchSelection.current = false;
       }}>
       <div className="mi-dialog-heading"><h2>{searchLabel}</h2><button type="button" className="secure-secondary" aria-label="Close search" onClick={() => search.current?.close()}><X aria-hidden="true" /></button></div>

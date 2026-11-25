@@ -59,7 +59,7 @@ export function ParentEngagementCard({ engagement, period, reportSeconds, exactE
   const overdue = engagement.projects.filter(item => item.overdue).length;
   return <article className="mi-engagement-card" data-attention={blockers > 0 || undefined}>
     <div className="mi-engagement-heading">
-      <div><small>Parent engagement</small><h3>{engagement.name}</h3></div>
+      <div><small>Parent project</small><h3>{engagement.name}</h3></div>
       {onOpen && <button type="button" className="exec-text-button" onClick={onOpen}>Open <span className="exec-sr-only">{engagement.name}</span><ArrowUpRight size={16} aria-hidden="true" /></button>}
     </div>
     <button type="button" className="mi-engagement-completion mi-trend-result" onClick={() => onFilter("completed")}>
@@ -75,6 +75,6 @@ export function ParentEngagementCard({ engagement, period, reportSeconds, exactE
         detail={period + " · " + reportHours(engagement.seconds) + " of " + reportHours(reportSeconds!) + " approved hours"} />}
     {(blockers > 0 || overdue > 0) && <p className="mi-engagement-risk"><CircleAlert size={15} aria-hidden="true" />
       {blockers > 0 ? blockers + (blockers === 1 ? " project blocked" : " projects blocked") : overdue + (overdue === 1 ? " project overdue" : " projects overdue")}</p>}
-    <BudgetUtilization budget={engagement.delivery} title="Parent engagement hour caps" />
+    <BudgetUtilization budget={engagement.delivery} title="Parent project hour caps" />
   </article>;
 }

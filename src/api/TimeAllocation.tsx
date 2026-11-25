@@ -21,7 +21,7 @@ import "./time-allocation.css";
 const blank: AllocationAnnotations = { reportingDescription: "", internalNote: "" };
 const sourceStatusLabels = { allocated: "Classified", partial: "Partially classified", unallocated: "Not assigned to a delivery project", review: "Needs review", deleted: "Deleted" };
 const entryLabels: Record<TimeEntrySortField, string> = {
-  date: "Date", consultant: "Consultant", notes: "Original provider notes", workOrder: "Work order",
+  date: "Date", consultant: "Consultant", notes: "Original QuickBooks Time Description", workOrder: "QuickBooks Time Work Order",
   recorded: "Recorded", reporting: "Reporting", assignment: "Assignment", status: "Status",
 };
 type AppliedFilters = SourceFilters & { search?: string };
@@ -32,6 +32,8 @@ const timePresets = {
 } as const;
 type TimePreset = keyof typeof timePresets;
 type SavedScope = { preset: TimePreset; reference: string; start: string; end: string; order: "oldest" | "newest"; group: TimeGrouping };
+const bulkEligible = (source: StaffSource) => source.seconds > 0 && !source.conflict &&
+  !source.needsReview && !source.portions.length && !source.automaticClassification;
 
 function validSavedScope(value: unknown): value is SavedScope {
   if (!value || typeof value !== "object") return false;
@@ -88,8 +90,10 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   const [status, setStatus] = useState<SourceFilters["status"]>(linkedStatus);
   const [workOrder, setWorkOrder] = useState(linkedWorkOrder);
   const [consultant, setConsultant] = useState(linkedConsultant);
+  const [consultants, setConsultants] = useState<string[]>([]);
   const [area, setArea] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
+  const [provenance, setProvenance] = useState<SourceFilters["provenance"]>();
   const [from, setFrom] = useState("");
   const [through, setThrough] = useState("");
   const [selected, setSelected] = useState<StaffSource[]>([]);
@@ -175,12 +179,13 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   const draftAnnotations = { reportingDescription: annotations.reportingDescription, internalNote: annotations.internalNote,
     ...(parent ? { parentId: parent } : {}), ...(classification ? { areaId: classification } : {}) };
   const defaultParent = (source: StaffSource) => {
+    if (source.automaticClassification) return source.automaticClassification.parentId;
     const target = projects.find(project => project.id === (source.reportingProjectId ?? source.sourceProjectId));
     if (target?.delivery?.kind === "engagement") return target.id;
     return target?.delivery?.parentId ?? "";
   };
   const defaultDepartment = (source: StaffSource) =>
-    projects.find(project => project.id === source.reportingProjectId)?.delivery?.areaId ?? "";
+    source.automaticClassification?.areaId ?? projects.find(project => project.id === source.reportingProjectId)?.delivery?.areaId ?? "";
   const priorAnnotations = editor?.annotations ?? blank;
   const dirty = Boolean(editor && (JSON.stringify(portions) !== JSON.stringify(editor.portions) ||
     draftAnnotations.reportingDescription !== priorAnnotations.reportingDescription ||
@@ -192,8 +197,10 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   function edit(source: StaffSource) {
     editButton.current = document.activeElement as HTMLElement;
     setEditor(source);
-    setPortions(source.portions);
-    setAnnotations(source.annotations ?? blank);
+    setPortions(source.automaticClassification
+      ? [{ projectId: source.automaticClassification.projectId, seconds: source.automaticClassification.seconds, description: "" }]
+      : source.portions);
+    setAnnotations(source.annotations ?? { ...blank, reportingDescription: source.description.slice(0, 1000) });
     setHistory(undefined);
     setHistoryCursor(undefined);
     setProjectSearch("");
@@ -255,6 +262,8 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     applied.search ? "Search: " + applied.search : "",
     applied.workOrder ? "Work order: " + (summary?.workOrders.find(item => item.id === applied.workOrder)?.label ?? applied.workOrder) : "",
     applied.consultant ? "Consultant: " + (applied.consultant === "unavailable" ? "Unavailable" : summary?.consultants.find(item => item.id === applied.consultant)?.label ?? applied.consultant) : "",
+    applied.consultants ? applied.consultants.split(",").length + " consultants selected" : "",
+    applied.provenance ? "Classification: " + applied.provenance : "",
     applied.area ? "Department: " + areaLabel(applied.area) : "",
     applied.project ? "Project: " + projectName(applied.project) : "",
     applied.from ? "From " + reportDay(applied.from) : "",
@@ -276,7 +285,30 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   const header = (field: TimeEntrySortField) => linkedId ? <th scope="col">{entryLabels[field]}</th> :
     <SortHeader field={field} label={entryLabels[field]} sort={entrySort} onSort={sortEntries} disabled={busy} />;
   const canBulk = selectedRows.length > 0 && selectedRows.length <= MAX_BULK_ALLOCATION_ENTRIES && bulkProject &&
-    selectedRows.every(source => source.seconds > 0 && !source.conflict && !source.needsReview && !source.portions.length);
+    selectedRows.every(bulkEligible);
+  async function selectMatches() {
+    if (busy || !summary?.matched) return;
+    const controller = new AbortController();
+    setBusy(true);
+    setError("");
+    try {
+      const query = new URLSearchParams({ month: appliedMonth });
+      for (const [name, value] of Object.entries(applied)) if (value) query.set(name, value);
+      const matching = await allAuthorizedRows("sources", query, controller.signal, authorizedPages(client, tenant));
+      if (!mounted.current) return;
+      const available = matching.filter(bulkEligible);
+      if (available.length > MAX_BULK_ALLOCATION_ENTRIES) {
+        setError(available.length + " eligible entries match. Narrow the filters to " + MAX_BULK_ALLOCATION_ENTRIES + " or select individual entries.");
+        return;
+      }
+      setSelected(available);
+      setNotice(available.length + " eligible entries selected across all matches.");
+    } catch (reason) {
+      if (mounted.current) failed(reason);
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
   async function write(source: StaffSource, expected: number, parts: Allocation[], notes: AllocationAnnotations) {
     return client.call<{ revision: number; changed: boolean }>(tenant, "allocations/" + source.id, {
       method: "PATCH", body: { expectedRevision: expected, expectedSourceRevision: source.sourceRevision, portions: parts, annotations: notes },
@@ -372,16 +404,32 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     </form>
     <form className="time-filter-form" aria-label="Time entry filters" onSubmit={event => {
       event.preventDefault();
-      void load(undefined, { ...applied, search: search.trim(), status, workOrder, consultant, area, project: projectFilter, from, through });
+      void load(undefined, { ...applied, search: search.trim(), status, workOrder, consultant, consultants: consultants.join(","),
+        provenance, area, project: projectFilter, from, through });
     }}>
       <label>{summary?.period.kind === "month" || !summary ? "Search month" : "Search period"}<input type="search" value={search} maxLength={120} onChange={e => setSearch(e.target.value)} /></label>
       <details className="time-advanced time-filter-options"><summary>Advanced filters</summary><div className="time-advanced-grid">
       <label>Work order<select value={workOrder} onChange={e => setWorkOrder(e.target.value)}><option value="">All</option>
         {workOrder && !summary?.workOrders.some(item => item.id === workOrder) && <option value={workOrder}>{workOrder}</option>}
         {summary?.workOrders.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-      <label>Consultant<select value={consultant} onChange={e => setConsultant(e.target.value)}><option value="">All</option><option value="unavailable">Unavailable</option>
+      <label>Consultant<select value={consultant} onChange={e => { setConsultant(e.target.value); setConsultants([]); }}><option value="">All</option><option value="unavailable">Unavailable</option>
         {consultant && consultant !== "unavailable" && !summary?.consultants.some(item => item.id === consultant) && <option value={consultant}>{consultant}</option>}
         {summary?.consultants.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+      {summary && summary.consultants.length > 1 && <details className="time-advanced">
+        <summary>Choose multiple consultants</summary>
+        <fieldset><legend>Consultants to include</legend>{summary.consultants.map(item => <label key={item.id}>
+          <input type="checkbox" checked={consultants.includes(item.id)} onChange={event => {
+            const checked = event.target.checked;
+            setConsultant("");
+            setConsultants(current => checked ? [...current, item.id].slice(0, 20) : current.filter(id => id !== item.id));
+          }} />{item.label}
+        </label>)}</fieldset>
+      </details>}
+      <label>Classification source<select value={provenance ?? ""} onChange={event => setProvenance(
+        (event.target.value || undefined) as SourceFilters["provenance"])}>
+        <option value="">All</option><option value="automatic">Automatic mapping</option>
+        <option value="manual">Manual allocation</option><option value="unclassified">No delivery classification</option>
+      </select></label>
       <label>Department<select value={area} onChange={e => setArea(e.target.value)}><option value="">All</option>{portfolio?.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
       <label>Project<select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}><option value="">All</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
       <label>Allocation status<select value={status ?? ""} onChange={e => setStatus((e.target.value || undefined) as SourceFilters["status"])}><option value="">All</option><option value="queue">Has unallocated time</option>{Object.entries(sourceStatusLabels).map(([id,label]) => <option key={id} value={id}>{label}</option>)}</select></label>
@@ -390,7 +438,8 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       </div></details>
       <button type="submit" disabled={busy}>Apply filters</button>
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
-        setSearch(""); setStatus(undefined); setWorkOrder(""); setConsultant(""); setArea(""); setProjectFilter(""); setFrom(""); setThrough("");
+        setSearch(""); setStatus(undefined); setWorkOrder(""); setConsultant(""); setConsultants([]); setProvenance(undefined);
+        setArea(""); setProjectFilter(""); setFrom(""); setThrough("");
         const { period, start, end, order, group, sort, direction } = applied;
         void load(undefined, { period, start, end, order, group, sort, direction });
       }}>Clear filters</button>
@@ -410,7 +459,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
         }} />
       </div>
       <TimeHistorySummary summary={summary} filenamePrefix={["Morris", clientName, summary.period.start ?? "All_History", summary.period.end].filter(Boolean).join("_")} grouping={applied.group ?? "month"} busy={busy} onConsultant={id => {
-        setConsultant(id); void load(undefined, { ...applied, consultant: id });
+        setConsultants([]); setConsultant(id); void load(undefined, { ...applied, consultant: id, consultants: undefined });
       }} onWorkOrder={id => {
         setWorkOrder(id); void load(undefined, { ...applied, workOrder: id });
       }} />
@@ -418,6 +467,9 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
         <div><dt>Total in filter scope</dt><dd>{summary.counts.total}</dd></div>
         {Object.entries(sourceStatusLabels).map(([id, label]) => <div key={id}><dt>{label}</dt><dd>{summary.counts[id as keyof typeof sourceStatusLabels]}</dd></div>)}
       </dl>
+      {Boolean(summary.hours.automaticallyClassifiedSeconds) && <p className="time-scope-status">
+        {reportHours(summary.hours.automaticallyClassifiedSeconds ?? 0)} h classified by mapping for staff review
+      </p>}
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
         const queue = applied.status === "queue" ? undefined : "queue";
         setStatus(queue); void load(undefined, { ...applied, status: queue });
@@ -426,8 +478,18 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     {error && <p className="secure-message secure-error" role="alert">{error}</p>}
     {notice && <p className="secure-message" role="status">{notice}</p>}
     {undo && <button type="button" className="secure-secondary" disabled={busy} onClick={() => { const prior = undo; setUndo(undefined); void save(prior.source, prior.source.portions, prior.source.annotations ?? blank, prior.revision, false); }}>Undo last change</button>}
+    {!!rows?.length && !linkedId && <div className="secure-actions" aria-label="Select time entries">
+      <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
+        setSelected(rows.slice(-25).filter(bulkEligible));
+      }}>Select eligible entries on this page</button>
+      <button type="button" className="secure-secondary" disabled={busy} onClick={() => void selectMatches()}>Select all eligible matches</button>
+      {selected.length > 0 && <button type="button" className="secure-secondary" disabled={busy} onClick={() => setSelected([])}>Clear selection</button>}
+    </div>}
     {selected.length > 0 && <div className="delivery-section-heading">
       <label>Assign {selected.length} unallocated entries<select value={bulkProject} onChange={e => setBulkProject(e.target.value)}><option value="">Choose project</option>{projects.filter(p => canAllocateToDelivery(p.delivery)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+      {bulkProject && <p>{reportHours(selectedRows.reduce((sum, row) => sum + row.unallocatedSeconds, 0))} h to classify ·
+        {" "}{[resolvedParent(bulkProject) && projectName(resolvedParent(bulkProject)), resolvedArea(bulkProject) && areaLabel(resolvedArea(bulkProject)),
+          projectName(bulkProject)].filter(Boolean).join(" / ")}</p>}
       <button type="button" disabled={busy || !canBulk || Boolean(unconfirmed)} onClick={bulk}>Assign selected time</button></div>}
     {batch && unconfirmed && <button type="button" disabled={busy} onClick={() => void submitBulk(batch, unconfirmed)}>Check this bulk request again</button>}
     {batch && bulkResult && <BulkAllocationResults result={bulkResult} describeEntry={id => batch.labels[id] ?? id} busy={busy}
@@ -448,18 +510,21 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       <table role="table"><thead role="rowgroup"><tr role="row"><th scope="col">Select</th>{header("date")}{showConsultant && header("consultant")}{showNotes && header("notes")}
         {header("workOrder")}{header("recorded")}{header("reporting")}{header("assignment")}{header("status")}<th scope="col">Actions</th></tr></thead>
       <tbody role="rowgroup">{rows.map(source => <tr key={source.id} role="row">
-        <td role="cell" data-cell="Select"><input aria-label={"Select entry on " + source.date} type="checkbox" disabled={source.conflict || source.needsReview || source.portions.length > 0 || source.seconds === 0}
+        <td role="cell" data-cell="Select"><input aria-label={"Select entry on " + source.date} type="checkbox" disabled={Boolean(source.automaticClassification) || source.conflict || source.needsReview || source.portions.length > 0 || source.seconds === 0}
           checked={selected.some(row => row.id === source.id)} onChange={e => setSelected(old => e.target.checked ? [...old, source] : old.filter(row => row.id !== source.id))} /></td>
         <td role="cell" data-cell="Date">{reportDay(source.date)}</td>
         {showConsultant && <td role="cell" data-cell="Consultant"><div className="time-profile">
           {source.wordpressProfile?.photo && <img src={source.wordpressProfile.photo} alt={source.wordpressProfile.alt || ""} width="32" height="32" loading="lazy" />}
           <span>{source.consultantName}{source.wordpressProfile?.title && <small>{source.wordpressProfile.title}</small>}</span>
         </div></td>}
-        {showNotes && <td role="cell" data-cell="Original provider notes">{source.description}</td>}<td role="cell" data-cell="Work order"><b>{source.workOrderName || source.sourceWorkOrderId}</b></td>
-        <td role="cell" data-cell="Recorded">{reportHours(source.seconds)} h</td><td role="cell" data-cell="Reporting">{source.annotations?.reportingDescription || "—"}</td>
-        <td role="cell" data-cell="Assignment">{source.portions.length ? source.portions.map(p => <div key={p.projectId}>{projectName(p.projectId)}<small>{resolvedParent(p.projectId) ? projectName(resolvedParent(p.projectId)) + " · " : ""}{areaLabel(resolvedArea(p.projectId))}</small></div>) : "Unassigned"}
+        {showNotes && <td role="cell" data-cell="Original QuickBooks Time Description"><span className="mi-time-note-preview">{source.description}</span></td>}<td role="cell" data-cell="QuickBooks Time Work Order"><b>{source.workOrderName || source.sourceWorkOrderId}</b></td>
+        <td role="cell" data-cell="Recorded">{reportHours(source.seconds)} h</td><td role="cell" data-cell="Reporting">{source.annotations?.reportingDescription ?? source.automaticClassification?.reportingDescription ?? "—"}</td>
+        <td role="cell" data-cell="Assignment">{source.portions.length ? source.portions.map(p => <div key={p.projectId}>{projectName(p.projectId)}<small>{resolvedParent(p.projectId) ? projectName(resolvedParent(p.projectId)) + " · " : ""}{areaLabel(resolvedArea(p.projectId))}</small></div>) :
+          source.automaticClassification ? <div>{projectName(source.automaticClassification.projectId)}
+            <small>{projectName(source.automaticClassification.parentId)} · {areaLabel(source.automaticClassification.areaId)}</small>
+          </div> : "Unassigned"}
           {(source.annotations?.parentId || source.annotations?.areaId) && <small>Reporting: {source.annotations.parentId ? projectName(source.annotations.parentId) + " · " : ""}{areaLabel(source.annotations.areaId ?? "")}</small>}</td>
-        <td role="cell" data-cell="Status">{sourceStatusLabels[sourceStatus(source)]}<small>{reportHours(source.unallocatedSeconds)} h at work order</small>
+        <td role="cell" data-cell="Status">{source.automaticClassification ? "Automatically classified · staff only" : sourceStatusLabels[sourceStatus(source)]}<small>{reportHours(source.unallocatedSeconds)} h awaiting approved allocation</small>
           <small>{approvalLabel(source)}</small></td>
         <td role="cell" data-cell="Actions"><button type="button" className="platform-primary-action" disabled={busy} onClick={() => edit(source)}>Manage Time</button></td>
       </tr>)}</tbody></table></div>}
@@ -470,29 +535,38 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       <details><summary>Original source details</summary><dl>
         {editor.consultantName && <div><dt>Consultant name</dt><dd>{editor.consultantName}</dd></div>}
         {editor.sourcePersonId && <div><dt>Consultant identifier</dt><dd>{editor.sourcePersonId}</dd></div>}
-        {editor.description && <div><dt>Original provider notes</dt><dd className="time-original-note">{editor.description}</dd></div>}
-        {!editor.description && editor.originalNotesState === "empty" && <div><dt>Original provider notes</dt><dd>No note was entered.</dd></div>}
-        {!editor.description && editor.originalNotesState === "unavailable" && <div><dt>Original provider notes</dt><dd>QuickBooks Time did not supply a note.</dd></div>}
+        {editor.description && <div><dt>Original QuickBooks Time Description</dt><dd className="time-original-note">{editor.description}</dd></div>}
         <div><dt>Accounting approval</dt><dd>{approvalLabel(editor)}</dd></div>
         <div><dt>Source revision</dt><dd><code>{editor.sourceRevision}</code></dd></div>
         {editor.modifiedAt && <div><dt>Source last modified</dt><dd>{reportTimestamp(editor.modifiedAt)}</dd></div>}
       </dl></details>
+      {editor.automaticClassification && <p role="status">The reviewed work-order mapping classified this time for staff. Saving an allocation uses the existing reporting approval rules.</p>}
       {editor.needsReview && <p role="status">QuickBooks changed this entry. The prior split is shown for review. Saving re-applies only the amounts you approve.</p>}
       {error && <p className="secure-message secure-error" role="alert">{error}</p>}
       <div className="delivery-filters">
-        <label>Reporting description<textarea value={annotations.reportingDescription} maxLength={1000} onChange={e => setAnnotations({ ...annotations, reportingDescription: e.target.value })} /></label>
-        <label>Find a parent engagement<input type="search" value={parentSearch} onChange={e => setParentSearch(e.target.value)} /></label>
-        <label>Reporting parent<select value={parent} onChange={e => { setParent(e.target.value); setClassification(""); }}><option value="">None selected</option>{projects.filter(p => p.id === parent || ((p.delivery?.kind === "engagement" || projects.some(child => child.delivery?.parentId === p.id)) &&
+        <label>Reporting description<textarea aria-label="Reporting description" value={annotations.reportingDescription} maxLength={1000} onChange={e => setAnnotations({ ...annotations, reportingDescription: e.target.value })} /></label>
+        {defaultParent(editor) ? <p>Parent Project <strong>{projectName(defaultParent(editor))}</strong></p> : <>
+        <label>Find a Parent Project<input type="search" value={parentSearch} onChange={e => setParentSearch(e.target.value)} /></label>
+        <label>Parent Project<select value={parent} onChange={e => { setParent(e.target.value); setClassification(""); }}><option value="">None selected</option>{projects.filter(p => p.id === parent || ((p.delivery?.kind === "engagement" || projects.some(child => child.delivery?.parentId === p.id)) &&
           p.name.toLocaleLowerCase().includes(parentSearch.trim().toLocaleLowerCase()))).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <label>Reporting department<select value={classification} onChange={e => setClassification(e.target.value)}><option value="">None selected</option>{portfolio?.areas
+        </>}
+        <label>Department<select value={classification} onChange={e => setClassification(e.target.value)}><option value="">None selected</option>{portfolio?.areas
           .filter(a => !parent || a.id === classification || projects.some(p => resolvedParent(p.id) === parent && resolvedArea(p.id) === a.id))
           .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-        <label>Find an assignment project<input type="search" value={projectSearch} onChange={e => setProjectSearch(e.target.value)} /></label>
+        <label>Find a Delivery Project<input type="search" value={projectSearch} onChange={e => setProjectSearch(e.target.value)} /></label>
       </div>
       {portions.map((p, index) => <div className="secure-split" key={index}>
-        <label>Delivery project<select aria-label="Delivery project" value={p.projectId} onChange={e => setPortions(old => old.map((part, i) => i === index ? { ...part, projectId: e.target.value } : part))}>
+        <label>Delivery project<select aria-label="Delivery project" value={p.projectId} onChange={e => {
+          const next = e.target.value;
+          setPortions(old => old.map((part, i) => i === index ? { ...part, projectId: next } : part));
+          if (portions.length === 1 && next) {
+            setParent(defaultParent(editor) || resolvedParent(next));
+            setClassification(resolvedArea(next));
+          }
+        }}>
           <option value="">Choose project</option>{p.projectId && !idIndex.has(p.projectId) && <option value={p.projectId}>Existing assignment</option>}
-          {projects.filter(project => project.id === p.projectId || (canAllocateToDelivery(project.delivery) && (!parent || resolvedParent(project.id) === parent || project.id === parent) &&
+          {projects.filter(project => project.id === p.projectId || (project.delivery?.kind !== "engagement" &&
+            canAllocateToDelivery(project.delivery) && (!parent || resolvedParent(project.id) === parent) &&
             (!classification || resolvedArea(project.id) === classification) && project.name.toLowerCase().includes(projectSearch.trim().toLowerCase()))).map(project => <option value={project.id} key={project.id}>{project.name}</option>)}</select></label>
         <label>Allocated seconds<input type="number" min="1" step="1" value={p.seconds} onChange={e => setPortions(old => old.map((part, i) => i === index ? { ...part, seconds: Number(e.target.value) } : part))} /></label>
         <span>{reportHours(p.seconds)} h</span><button type="button" className="secure-secondary" onClick={() => setPortions(old => old.filter((_, i) => i !== index))}>Remove split</button></div>)}
