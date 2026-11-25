@@ -229,7 +229,8 @@ function MappingReview({ client, tenant, mapping, projects, portfolio, month, bu
 
   return <form className="secure-form mi-mapping-review" onSubmit={event => {
     event.preventDefault();
-    if (!kind || !selected || !approved || !reviewed || busy || recordedSeconds === undefined || allocatedSeconds === undefined) return;
+    if (!kind || !selected || !approved || !reviewed || busy ||
+      recordedSeconds !== reviewed.recordedSeconds || allocatedSeconds === undefined) return;
     void confirm(mapping, selected.id, { targetKind: kind, previousProjectId: mapping.projectId, recordedSeconds, allocatedSeconds,
       impactVersion: reviewed.version, ...(parent && department ? { parentId: parent.id, areaId: department.id } : {}) });
   }}>
@@ -257,7 +258,10 @@ function MappingReview({ client, tenant, mapping, projects, portfolio, month, bu
       <p>{reportHours(recordedSeconds - allocatedSeconds)} h of source time will be attributed in the Morris workspace.
         {allocatedSeconds > 0 && " The existing " + reportHours(allocatedSeconds) + " h of allocations stay assigned where they are."}
         {kind === "project" && " Eligible entries receive a staff-only classification. Approved client effort stays unchanged."}</p>
-      {reviewed ? <dl className="secure-metrics">
+      {reviewed && recordedSeconds !== reviewed.recordedSeconds && <p role="alert">
+        The recorded total differs from the verified entries. Reconcile this work order before confirming a mapping.
+      </p>}
+      {reviewed ? <dl className="mi-mapping-impact">
         {Object.entries({
           "QuickBooks Time work order": reviewed.workOrder, "Destination project type": kind === "project" ? "Delivery Project" : "Parent Project",
           "Parent Project": reviewed.parent, ...(reviewed.department && { Department: reviewed.department, "Delivery Project": reviewed.project }),
@@ -268,10 +272,11 @@ function MappingReview({ client, tenant, mapping, projects, portfolio, month, bu
           "Will remain unchanged": reviewed.unchanged,
         }).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
       </dl> : <p role={impactError ? "alert" : "status"}>{impactError ? "The complete impact could not be verified. Refresh work orders and try again." : "Checking the complete work-order history…"}</p>}
-      <label className="secure-check"><input type="checkbox" checked={approved} disabled={!reviewed} onChange={event => setApproved(event.target.checked)} />
+      <label className="secure-check"><input type="checkbox" checked={approved}
+        disabled={!reviewed || reviewed.recordedSeconds !== recordedSeconds} onChange={event => setApproved(event.target.checked)} />
         I reviewed the project and affected hours.</label>
     </div>}
-    <button type="submit" disabled={busy || !selected || !reviewed || !approved || recordedSeconds === undefined}>
+    <button type="submit" disabled={busy || !selected || !reviewed || !approved || recordedSeconds !== reviewed.recordedSeconds}>
       {busy ? "Confirming…" : "Confirm mapping"}
     </button>
   </form>;

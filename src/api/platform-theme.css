@@ -125,6 +125,22 @@ section.nordic.secure-shell[data-theme="dark"] .platform-control-nav a[aria-curr
 .mi-mapping-detail { border-top: 1px solid var(--secure-line); padding-top: 12px; }
 .mi-mapping-review { max-width: 60rem; }
 .mi-mapping-preview { border-inline-start: 3px solid #6087a8; padding-inline: 12px; }
+.mi-mapping-impact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
+  gap: 0 16px;
+  margin-block: 12px;
+}
+.mi-mapping-impact > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding-block: 6px;
+  border-block-end: 1px solid var(--mi-line);
+}
+.mi-mapping-impact:nth-child(n) dt { color: var(--mi-muted); font-size: .84rem; }
+.mi-mapping-impact dd { margin: 0; max-inline-size: 14ch; font-size: .9rem; font-weight: 700; text-align: end; }
 .mi-directory-group { display: grid; gap: 8px; margin-block: 16px; }
 .mi-directory-group h4 { margin: 0; }
 

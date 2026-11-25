@@ -11,6 +11,7 @@ import { chromium, firefox, webkit, type Browser, type Page } from "playwright";
 import type { ReportingBackend } from "../server/backend";
 import { firebaseRuntime } from "../server/firebase";
 import { key } from "../server/firestore-store";
+import { sourceRecordId } from "../server/contracts";
 import { apiServer, RequestLimit } from "../server/http";
 import { seedProjectSynthetic } from "../server/project-operator";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
@@ -1003,6 +1004,18 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     });
     setup.set(root.collection("timeProjectTotals").doc(mappingAnchor).collection("periods").doc(month), { recorded: 18900, allocated: 3600 });
     setup.set(root.collection("timeProjectTotals").doc(mappingAnchor).collection("periods").doc("lifetime"), { recorded: 18900, allocated: 3600 });
+    const anchorProject = { ...(await parentRef.get()).data(), id: mappingAnchor, tenantId: tenant, schemaVersion: 2,
+      name: "Internal reporting and facilitation", published: false } as Project;
+    setup.set(root.collection("projects").doc(mappingAnchor), anchorProject);
+    setup.set(root.collection("projectViews").doc(mappingAnchor), projectView(anchorProject, 0));
+    for (const [externalId, seconds] of [["6001", 15300], ["6002", 3600]] as const) {
+      const id = sourceRecordId("quickbooks-time", account, externalId);
+      setup.set(root.collection("rawTime").doc(id), { schemaVersion: 2, source: "quickbooks-time", sourceCompanyId: account,
+        externalId, scopeProjectId: mappingAnchor, modifiedAt: new Date(now).toISOString(), deleted: false,
+        record: { id, seconds, tenantId: tenant, sourceWorkOrderId: mappedJob, date: month + "-01", revision: "preview-fixture" } });
+      if (externalId === "6002") setup.set(root.collection("allocationHeads").doc(id), { revision: 1, sourceRevision: "preview-fixture",
+        portions: [{ projectId: parent, seconds, description: "" }] });
+    }
     setup.update(parentRef, { delivery: { kind: "engagement", structure: 3, type: "hourly", managerIds: [], teamIds: [] } });
     await setup.commit();
     const timeOwner = await session(mainBrowser, "owner");

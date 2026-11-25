@@ -554,7 +554,8 @@ export class TimeSync {
               (totals.get("allocated") ?? 0) !== review.allocatedSeconds) throw Error("Time mapping conflict");
           if (review.impactVersion) {
             reviewedImpact = await timeMappingImpact(tx, root, m, p);
-            if (reviewedImpact.version !== review.impactVersion) throw Error("Time mapping conflict");
+            if (reviewedImpact.version !== review.impactVersion || reviewedImpact.recordedSeconds !== review.recordedSeconds)
+              throw Error("Time mapping conflict");
           }
         } else if (m.projectId === project) return { changed: false };
         // Adoption keeps legacy totals intact, including when old jobcodes share an anchor.
