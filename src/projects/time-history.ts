@@ -4,6 +4,8 @@ export const timePeriods = ["month", "quarter", "year", "range", "all"] as const
 export type TimePeriod = typeof timePeriods[number];
 export const timeSortOrders = ["oldest", "newest"] as const;
 export type TimeSortOrder = typeof timeSortOrders[number];
+export const timeEntrySortFields = ["date", "consultant", "notes", "workOrder", "recorded", "reporting", "assignment", "status"] as const;
+export type TimeEntrySortField = typeof timeEntrySortFields[number];
 export type TimeGrouping = "month" | "quarter" | "year";
 export type TimeWindow = { kind: TimePeriod; start?: string; end?: string };
 

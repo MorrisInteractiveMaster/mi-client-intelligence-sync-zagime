@@ -8,6 +8,7 @@ import { axisMaximum, chartRows, comparableYears, type ChartKind, type MonthRang
 export { chartKinds, chartRows, type ChartKind } from "./reporting-chart-data";
 import { CsvExport } from "./CsvExport";
 import { csvHours } from "./report-csv";
+import { SortedTable } from "./SortHeader";
 
 export const chartTitles = {
   distribution: "Delivery by department",
@@ -26,16 +27,16 @@ function YearComparison({ month, rows, onLink }: { month: string; rows: Row[]; o
   const scale = axisMaximum(Math.max(0, ...comparable.flatMap(({ prior, current }) => [prior?.seconds ?? 0, current?.seconds ?? 0])));
   return <details className="intel-chart-table mi-chart-table"><summary>Compare with previous year</summary>
     <p>Compare the same months through {reportMonth(month)}. A dash means the approved report has no entry for that month.</p>
-    <table><caption>Approved reported hours by year</caption>
-      <thead><tr><th scope="col">Month</th><th scope="col">{year - 1}</th><th scope="col">{year}</th></tr></thead>
-      <tbody>{comparable.map(({ month: label, prior, current }) => <tr key={label}>
+    <SortedTable rows={comparable} caption="Approved reported hours by year"
+      columns={{ month: "Month", prior: String(year - 1), current: String(year) }} initial={{ key: "month", direction: "asc" }}
+      identity={row => row.month} value={(row, key) => key === "month" ? comparable.indexOf(row) : row[key]?.seconds}
+      cells={({ month: label, prior, current }) => <>
         <th scope="row">{label}</th>{[prior, current].map((row, index) => <td key={index}>{row
           ? <button type="button" className="exec-text-button mi-year-cell" onClick={() => onLink("projects", row.month)}
               aria-label={row.label + ", " + reportHours(row.seconds) + " hours"}>
             <span>{reportHours(row.seconds)} h</span><span className="mi-bar-track" aria-hidden="true"><i style={{ inlineSize: row.seconds / scale * 100 + "%" }} /></span>
           </button> : "—"}</td>)}
-      </tr>)}</tbody>
-    </table>
+      </>} />
   </details>;
 }
 
@@ -86,11 +87,12 @@ export function DotChart({ report, kind, onLink, onOpen, expanded, monthRange, d
         </button></li>)}</ul></div>}
       {trend && expanded && <YearComparison month={report.month} rows={rows} onLink={onLink} />}
       <div className="mi-chart-actions">
-        <details className="intel-chart-table mi-chart-table"><summary>Show data table</summary><table>
-          <caption>{caption}</caption><thead><tr><th scope="col">{trend ? "Month" : "Group"}</th><th scope="col">Hours</th>{distribution && <th scope="col">Share of approved effort</th>}</tr></thead>
-          <tbody>{rows.map(row => <tr key={row.id}><th scope="row">{row.label}</th><td>{reportHours(row.seconds)}</td>
-            {distribution && <td>{percentText(share(row.seconds) ?? 0)}</td>}</tr>)}</tbody>
-        </table></details>
+        <details className="intel-chart-table mi-chart-table"><summary>Show data table</summary>
+          <SortedTable rows={rows} caption={caption} columns={{ group: trend ? "Month" : "Group", seconds: "Hours", ...(distribution ? { share: "Share of approved effort" } : {}) } as Record<"group" | "seconds" | "share", string>}
+            initial={{ key: "group", direction: "asc" }} identity={row => row.id}
+            value={(row, field) => field === "group" ? row.month ?? row.label : field === "seconds" ? row.seconds : share(row.seconds)}
+            cells={row => <><th scope="row">{row.label}</th><td>{reportHours(row.seconds)}</td>{distribution && <td>{percentText(share(row.seconds) ?? 0)}</td>}</>} />
+        </details>
         {!draft && <CsvExport filename={"Morris_" + report.tenant.name + "_" + kind + "_" + report.month} label="Export chart CSV"
           data={{ headers: [trend ? "Month" : "Group", "Reported hours"],
             rows: rows.map(row => [row.month ?? row.label, csvHours(row.seconds)]) }} />}

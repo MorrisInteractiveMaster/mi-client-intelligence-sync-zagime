@@ -5,6 +5,10 @@ import { CsvExport } from "./CsvExport";
 import { hoursBreakdown } from "./report-csv";
 import type { SourceHoursGroup, SourceSummary } from "./types";
 import type { TimeGrouping } from "../projects/time-history";
+import { SortHeader, useSortedRows } from "./SortHeader";
+
+const breakdownColumns = ["label", "recordedSeconds", "allocatedSeconds", "unallocatedSeconds"] as const;
+type BreakdownColumn = typeof breakdownColumns[number];
 
 type Props = {
   summary: SourceSummary;
@@ -34,7 +38,7 @@ export function TimeHistorySummary({ summary, grouping, busy, onConsultant, onWo
               onClick={() => setDimension(id)}>{label}</button>)}
           </div>
         </header>
-        <SourceMix key={current} groups={groups} denominator={hours.recordedSeconds} label="Share of time in filter scope" busy={busy}
+        <SourceMix groups={groups} denominator={hours.recordedSeconds} label="Share of time in filter scope" busy={busy} sortable
           fallbackId={current === "consultant" ? "unavailable" : undefined}
           onSelect={current === "consultant" ? onConsultant : current === "workOrder" ? onWorkOrder : undefined} />
       </section>
@@ -59,13 +63,13 @@ export function TimeHistorySummary({ summary, grouping, busy, onConsultant, onWo
       <summary>Hours by {grouping}</summary>
       <HoursTable label={"Hours by " + grouping} filename={filenamePrefix + "_" + grouping} exportedRows={hours.byPeriod} rows={grouping === "month"
         ? hours.byPeriod.map(row => ({ ...row, label: reportMonth(row.label) }))
-        : hours.byPeriod} busy={busy} />
+        : hours.byPeriod} busy={busy} chronological />
     </details>
     </details>
   </section>;
 }
 
-function HoursTable({ label, rows, exportedRows, filename, onSelect, unavailableFilter, busy }: {
+function HoursTable({ label, rows, exportedRows, filename, onSelect, unavailableFilter, busy, chronological }: {
   label: string;
   rows: SourceHoursGroup[];
   exportedRows?: SourceHoursGroup[];
@@ -73,14 +77,19 @@ function HoursTable({ label, rows, exportedRows, filename, onSelect, unavailable
   onSelect?: (id: string) => void;
   unavailableFilter?: string;
   busy: boolean;
+  chronological?: boolean;
 }) {
+  const sorted = useSortedRows<SourceHoursGroup, BreakdownColumn>(rows,
+    { key: chronological ? "label" : "recordedSeconds", direction: chronological ? "asc" : "desc" },
+    (row, field) => field === "label" && chronological ? row.id : row[field], row => row.id ?? "");
   if (!rows.length) return <p>No recorded hours match this scope.</p>;
   return <><CsvExport filename={filename} label={"Export " + label.toLowerCase() + " CSV"} disabled={busy}
     data={hoursBreakdown(label, exportedRows ?? rows)} />
     <div className="intel-table-scroll time-summary-table" tabIndex={0} aria-label={label}>
     <table>
-      <thead><tr><th scope="col">{label}</th><th scope="col">Recorded</th><th scope="col">Allocated</th><th scope="col">Unallocated</th></tr></thead>
-      <tbody>{rows.map(row => <tr key={row.id ?? "unavailable"}>
+      <thead><tr>{breakdownColumns.map((field, index) => <SortHeader key={field} field={field}
+        label={[label, "Recorded", "Allocated", "Unallocated"][index]} sort={sorted.sort} onSort={sorted.setSort} />)}</tr></thead>
+      <tbody>{sorted.rows.map(row => <tr key={row.id ?? "unavailable"}>
         <th scope="row">
           <div className="time-profile">
             {row.wordpressProfile?.photo && <img src={row.wordpressProfile.photo} alt={row.wordpressProfile.alt || ""} loading="lazy" width="32" height="32" />}

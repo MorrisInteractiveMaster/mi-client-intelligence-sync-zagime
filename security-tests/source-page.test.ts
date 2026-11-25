@@ -128,6 +128,35 @@ test("Time search, choices, counts and cursor cover a complete period without ex
     const report = await request(`report?month=${period}`, "client");
     assert.equal(report.status, 200);
     assert.doesNotMatch(await report.text(), /Taylor Canoe|shoreline survey|Staff-only private line/);
+
+    const sortMonth = "2026-08";
+    const sortBatch = runtime.db.batch();
+    for (let index = 0; index < 52; index++) {
+      const ref = root.collection("rawTime").doc("ordered-" + String(index).padStart(2, "0"));
+      sortBatch.set(ref, { schemaVersion: 2, source: "quickbooks-time", sourceCompanyId: "fixtures",
+        scopeProjectId: "synthetic-planning", modifiedAt, deleted: index % 17 === 0,
+        record: { id: ref.id, tenantId: tenant, sourceWorkOrderId: index % 2 ? "111" : "999",
+          date: sortMonth + "-" + String(index % 25 + 1).padStart(2,"0"),
+          seconds: (52 - index) * 173, revision, description: index % 5 ? "Task " + index : "QuickBooks Time" } });
+      if (index % 4) sortBatch.set(timeDetailsRef(ref, revision), { ...details, consultantName: "Consultant " + index % 7 });
+      if (index % 3 === 0) sortBatch.set(root.collection("allocationHeads").doc(ref.id),
+        { revision: 1, sourceRevision: revision, portions: [{ ...part(90)[0], projectId: index % 2 ? "synthetic-delivery" : "synthetic-planning" }],
+          annotations: { reportingDescription: "Report " + index, internalNote: "" } });
+    }
+    await sortBatch.commit();
+    const all = (await sources({ month: sortMonth, limit: "500", download: "csv", sort: "recorded", direction: "asc" })).sources!;
+    assert.equal(all.length, 52);
+    assert.deepEqual(all.map(row => row.seconds), Array.from({length: 52}, (_, index) => (index + 1) * 173));
+    const sortedPage = await sources({ month: sortMonth, sort: "recorded", direction: "asc" });
+    const nextSortedPage = await sources({ month: sortMonth, sort: "recorded", direction: "asc", cursor: sortedPage.nextCursor! });
+    const lastSortedPage = await sources({ month: sortMonth, sort: "recorded", direction: "asc", cursor: nextSortedPage.nextCursor! });
+    assert.deepEqual([...sortedPage.sources!, ...nextSortedPage.sources!, ...lastSortedPage.sources!].map(row => row.id), all.map(row => row.id));
+    assert.equal((await request(`sources?month=${sortMonth}&sort=recorded&direction=desc&cursor=${sortedPage.nextCursor}`)).status, 409);
+    for (const field of ["date", "consultant", "notes", "workOrder", "recorded", "reporting", "assignment", "status"]) {
+      const [asc, desc] = await Promise.all(["asc", "desc"].map(direction => sources({ month: sortMonth, limit: "2", sort: field, direction })));
+      assert.notDeepEqual(asc.sources?.map(row => row.id), desc.sources?.map(row => row.id), field);
+    }
+    assert.equal((await request(`sources?month=${sortMonth}&sort=internalNote&direction=asc`)).status, 400);
   } finally {
     server.close();
     await once(server, "close");

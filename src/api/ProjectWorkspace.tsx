@@ -12,6 +12,8 @@ import { Activity, Building2, CalendarDays, ChartNoAxesCombined, Clock3, Clipboa
 import { PortfolioAdmin } from "./PortfolioAdmin";
 import { ProjectReportPreview } from "./ProjectReportingCard";
 import { ContextHelp } from "./ContextHelp";
+import { SortControls, SortHeader, type SortState } from "./SortHeader";
+import { compareValues } from "../projects/sort";
 import "./executive.css";
 import "./intelligence.css";
 import "./delivery-operations.css";
@@ -46,6 +48,9 @@ import {
   reportTimestamp,
   today,
 } from "./dashboard-format";
+
+const staffSortFields = { name: "Project", status: "Status", visibility: "Visibility", seconds: "Reported effort", workOrder: "Work order" } as const;
+type StaffSortField = keyof typeof staffSortFields;
 
 const sections = {
   overview: "Overview",
@@ -179,8 +184,27 @@ export function ProjectStaffWorkspace({
   const [busy, setBusy] = useState(false);
   const [epoch, setEpoch] = useState(0);
   const [search, setSearch] = useState("");
-  const visibleProjects = ((parentFilter || pulseFilter) && !search && catalog ? catalog : page.projects ?? [])
-    .filter(project => matchesStatus(project) && matchesParent(project));
+  const requestedSort = location.get("staff-project-sort");
+  const staffSortKey = (Object.keys(staffSortFields) as StaffSortField[]).find(key => key === requestedSort);
+  const staffSort: SortState<StaffSortField> | undefined = staffSortKey && catalog ? {
+    key: staffSortKey, direction: location.get("staff-project-direction") === "desc" ? "desc" : "asc",
+  } : undefined;
+  const [sortedLimit, setSortedLimit] = useState(25);
+  const setStaffSort = (sort: SortState<StaffSortField>) => {
+    setSortedLimit(25);
+    portalNavigate({ "staff-project-sort": sort.key, "staff-project-direction": sort.direction });
+  };
+  const normalizedSearch = search.trim().normalize("NFKC").toLowerCase();
+  const filteredProjects = ((staffSort || (parentFilter || pulseFilter) && !search) && catalog ? catalog : page.projects ?? [])
+    .filter(project => matchesStatus(project) && matchesParent(project) &&
+      (!staffSort || [project.id, project.name, project.workOrderReference].some(value => value?.normalize("NFKC").toLowerCase().includes(normalizedSearch))));
+  if (staffSort) {
+    const value = (project: StaffProjectSummary) => ({ name: project.name, status: projectStatus[project.status],
+      visibility: project.published ? project.draft ? "Published · Draft changes" : "Published" : "Unpublished",
+      seconds: project.seconds, workOrder: project.workOrderReference })[staffSort.key];
+    filteredProjects.sort((a, b) => compareValues(value(a), value(b), staffSort.direction) || compareValues(a.id, b.id));
+  }
+  const visibleProjects = staffSort ? filteredProjects.slice(0, sortedLimit) : filteredProjects;
   const [draftSearch, setDraftSearch] = useState("");
   const [selectedProject, setSelectedProject] = useState<StaffProjectSummary>();
   const lock = useRef(false);
@@ -533,7 +557,7 @@ export function ProjectStaffWorkspace({
           <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Preview as {workspace.tenant.name}</button></div>
       </section>}
       {area === "management" && nativeWorkspace && <p>
-        <PlatformLink href={periodHref(staffPath("projects"), month)} beforeNavigate={permit}>Browse all projects</PlatformLink>
+        <PlatformLink className="exec-text-button" href={periodHref(staffPath("projects"), month)} beforeNavigate={permit}>Browse all projects</PlatformLink>
       </p>}
       {area === "management" && <ProjectManagement client={client} tenant={tenant} selected={managed}
         projects={allProjects} areas={portfolio?.areas} canPublish={workspace.canPublish === true} onDirty={setManagementDirty} onDenied={onDenied}
@@ -732,8 +756,11 @@ export function ProjectStaffWorkspace({
           <button type="button" aria-pressed={treeView} className="secure-secondary" onClick={() => portalNavigate({ "staff-layout": "tree" })}>Hierarchy</button>
           <button type="button" aria-pressed={tableView} className="secure-secondary" onClick={() => portalNavigate({ "staff-layout": "table" })}>Table</button>
         </div>
+        {!tableView && !treeView && catalog && <SortControls fields={staffSortFields} sort={staffSort ?? { key: "name", direction: "asc" }}
+          onSort={setStaffSort} label="Sort projects" />}
         {tableView && <div className="intel-table-scroll" tabIndex={0} role="region" aria-label="Projects table">
-          <table><thead><tr><th scope="col">Project</th><th scope="col">Status</th><th scope="col">Visibility</th><th scope="col">Reported effort</th><th scope="col">Work order</th><th scope="col">Publication</th></tr></thead>
+          <table><thead><tr>{(Object.keys(staffSortFields) as StaffSortField[]).map(field => <SortHeader key={field} field={field}
+            sort={staffSort} onSort={setStaffSort} label={staffSortFields[field]} disabled={!catalog} />)}<th scope="col">Publication</th></tr></thead>
           <tbody>{visibleProjects.map(p => <tr key={p.id}><th scope="row"><button type="button" className="exec-text-button" disabled={busy}
             onClick={() => { if (!editorDirty || window.confirm("Discard the unsaved project changes?")) portalNavigate({ staff: "projects", editor: p.id }); }}>{p.name}</button></th>
             <td>{projectStatus[p.status]}</td><td>{p.published ? (p.draft ? "Published · Draft changes" : "Published") : "Unpublished"}</td><td>{reportHours(p.seconds)} h</td><td>{p.workOrderReference || "—"}</td>
@@ -824,7 +851,8 @@ export function ProjectStaffWorkspace({
             </article>
           ))}
         </div>
-        {page.nextCursor && (!parentFilter || search || !catalog) && (
+        {staffSort && sortedLimit < filteredProjects.length && <button type="button" onClick={() => setSortedLimit(value => value + 25)}>More sorted projects</button>}
+        {!staffSort && page.nextCursor && (!parentFilter || search || !catalog) && (
           <button disabled={busy} onClick={() => void perform(moreProjects)}>
             {search ? "Continue searching" : "More projects"}
           </button>

@@ -5,6 +5,7 @@ import { CompletionPerformance, MilestonePerformance, ParentPerformance } from "
 import { ProgressArc, StatusComposition } from "./ClientCockpitVisuals";
 import { DepartmentAnalytics, EffortToggle, MonthlyEffort, UpcomingDeadlines, type EffortUnit, type OpenClientView } from "./ClientIntelligence";
 import { ContextHelp } from "./ContextHelp";
+import { ProjectPortfolioDistribution } from "./ProjectPortfolioDistribution";
 import { DotChart, type ChartKind } from "./DotAnalytics";
 import { metricPercent, percentText } from "./insight-metrics";
 import { reportDay, reportHours, reportMonth, reportTimestamp, today } from "./dashboard-format";
@@ -40,6 +41,14 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
     { label: "Deadlines approaching", value: delivery.projects.filter(item => item.dueSoon).length, icon: CalendarClock, filter: "due-soon", tone: "upcoming" },
   ] as const;
   const openFilter = (filter: ProjectFilter) => onLink("projects", undefined, filter);
+  const signalHelp = {
+    all: "Counts client-authorized published delivery projects. Parent engagement containers are excluded.",
+    active: "Counts approved projects in progress whose published schedule has started, when a start is available.",
+    upcoming: "Counts approved planned projects and projects with a verified start still ahead.",
+    completed: "Counts projects with completed delivery status. A 100% work assessment is a separate measure.",
+    stalled: "Counts approved projects with an active blocker or an overdue published deadline or milestone.",
+    "due-soon": "Counts current projects with a published deadline in the next 14 days, using the Regina calendar.",
+  };
   const narrative = portfolio?.narrative || portfolio?.action;
 
   return <div className="mi-client-cockpit">
@@ -63,13 +72,14 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
     </section>
 
     <section className="mi-cockpit-signals" aria-label="Delivery at a glance">
-      {signals.map(({ label, value, icon: Icon, filter, tone }) => <button key={filter} type="button" data-tone={tone} onClick={() => openFilter(filter)}>
+      {signals.map(({ label, value, icon: Icon, filter, tone }) => <div className="mi-signal-card" key={filter}><button className="mi-signal-action" type="button" data-tone={tone} onClick={() => openFilter(filter)}>
         <span className="mi-signal-glyph"><Icon size={18} aria-hidden="true" /></span>
         <span><small>{label}</small><strong>{value}</strong></span>
         <ArrowUpRight size={16} aria-hidden="true" />
-      </button>)}
+      </button><ContextHelp watch=".mi-signal-action" label={"Explain " + label}>{signalHelp[filter] + " Open Project Explorer to see the matching projects."}</ContextHelp></div>)}
     </section>
 
+    <ProjectPortfolioDistribution delivery={delivery} onLink={onLink} />
     <DepartmentAnalytics report={report} delivery={delivery} unit={effortUnit} onUnit={onEffortUnit} onLink={onLink} />
     <CompletionPerformance delivery={delivery} onLink={onLink} />
     <div className="mi-v4-analytics-grid"><UpcomingDeadlines delivery={delivery} report={report} onLink={onLink} />

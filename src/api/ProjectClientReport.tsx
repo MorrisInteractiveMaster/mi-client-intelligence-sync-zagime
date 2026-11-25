@@ -30,6 +30,8 @@ import { milestoneCsv, publishedProjectCsv, type CsvData } from "./report-csv";
 import { deliveryDate, deliveryDefaults, rollup } from "../projects/delivery";
 import { isBoardRole } from "../projects/directory-role";
 import { clientDelivery, clientProjectFilters, forProjectFilter, type ProjectFilter } from "./client-delivery";
+import { SortControls } from "./SortHeader";
+import { compareValues } from "../projects/sort";
 import { DeliveryMetrics, ParentEngagementCard } from "./ClientDeliverySummary";
 import "./executive.css";
 import "./intelligence.css";
@@ -116,7 +118,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
       "explorer-completion": scope?.completion ?? null, "explorer-completed-month": scope?.completedMonth ?? null,
       "explorer-milestone": scope?.milestone ?? null, "explorer-page": null, "explorer-deadline": null,
       view: next === "overview" ? null : next, q: null,
-      status: projectFilter ? destination.slice(9) : filter && filter !== "all" ? filter : null, "project-sort": null, chart: null, present: null,
+      status: projectFilter ? destination.slice(9) : filter && filter !== "all" ? filter : null, "project-sort": null, "project-direction": null, chart: null, present: null,
       ...(selectedMonth && { month: selectedMonth }) }, Boolean(chart || presenting));
   };
   const openOverlay = (key: "chart" | "present", value: string, trigger = document.activeElement instanceof HTMLElement ? document.activeElement : undefined) => {
@@ -258,8 +260,10 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
     bucket.projects.push(row);
     projectGroups.set(group, bucket);
   }
+  const directorySort = { key: location.get("directory-sort") === "role" ? "role" : "name", direction: location.get("directory-direction") === "desc" ? "desc" : "asc" } as const;
   const directory = (portfolio?.directory ?? []).filter(p => !isOtherContact({ url: p.profileUrl }) &&
-    searchText(p.name + " " + p.role).includes(searchText(search)));
+    searchText(p.name + " " + p.role).includes(searchText(search))).sort((a, b) =>
+    compareValues(a[directorySort.key], b[directorySort.key], directorySort.direction) || compareValues(a.id, b.id));
   const period = reportMonth(report.month);
   const directoryFor = (projectId: string) => (portfolio?.directory ?? []).filter(member => member.projectIds.includes(projectId));
   const useExplorer = nativeClient ? view === "projects" || Boolean(activeDepartment || activeEngagement) :
@@ -435,6 +439,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
         <div className="secure-section-heading"><h2 id="directory-heading">{contact ? "Approved contact" : "Morris Interactive Directory"}</h2>
           {view === "directory" && (portfolio?.directory.length ?? 0) > 0 && <label className="secure-search-label">Search approved contacts<input type="search" value={search} maxLength={120} onChange={event => setSearch(event.target.value)} /></label>}
         </div>
+        {view === "directory" && directory.length > 0 && <SortControls fields={{ name: "Name", role: "Role" }}
+          sort={directorySort} onSort={value => portalNavigate({ "directory-sort": value.key, "directory-direction": value.direction })} label="Sort approved contacts" />}
         {(contact ? [contact] : directory).length ? directoryGroups.filter(group => group.members.length > 0).map(group =>
           <section className="mi-directory-group" key={group.label} aria-label={group.label}>
             {!contact && <h3>{group.label}</h3>}{group.label === "Board" && <p>Board members whose profiles are approved for this portal.</p>}
@@ -491,12 +497,17 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
           const items = (project ? [project] : visible).flatMap(p => [
             ...(p.milestones ?? []).map(m => ({ ...m, project: p, body: "", type: m.completed ? "Complete" : m.status === "blocked" ? "Blocked" : "Milestone", route: "milestone:" + p.id + ":" + m.id })),
             ...(kind === "timeline" ? (p.updates ?? []).map(u => ({ ...u, project: p, type: "Update", route: "" })) : []),
-          ]).sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
-          return items.length ? <ol className="intel-timeline">{items.map(item => <li key={item.project.id + item.id + item.type}>
+          ]);
+          const sort = { key: location.get("timeline-sort") === "title" ? "title" : location.get("timeline-sort") === "type" ? "type" : "date",
+            direction: location.get("timeline-direction") === "desc" ? "desc" : "asc" } as const;
+          items.sort((a, b) => compareValues(a[sort.key], b[sort.key], sort.direction) || compareValues(a.project.id + a.id, b.project.id + b.id));
+          return items.length ? <><SortControls fields={{ date: "Date", title: "Title", type: "Entry type" }} sort={sort}
+            onSort={value => portalNavigate({ "timeline-sort": value.key, "timeline-direction": value.direction })} label="Sort timeline" />
+            <ol className="intel-timeline">{items.map(item => <li key={item.project.id + item.id + item.type}>
             {item.date ? <time dateTime={item.date}>{reportDay(item.date)}</time> : <span>Unscheduled</span>}<div><span>{item.type} · {item.project.name}</span>
               {item.route ? <button className="exec-text-button" onClick={() => choose(item.route)}>{item.title}</button> : <strong>{item.title}</strong>}
               {item.body && <p>{item.body}</p>}</div>
-          </li>)}</ol> : <p className="intel-empty">There are no published timeline entries for this view.</p>;
+          </li>)}</ol></> : <p className="intel-empty">There are no published timeline entries for this view.</p>;
         })()}
       </article>}
       {milestone && project && <article className="intel-detail"><h3>{milestone.completed ? "Completed milestone" : "Project milestone"}</h3>

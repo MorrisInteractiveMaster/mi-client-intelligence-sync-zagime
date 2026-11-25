@@ -6,6 +6,8 @@ import { portfolioStatuses, segmentCount } from "./ClientProjectExplorer";
 import { reportMonth, today } from "./dashboard-format";
 import { percentText } from "./insight-metrics";
 import type { OpenClientView } from "./ClientIntelligence";
+import { SortedTable } from "./SortHeader";
+import { ContextHelp } from "./ContextHelp";
 
 type Delivery = ReturnType<typeof clientDelivery>;
 
@@ -20,7 +22,7 @@ function Comparison({ label, count, total, onOpen }: { label: string; count: num
 export function CompletionPerformance({ delivery, onLink }: { delivery: Delivery; onLink: OpenClientView }) {
   return <div className="mi-v4-analytics-grid">
     <section className="mi-exec-panel" aria-label="Project completion distribution">
-      <div className="mi-exec-heading"><div><h3>Work completion</h3><p>Measured assessments across approved delivery projects</p></div></div>
+      <div className="mi-exec-heading"><div><h3>Work completion</h3><p>Measured assessments across approved delivery projects <ContextHelp label="Explain work completion">These bands count approved assessments of delivered work. Hours and budget utilization are separate. Choose a band to see the matching projects.</ContextHelp></p></div></div>
       <div className="mi-v4-comparisons">{completionBands.map(([key, label]) => <Comparison key={key} label={label} total={delivery.counts.all}
         count={delivery.projects.filter(row => completionBand(row.completion) === key).length}
         onOpen={() => onLink("projects", undefined, "all", { completion: key })} />)}</div>
@@ -76,11 +78,12 @@ function CompletionTimeline({ delivery, onLink }: { delivery: Delivery; onLink: 
       </div>
       <p className="mi-completion-key">0 = no dated completions recorded between published dates. — = historical reporting unavailable.</p>
       {active && <p className="mi-completion-inspection" role="status">{details(active)}</p>}
-      <details className="mi-completion-table"><summary>Show monthly completion data</summary><table>
-        <caption>Published completion records</caption>
-        <thead><tr><th scope="col">Month</th><th scope="col">Recorded result</th></tr></thead>
-        <tbody>{months.map(item => <tr key={item.month}><th scope="row">{reportMonth(item.month)}</th><td>{result(item)}</td></tr>)}</tbody>
-      </table></details>
+      <details className="mi-completion-table"><summary>Show monthly completion data</summary>
+        <SortedTable rows={months} caption="Published completion records" columns={{ month: "Month", result: "Recorded result" }}
+          initial={{ key: "month", direction: "asc" }} identity={item => item.month}
+          value={(item, field) => field === "month" ? item.month : item.state === "unavailable" ? undefined : item.projects.length}
+          cells={item => <><th scope="row">{reportMonth(item.month)}</th><td>{result(item)}</td></>} />
+      </details>
     </> : <p className="mi-cockpit-empty">No published completion dates are available.</p>}
     {delivery.counts.completed > 0 && <button className="exec-text-button" type="button" onClick={() => onLink("projects", undefined, "completed")}>View completed projects <ArrowUpRight size={14} aria-hidden="true" /></button>}
   </section>;

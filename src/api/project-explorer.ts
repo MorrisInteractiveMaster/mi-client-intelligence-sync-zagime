@@ -1,4 +1,5 @@
 import { forProjectFilter, type clientDelivery } from "./client-delivery";
+import { compareValues } from "../projects/sort";
 
 type Row = ReturnType<typeof clientDelivery>["projects"][number];
 export const explorerPageSizes = [10, 20, 50] as const;
@@ -56,11 +57,11 @@ export function explorerResults(projects: readonly Row[], params: URLSearchParam
     return true;
   }).sort((a, b) => {
     const stable = a.project.name.localeCompare(b.project.name, "en-CA", { numeric: true }) || a.project.id.localeCompare(b.project.id);
-    if (sort === "status") return explorerStatus(a).localeCompare(explorerStatus(b)) || stable;
-    if (sort === "start" || sort === "deadline") return (a[sort] ?? "9999").localeCompare(b[sort] ?? "9999") || stable;
-    if (sort === "completion") return (b.completion ?? -1) - (a.completion ?? -1) || stable;
-    if (sort === "hours") return b.project.seconds - a.project.seconds || stable;
-    return stable;
+    const direction = params.get("project-direction") === "desc" ? "desc" : params.get("project-direction") === "asc" ? "asc" :
+      sort === "completion" || sort === "hours" ? "desc" : "asc";
+    const value = (row: Row) => sort === "status" ? explorerStatus(row) : sort === "start" || sort === "deadline" ? row[sort] :
+      sort === "completion" ? row.completion : sort === "hours" ? row.project.seconds : row.project.name;
+    return compareValues(value(a), value(b), direction) || stable;
   });
   const size = explorerPageSizes.find(value => value === Number(params.get("explorer-size"))) ?? 20;
   const requested = Number(params.get("explorer-page"));

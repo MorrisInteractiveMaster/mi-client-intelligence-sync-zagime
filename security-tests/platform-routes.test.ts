@@ -303,7 +303,8 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
         const project: Project = {
           ...backendProject, id, name: "V4 project " + id.slice(-3), status: completed ? "completed" : "active",
           published: index < 299, internalNotes: "V4-PRIVATE-NOTE", description: "Approved delivery overview for the synthetic portfolio.",
-          delivery: { kind: "project", type: "hourly", parentId: parentProjects[index % 2], areaId: teams[index % teams.length],
+          delivery: { kind: "project", type: "hourly", parentId: parentProjects[index % 2],
+            areaId: index < 6 ? index === 1 || index === 2 ? "hr" : undefined : teams[index % teams.length],
             managerIds: [], teamIds: [], manualCompletion: completed ? 100 : index % 7 === 2 ? undefined : 48,
             completedOn: completed ? index === 0 ? "2026-04-17" : index === 7 ? "2025-10-17" : "2026-10-17" : undefined,
             start: upcoming ? "2026-12-04" : "2026-09-03",
@@ -327,8 +328,40 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await grants.update({ projectIds: ids.slice(0, 6) });
       await sample.page.goto(route("/clients/zagime/projects"));
       await explorer.getByText("Showing 1–6 of 6 projects", { exact: true }).waitFor();
+      await sample.page.goto(route("/clients/zagime"));
+      const distribution = sample.page.getByRole("region", { name: "Project Portfolio Distribution" });
+      const hr = distribution.getByRole("listitem").filter({ has: sample.page.getByRole("button", { name: "HR", exact: true }) });
+      await hr.getByText("2 · 33.3%", { exact: true }).waitFor();
+      await distribution.getByText("4 · 66.7%", { exact: true }).waitFor();
+      await distribution.getByText("0 · 0%", { exact: true }).first().waitFor();
+      await sample.page.getByRole("button", { name: "Explain Approved projects", exact: true }).click();
+      await sample.page.getByRole("tooltip").filter({ hasText: /Parent engagement containers are excluded/ }).waitFor();
+      await sample.page.screenshot({ path: join(scaleEvidence, "v41-kpi-tooltip.png"), animations: "disabled" });
+      await sample.page.keyboard.press("Escape");
+      await hr.getByRole("button", { name: "HR", exact: true }).focus();
+      await sample.page.getByRole("tooltip").filter({ hasText: /2 of 6 approved delivery projects.*33.3%/ }).waitFor();
+      await sample.page.screenshot({ path: join(scaleEvidence, "v41-distribution-tooltip.png"), fullPage: true, animations: "disabled" });
+      await sample.page.keyboard.press("Escape");
+      for (const theme of ["light", "dark"]) {
+        await sample.page.getByRole("combobox", { name: "Appearance" }).selectOption(theme);
+        for (const width of [390, 768, 1024, 1440, 1920]) {
+          await auditViewport(sample.page, "V4.1 Leadership " + theme, width, 900, { compactSidebar: true });
+          await sample.page.screenshot({ path: join(scaleEvidence, "v41-leadership-" + theme + "-" + width + ".png"), animations: "disabled" });
+        }
+        await sample.page.getByRole("region", { name: "Department distribution" })
+          .screenshot({ path: join(scaleEvidence, "v41-department-composition-" + theme + ".png"), animations: "disabled" });
+      }
+      await sample.page.setViewportSize({ width: 1440, height: 900 });
+      await distribution.getByRole("button", { name: "Delivery status", exact: true }).click();
+      await distribution.getByRole("button", { name: "In progress", exact: true }).waitFor();
+      await distribution.getByRole("button", { name: "Departments", exact: true }).click();
+      await distribution.getByLabel("Sort groups").selectOption("most");
+      assert.match(await distribution.getByRole("listitem").first().innerText(), /No department/);
+      await hr.getByRole("button", { name: "HR", exact: true }).click();
+      await sample.page.waitForURL(url => url.searchParams.get("explorer-department") === "hr" && url.searchParams.get("month") === month);
+      await explorer.getByText("Showing 1–2 of 2 projects", { exact: true }).waitFor();
       await grants.update({ projectIds: ids.slice(0, 100) });
-      await sample.page.reload();
+      await sample.page.goto(route("/clients/zagime/projects"));
       await explorer.getByText("Showing 1–20 of 100 projects", { exact: true }).waitFor();
       assert.equal(await explorer.locator(".mi-explorer-project").count(), 20);
       await sample.page.screenshot({ path: join(scaleEvidence, "project-explorer-100-full.png"), fullPage: true, animations: "disabled" });
@@ -491,6 +524,46 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
         }
       }
     } finally { await detailed.context.close(); }
+
+    const timeRows = runtime.db.batch();
+    for (let i = 0; i < 52; i++) {
+      const id = "v41-browser-time-" + String(i).padStart(2, "0");
+      timeRows.set(root.collection("rawTime").doc(id), {
+        schemaVersion: 2, source: "quickbooks-time", scopeProjectId: parentId, deleted: false,
+        record: { id, tenantId: tenant, sourceWorkOrderId: i % 2 ? "132160684" : "132160686",
+          date: month + "-" + String(i % 24 + 1).padStart(2, "0"), revision: "v41-fixture", seconds: (i + 1) * 600,
+          description: i % 3 ? "Reporting task " + i : "QuickBooks Time" },
+      });
+    }
+    await timeRows.commit();
+    const time = await session(mainBrowser!, "owner");
+    try {
+      await time.page.goto(route("/workspace/time"));
+      const table = time.page.getByRole("region", { name: "Recorded time table" });
+      await table.getByRole("button", { name: "Recorded", exact: true }).click();
+      await table.locator('th[aria-sort="ascending"]').getByRole("button", {name: "Recorded", exact: true}).waitFor();
+      await table.locator("thead").screenshot({ path: join(scaleEvidence, "v41-time-ascending.png"), animations: "disabled" });
+      await table.getByRole("checkbox", { name: /^Select entry/ }).first().check();
+      await table.getByRole("button", { name: "Recorded", exact: true }).click();
+      await table.locator('th[aria-sort="descending"]').getByRole("button", {name: "Recorded", exact: true}).waitFor();
+      await time.page.getByLabel("Assign 1 unallocated entries").waitFor();
+      await time.page.getByRole("button", { name: "More recorded time" }).click();
+      await table.getByRole("row").nth(30).waitFor();
+      await time.page.getByLabel("Sort time distribution").selectOption("recorded-asc");
+      await time.page.getByRole("region", { name: "Recorded time distribution" }).getByRole("listitem").first().getByText("synthetic-job", { exact: true }).waitFor();
+      await time.page.getByText("Exact breakdowns and CSV exports", { exact: true }).click();
+      await time.page.locator("summary").filter({ hasText: /^Hours by work order$/ }).click();
+      const breakdown = time.page.getByLabel("Hours by work order", { exact: true });
+      await breakdown.getByRole("button", { name: "Recorded", exact: true }).click();
+      await breakdown.locator('th[aria-sort="ascending"]').waitFor();
+      await time.page.getByText("Exact breakdowns and CSV exports", { exact: true }).click();
+      await auditViewport(time.page, "Sorted Time Allocation", 1440, 1000, { compactSidebar: true });
+      await time.page.screenshot({ path: join(scaleEvidence, "v41-time-sorted-light.png"), fullPage: true, animations: "disabled" });
+      await time.page.getByRole("combobox", { name: "Appearance" }).selectOption("dark");
+      await time.page.screenshot({ path: join(scaleEvidence, "v41-time-sorted-dark.png"), fullPage: true, animations: "disabled" });
+      await time.page.reload();
+      await table.locator('th[aria-sort="descending"]').getByRole("button", {name: "Recorded", exact: true}).waitFor();
+    } finally { await time.context.close(); }
   }
 
   const editPath = "/workspace/projects/" + projectId;

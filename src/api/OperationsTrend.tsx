@@ -3,6 +3,7 @@ import { useState } from "react";
 import { precedingTimeMonth } from "../projects/time-history";
 import type { SourceSummary } from "./types";
 import { reportHours, reportMonth } from "./dashboard-format";
+import { SortedTable } from "./SortHeader";
 import "./staff-overview.css";
 
 export function OperationsTrend({ summary, loading, onMonth }: {
@@ -70,11 +71,10 @@ export function OperationsTrend({ summary, loading, onMonth }: {
         </ol>
       </div>
       <div className="mi-staff-trend-foot">
-        <details><summary>Exact monthly totals</summary><table><caption>Recorded and allocated hours</caption>
-          <thead><tr><th scope="col">Month</th><th scope="col">Recorded</th><th scope="col">Allocated</th></tr></thead>
-          <tbody>{rows.map(row => <tr key={row.label}><th scope="row">{reportMonth(row.label)}</th>
-            <td>{reportHours(row.recordedSeconds)} h</td><td>{reportHours(row.allocatedSeconds)} h</td></tr>)}</tbody>
-        </table></details>
+        <details><summary>Exact monthly totals</summary><SortedTable rows={rows} caption="Recorded and allocated hours"
+          columns={{ label: "Month", recordedSeconds: "Recorded", allocatedSeconds: "Allocated" }} initial={{ key: "label", direction: "asc" }}
+          identity={row => row.label} value={(row, key) => row[key]} cells={row => <><th scope="row">{reportMonth(row.label)}</th>
+            <td>{reportHours(row.recordedSeconds)} h</td><td>{reportHours(row.allocatedSeconds)} h</td></>} /></details>
         {months.length > 6 && <div className="mi-trend-pagination">
           <button type="button" aria-label="Earlier months" disabled={!start} onClick={() => setPage(value => value + 1)}><ChevronLeft size={16} aria-hidden="true" /></button>
           <button type="button" aria-label="Later months" disabled={!page} onClick={() => setPage(value => value - 1)}><ChevronRight size={16} aria-hidden="true" /></button>

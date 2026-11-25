@@ -10,6 +10,7 @@ import { PersonPhoto } from "./PersonPhoto";
 import { reportDay, reportHours, reportMonth, today } from "./dashboard-format";
 import { metricPercent } from "./insight-metrics";
 import { clientDelivery, type ProjectFilter } from "./client-delivery";
+import { SortedTable } from "./SortHeader";
 
 type DataRow = PlotRow & { destination?: string; detail?: string; exactHours?: number };
 type Narrative = { label: string; detail?: string; destination?: string; filter?: ProjectFilter };
@@ -110,7 +111,12 @@ export function PresentationContent({ chapter, onLink, month, draft }: { chapter
   const chosen = rows.find(row => row.id === selectedId) ?? (chapter.timeline ? rows.find(row => row.month === month) ?? rows.at(-1) : rows[0]);
   const inspected = rows.find(row => row.id === hoveredId) ?? chosen;
   const Plot = chapter.timeline ? TrendPlot : BarPlot;
-  const table = <table className="mi-presentation-table">
+  const table = onLink ? <SortedTable className="mi-presentation-table" rows={rows} caption={chapter.measure}
+    columns={{ label: chapter.timeline ? "Month" : "Name", value: unit === "percent" ? "Percent" : "Hours", ...(exactEffort ? { exactHours: "Hours" } : {}) } as Record<"label" | "value" | "exactHours", string>}
+    initial={{ key: "label", direction: "asc" }} identity={row => row.id}
+    value={(row, field) => field === "label" ? row.month ?? row.label : row[field]}
+    cells={row => <><th scope="row">{row.label}</th><td>{plotValue(row.value, unit)}</td>{exactEffort && <td>{reportHours(row.exactHours ?? 0)}</td>}</>} />
+    : <table className="mi-presentation-table">
     <caption>{chapter.measure}</caption>
     <thead><tr><th scope="col">{chapter.timeline ? "Month" : "Name"}</th><th scope="col">{unit === "percent" ? "Percent" : "Hours"}</th>{exactEffort && <th scope="col">Hours</th>}</tr></thead>
     <tbody>{rows.map(row => <tr key={row.id}><th scope="row">{row.label}</th><td>{plotValue(row.value, unit)}</td>{exactEffort && <td>{reportHours(row.exactHours ?? 0)}</td>}</tr>)}</tbody>

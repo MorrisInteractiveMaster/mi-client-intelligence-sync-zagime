@@ -14,6 +14,12 @@ import { csvHours } from "./report-csv";
 import { BudgetHealthBoard } from "./BudgetHealthBoard";
 import { OtherContacts } from "./OtherContacts";
 import { PlatformLink } from "./PlatformHome";
+import { SortControls, SortHeader, useSortedRows } from "./SortHeader";
+
+const peopleSort = { name: "Name", role: "Role", visibility: "Client visibility" } as const;
+const hierarchySort = { path: "Project / parent", department: "Department / type", managers: "Managers", effort: "Allocated effort",
+  cap: "Remaining cap", completion: "Completion and health", publication: "Publication" } as const;
+type HierarchyField = keyof typeof hierarchySort;
 
 export async function projectCatalog(client: SecuredApiClient, tenant: string, month: string, signal: AbortSignal) {
   const projects: StaffProjectSummary[] = [];
@@ -63,8 +69,10 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
   const synced = (portfolio?.directory ?? []).filter(p => !isOtherContact(p.profile));
   const matching = synced.filter(p =>
     [p.name, p.profile?.title, p.role].some(value => value?.toLowerCase().includes(search.trim().toLowerCase())));
-  const board = matching.filter(p => isBoardRole(p.profile?.title || p.role));
-  const team = matching.filter(p => !isBoardRole(p.profile?.title || p.role));
+  const sorted = useSortedRows<DirectoryEntry, keyof typeof peopleSort>(matching, { key: "name", direction: "asc" },
+    (row, field) => ({ name: row.name, role: row.profile?.title || row.role, visibility: row.visible ? "Visible" : "Private" })[field], row => row.id);
+  const board = sorted.rows.filter(p => isBoardRole(p.profile?.title || p.role));
+  const team = sorted.rows.filter(p => !isBoardRole(p.profile?.title || p.role));
   async function act(run: () => Promise<void>) {
     setBusy(true); setError(""); setNotice("");
     try { await run(); onSaved(); }
@@ -80,6 +88,7 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
     {error && <p className="secure-message secure-error" role="alert">{error}</p>}
     {notice && <p className="secure-message" role="status">{notice}</p>}
     <label>Search people<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
+    {!!matching.length && <SortControls fields={peopleSort} sort={sorted.sort} onSort={sorted.setSort} label="Sort team directory" />}
     {!portfolio && <p className="secure-empty" role="status">Loading team profiles…</p>}
     {portfolio && !synced.length && <p className="secure-empty">No team profiles yet. Sync the Morris team or add a manual profile.</p>}
     {synced.length ? <>
@@ -209,7 +218,7 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
     }
     return path;
   };
-  const rows = projects.map(p => ({ p, trail: depth(p), area: p.delivery?.areaId ?? placements.get(p.id)?.areaId, group: p.delivery?.groupId ?? placements.get(p.id)?.engagementId }))
+  const matchedRows = projects.map(p => ({ p, trail: depth(p), area: p.delivery?.areaId ?? placements.get(p.id)?.areaId, group: p.delivery?.groupId ?? placements.get(p.id)?.engagementId }))
     .filter(({ p }) => {
       if (!overCapOnly) return true;
       const result = measureDelivery(p, caps.get(p.id)!, asOf);
@@ -217,6 +226,18 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
     })
     .filter(row => (!area || row.area === area) && (!group || row.group === group) && [row.p.name, ...row.trail].join(" ").toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a,b) => (layout === "tree" ? [...a.trail, a.p.name].join(" / ").localeCompare([...b.trail, b.p.name].join(" / ")) : a.p.name.localeCompare(b.p.name)));
+  const sorted = useSortedRows<typeof matchedRows[number], HierarchyField>(matchedRows, { key: "path", direction: "asc" },
+    ({ p, trail, area }, field) => {
+      const cap = caps.get(p.id)!;
+      const result = measureDelivery({ ...p, milestones: p.deliveryMilestones ?? p.milestones }, cap, asOf);
+      return {
+        path: (layout === "tree" ? [...trail, p.name] : [p.name]).join(" / "),
+        department: portfolio?.areas.find(item => item.id === area)?.name, managers: (p.delivery?.managerIds ?? [placements.get(p.id)?.leadId ?? ""]).map(id => people.get(id)).filter(Boolean).join(", "),
+        effort: totals.get(p.id)?.monthly, cap: result.monthlyRemaining ?? result.lifetimeRemaining, completion: result.completion,
+        publication: p.published ? "Published" : "Private draft",
+      }[field];
+    }, row => row.p.id);
+  const rows = sorted.rows;
   const budgetRows = [...(portfolio?.areas ?? []).map(item => ({ item, classification: "Department", matches: (p: StaffProjectSummary) => (p.delivery?.areaId ?? placements.get(p.id)?.areaId) === item.id })),
     ...(portfolio?.engagements ?? []).map(item => ({ item, classification: "Reporting group", matches: (p: StaffProjectSummary) => (p.delivery?.groupId ?? placements.get(p.id)?.engagementId) === item.id }))]
     .map(({ item, classification, matches }) => {
@@ -255,6 +276,7 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
       <label>Department<select value={area} disabled={Boolean(capEditor)} onChange={e => setArea(e.target.value)}><option value="">All departments</option>{portfolio?.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
       {healthOnly && !!portfolio?.engagements.length && <label>Legacy reporting group<select value={group} disabled={Boolean(capEditor)} onChange={e => setGroup(e.target.value)}><option value="">All groups</option>{portfolio.engagements.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
       <label>{healthOnly ? "Order" : "Layout"}<select value={layout} disabled={Boolean(capEditor)} onChange={e => setLayout(e.target.value)}><option value="tree">Hierarchy</option><option value="table">{healthOnly ? "Alphabetical" : "Alphabetical table"}</option></select></label>
+      {healthOnly && <SortControls fields={hierarchySort} sort={sorted.sort} onSort={sorted.setSort} disabled={Boolean(capEditor)} label="Sort budget and health cards" />}
     </div>
     {!rows.length && <p className="secure-empty">No projects match.</p>}
     {healthOnly && !!rows.length && <BudgetHealthBoard asOf={asOf} client={client} tenant={tenant}
@@ -263,7 +285,7 @@ export function DeliveryHealth({ projects, portfolio, month, healthOnly = false,
         branchSummary: descendants.has(p.id) ? describeBranch(descendants.get(p.id)!) : undefined,
         effort: totals.get(p.id)!, consumed: caps.get(p.id)! }))} />}
     {!healthOnly && !!rows.length && <div className="intel-table-scroll" tabIndex={0} aria-label="Project hierarchy table"><table><thead><tr>
-      <th scope="col">Project / parent</th><th scope="col">Department / type</th><th scope="col">Managers</th><th scope="col">Allocated effort</th><th scope="col">Remaining cap</th><th scope="col">Completion and health</th><th scope="col">Publication</th>
+      {(Object.keys(hierarchySort) as HierarchyField[]).map(field => <SortHeader key={field} field={field} sort={sorted.sort} onSort={sorted.setSort} label={hierarchySort[field]} />)}
     </tr></thead><tbody>{rows.map(({ p, trail, area }) => {
       const sum = totals.get(p.id)!;
       const cap = caps.get(p.id)!;
@@ -300,10 +322,14 @@ export function DeliveryMilestones({ client, tenant, month, projects, onSaved, o
   const [error, setError] = useState("");
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const selected = usePortalLocation().get("milestone");
-  const milestones = projects.flatMap(p => (p.deliveryMilestones ?? []).map(m => ({ p, m, key: p.id + ":" + m.id })))
+  const matchingMilestones = projects.flatMap(p => (p.deliveryMilestones ?? []).map(m => ({ p, m, key: p.id + ":" + m.id })))
     .filter(({ p, m, key }) => selected ? selected === key || selected === p.id :
-      filter === "all" || (!m.completed && m.status !== "waived" && !completed.has(key)))
-    .sort((a, b) => (a.m.date || "9999").localeCompare(b.m.date || "9999"));
+      filter === "all" || (!m.completed && m.status !== "waived" && !completed.has(key)));
+  const sorted = useSortedRows<typeof matchingMilestones[number], "date" | "project" | "title" | "status" | "completed">(matchingMilestones,
+    { key: "date", direction: "asc" }, ({ p, m }, field) => ({
+      date: m.date, project: p.name, title: m.title, status: m.status ?? (m.completed ? "completed" : "not started"), completed: m.completedAt,
+    })[field], row => row.key);
+  const milestones = sorted.rows;
   async function complete(projectId: string, milestoneId: string, reopen = false) {
     const key = projectId + ":" + milestoneId;
     setSaving(key); setError(""); setMessage("");
@@ -339,6 +365,8 @@ export function DeliveryMilestones({ client, tenant, month, projects, onSaved, o
         <label>Show<select value={filter} onChange={e => setFilter(e.target.value)}><option value="open">Open milestones</option><option value="all">All milestones</option></select></label>}</div>
     {message && <p role="status">{message}</p>}{error && <p role="alert">{error}</p>}
     {!milestones.length && <p className="secure-empty">No milestones match. Add milestones from a project’s editor.</p>}
+    {milestones.length > 1 && <SortControls fields={{ date: "Due date", project: "Project", title: "Milestone", status: "Status", completed: "Completion date" }}
+      sort={sorted.sort} onSort={sorted.setSort} label="Sort staff milestones" />}
     <ul className="delivery-milestones">{milestones.map(({ p, m, key }) => <li key={key}>
       <div><button type="button" className="exec-text-button" onClick={() => portalNavigate({ milestone: key })}>{m.title}</button>
         <small>{p.name} · {m.date ? reportDay(m.date) : "No due date"} · {m.completed || completed.has(key) ? "Completed" : m.status?.replaceAll("-", " ") ?? "Not started"}</small></div>
