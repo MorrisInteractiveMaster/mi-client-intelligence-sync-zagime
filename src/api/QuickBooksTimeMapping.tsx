@@ -218,7 +218,7 @@ function MappingReview({ mapping, projects, portfolio, month, busy, confirm }: {
     {selected && recordedSeconds !== undefined && allocatedSeconds !== undefined && <div className="mi-mapping-preview">
       <h4>Review reporting impact</h4>
       <p>{selected.name}{parent && department && " · " + parent.name + " / " + department.name}</p>
-      <p>{reportHours(recordedSeconds - allocatedSeconds)} h of source effort will be attributed in the Morris workspace.
+      <p>{reportHours(recordedSeconds - allocatedSeconds)} h of source time will be attributed in the Morris workspace.
         {allocatedSeconds > 0 && " The existing " + reportHours(allocatedSeconds) + " h of allocations stay assigned where they are."}
         {kind === "project" && " Eligible entries receive a staff-only classification. Approved client effort stays unchanged."}</p>
       <label className="secure-check"><input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)} />
