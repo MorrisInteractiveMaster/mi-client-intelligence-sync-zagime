@@ -1825,11 +1825,18 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           }));
           assert.deepEqual(overflowingSorts, [], "Sort controls fit within their own columns at " + width + " pixels");
           const manage = table.getByRole("button", { name: "Manage Time", exact: true }).first();
-          assert.equal(await manage.evaluate(button => {
+          const actionGeometry = await manage.evaluate(button => {
             const bounds = button.getBoundingClientRect();
             const tableRegion = button.closest(".time-entries")!.getBoundingClientRect();
-            return bounds.right <= tableRegion.right && button.scrollWidth <= button.clientWidth;
-          }), true, "Manage Time is fully visible in the desktop table");
+            const label = document.createRange();
+            label.selectNodeContents(button);
+            const textBounds = label.getBoundingClientRect();
+            return { buttonRight: bounds.right, regionRight: tableRegion.right,
+              leftInset: textBounds.left - bounds.left, rightInset: bounds.right - textBounds.right };
+          });
+          assert.ok(actionGeometry.buttonRight <= actionGeometry.regionRight + 1 &&
+            actionGeometry.leftInset >= 1 && actionGeometry.rightInset >= 1,
+          "Manage Time is fully visible at " + width + " pixels: " + JSON.stringify(actionGeometry));
         }
       }
       await bulkPage.setViewportSize({ width: 1440, height: 900 });

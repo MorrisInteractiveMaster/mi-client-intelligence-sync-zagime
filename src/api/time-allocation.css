@@ -238,8 +238,10 @@
   min-height: 0; text-align: start; border-radius: 3px; font-size: inherit; line-height: 1.8; font-weight: 450;
 }
 .time-description:hover { text-decoration: underline; }
+.nordic.secure-shell .time-entries td[data-cell="Actions"] { padding-inline: 4px; }
 .nordic.secure-shell .time-entries .time-manage {
-  display: flex; white-space: nowrap; min-height: 32px; padding: 4px 6px; margin: 0; font-size: .74rem; line-height: 1.2;
+  display: flex; width: 100%; min-width: 0; white-space: nowrap; min-height: 32px; padding: 4px 3px;
+  margin: 0; font-size: .73rem; line-height: 1.2;
 }
 .time-table-filters, .time-consultants, .time-consultant-chips, .time-selection-tools, .time-bulk-summary, .time-drawer-utilities, .time-drawer-footer {
   display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; min-width: 0;
