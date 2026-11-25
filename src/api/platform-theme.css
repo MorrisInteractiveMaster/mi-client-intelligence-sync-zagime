@@ -141,6 +141,11 @@ section.nordic.secure-shell[data-theme="dark"] .platform-control-nav a[aria-curr
 }
 .mi-mapping-impact:nth-child(n) dt { color: var(--mi-muted); font-size: .84rem; }
 .mi-mapping-impact dd { margin: 0; max-inline-size: 14ch; font-size: .9rem; font-weight: 700; text-align: end; }
+
+@media (max-width: 480px) {
+  .mi-mapping-preview { padding-inline: 8px; }
+  .mi-mapping-impact > div { grid-template-columns: minmax(0, 1fr) fit-content(42%); gap: 4px 8px; }
+}
 .mi-directory-group { display: grid; gap: 8px; margin-block: 16px; }
 .mi-directory-group h4 { margin: 0; }
 
