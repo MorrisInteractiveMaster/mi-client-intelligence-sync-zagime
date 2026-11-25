@@ -52,7 +52,7 @@ export function ActivityScheduleFields({ value, change }: { value: ActivityInput
   return <details open={value.mode !== "unscheduled"}>
     <summary>Delivery activity dates and venue</summary>
     <p>Set activity dates separately from the project start and deadline.</p>
-    <label>Delivery days<select value={value.mode} onChange={event => {
+    <label>Delivery days<select aria-label="Delivery days" value={value.mode} onChange={event => {
       const mode = event.target.value as ActivityInput["mode"];
       change({ ...value, mode, count: mode === "single" ? 1 : Math.max(value.count, 2),
         days: mode === value.mode ? value.days : [] });
