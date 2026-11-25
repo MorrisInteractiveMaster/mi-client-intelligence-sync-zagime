@@ -93,6 +93,11 @@ test("Time search, choices, counts and cursor cover a complete period without ex
     assert.equal((await sources({ area: "hr", project: "synthetic-delivery" })).sourceSummary?.matched, 1);
     assert.equal((await sources({ status: "review" })).sources?.[0].id, src(2).id);
     assert.equal((await sources({ status: "queue" })).sourceSummary?.matched, 31);
+    const eligible = await sources({ status: "queue", selection: "bulk", limit: "25" });
+    assert.ok(eligible.sourceSummary!.matched > 25);
+    assert.equal(eligible.sources?.length, 25);
+    assert.ok(eligible.sources?.every(row => !row.deleted && !row.needsReview && row.portions.length === 0));
+    assert.equal((await request(`sources?month=${period}&selection=bulk`, "client")).status, 403);
     assert.equal((await request(`sources?month=${period}&status=review&cursor=${first.nextCursor}`)).status, 409);
     assert.equal((await request(`sources?month=${period}&from=2026-11-25`)).status, 400);
     assert.equal((await request(`sources?month=${period}&consultant=929&consultant=999`)).status, 400);

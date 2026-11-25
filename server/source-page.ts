@@ -1,5 +1,5 @@
 import { FieldPath, type DocumentData, type DocumentReference, type DocumentSnapshot, type Transaction } from "firebase-admin/firestore";
-import { sourceStatus, sourceStatuses, type PageQuery, type SourceFilters, type SourceHours, type SourceHoursGroup, type SourceSummary, type StaffSource } from "../src/api/types";
+import { canSelectTimeForBulk, sourceStatus, sourceStatuses, type PageQuery, type SourceFilters, type SourceHours, type SourceHoursGroup, type SourceSummary, type StaffSource } from "../src/api/types";
 import { calendarDate } from "../src/projects/delivery";
 import { timeBucket, timeEntrySortFields, timeSortOrders, timeWindow, type TimeGrouping, type TimeWindow } from "../src/projects/time-history";
 import { compareValues, directions } from "../src/projects/sort";
@@ -16,7 +16,7 @@ import { automaticTimeRef } from "./automatic-time";
 // explicitly rather than presenting truncated matches as complete.
 export const sourceMonthLimit = 5000;
 export const sourceHistoryLimit = 12000;
-export const sourceFilterKeys = ["search", "workOrder", "consultant", "consultants", "provenance", "area", "project", "from", "through", "status",
+export const sourceFilterKeys = ["search", "workOrder", "consultant", "consultants", "provenance", "selection", "area", "project", "from", "through", "status",
   "period", "start", "end", "order", "group", "entry", "sort", "direction"] as const;
 const filterId = /^[A-Za-z0-9_-]{1,128}$/;
 const normalized = (text: string) => text.normalize("NFKC").trim().toLowerCase();
@@ -32,6 +32,7 @@ export function sourceFilters(query: PageQuery) {
     if (ids.length > 20 || ids.some(id => !filterId.test(id)) || new Set(ids).size !== ids.length) throw Error("Invalid consultant filter");
   }
   if (f.provenance !== undefined && !["automatic", "manual", "unclassified"].includes(f.provenance)) throw Error("Invalid source classification");
+  if (f.selection !== undefined && f.selection !== "bulk") throw Error("Invalid source selection");
   for (const date of [f.from, f.through]) {
     if (date !== undefined && (!calendarDate(date) || !includesDate(window, date))) throw Error("Invalid source date filter");
   }
@@ -112,6 +113,7 @@ function summarize(rows: StaffSource[], filters: SourceFilters & { search: strin
     const remaining = !row.deleted && !row.automaticClassification && row.unallocatedSeconds > 0;
     if (remaining) counts.remaining++;
     if (filters.status && (filters.status === "queue" ? !remaining : status !== filters.status)) continue;
+    if (filters.selection === "bulk" && !canSelectTimeForBulk(row)) continue;
     matches.push(row);
     // Corrected current rows may have temporarily unapplied ledger portions.
     // Deleted rows are shown for review but do not contribute recorded seconds.

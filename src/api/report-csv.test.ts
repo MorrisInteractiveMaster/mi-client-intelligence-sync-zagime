@@ -16,12 +16,24 @@ test("CSV preserves Unicode, ISO dates, decimal hours and multiline text, and ne
   const csv = csvText(sourceCsv([source("source-1")]));
   assert.ok(csv.startsWith("\uFEFF"));
   assert.match(csv, /"2026-10-11","Regular Consulting","132160684","source-1","Áine LeBlanc","71",0\.75,0\.75/);
-  assert.match(csv, /"'=PRIVATE","Review,""scope""\nMeeting"\r\n/);
+  assert.match(csv, /"'=PRIVATE","Review,""scope""\nMeeting","",""\r\n/);
   assert.doesNotMatch(csv, /Never include|revision-1/);
   assert.match(csvText({ headers: ["value"], rows: [[" \t@SUM(1,2)"], ["\u0000+1"], [-1]] }), /"' \t@SUM\(1,2\)"\r\n"'\u0000\+1"\r\n-1/);
   assert.throws(() => csvText({ headers: ["value"], rows: [[NaN]] }), /invalid numeric/);
   assert.throws(() => csvText({ headers: ["value"], rows: [[1, 2]] }), /columns/);
   assert.equal(csvFilename("Morris Zagimē, 2026-10"), "Morris_Zagime_2026-10.csv");
+});
+
+test("staff Time export keeps automatic classification distinct from approved effort", () => {
+  const csv = csvText(sourceCsv([{ ...source("automatically-classified"), annotations: undefined,
+    automaticClassification: {
+      projectId: "delivery-example", parentId: "parent-example", areaId: "hr",
+      seconds: 2700, reportingDescription: "Mapped source note",
+    },
+  }]));
+  assert.match(csv, /"automatically classified","","Mapped source note"/);
+  assert.match(csv, /0\.75,"delivery-example"\r\n/);
+  assert.doesNotMatch(csv, /parent-example|Never include internal note/);
 });
 
 test("export follows every authorized page using the exact filters", async () => {

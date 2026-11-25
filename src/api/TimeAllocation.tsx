@@ -9,7 +9,7 @@ import { precedingTimeMonth, reportingTimeMonth, timeEntrySortFields, timeSortOr
 import { SortHeader, type SortState } from "./SortHeader";
 import { ApiError, type SecuredApiClient } from "./client";
 import { reportDay, reportHours, reportMonth, reportTimestamp } from "./dashboard-format";
-import { sourceStatus, type AllocationAnnotations, type HistoryRow, type SourceFilters, type SourceSummary, type StaffSource } from "./types";
+import { canSelectTimeForBulk, sourceStatus, type AllocationAnnotations, type HistoryRow, type SourceFilters, type SourceSummary, type StaffSource } from "./types";
 import { BulkAllocationResults } from "./BulkAllocationResults";
 import { TimeHistorySummary } from "./TimeHistorySummary";
 import { CsvExport } from "./CsvExport";
@@ -32,8 +32,6 @@ const timePresets = {
 } as const;
 type TimePreset = keyof typeof timePresets;
 type SavedScope = { preset: TimePreset; reference: string; start: string; end: string; order: "oldest" | "newest"; group: TimeGrouping };
-const bulkEligible = (source: StaffSource) => source.seconds > 0 && !source.conflict &&
-  !source.needsReview && !source.portions.length && !source.automaticClassification;
 
 function validSavedScope(value: unknown): value is SavedScope {
   if (!value || typeof value !== "object") return false;
@@ -72,6 +70,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   const linkedStatus = initialStatus === "review" ? "review" : undefined;
   const periodSelectId = useId();
   const [rows, setRows] = useState<StaffSource[]>();
+  const [lastPage, setLastPage] = useState<StaffSource[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [revision, setRevision] = useState(0);
   const [summary, setSummary] = useState<SourceSummary>();
@@ -147,6 +146,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       if (!page.sourceSummary) throw Error("The server did not provide time counts.");
       setRevision(page.revision);
       setRows(old => next ? [...(old ?? []), ...(page.sources ?? [])] : page.sources ?? []);
+      setLastPage(page.sources ?? []);
       setSummary(page.sourceSummary);
       setApplied(requestFilters);
       setAppliedMonth(anchor);
@@ -285,28 +285,32 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
   const header = (field: TimeEntrySortField) => linkedId ? <th scope="col">{entryLabels[field]}</th> :
     <SortHeader field={field} label={entryLabels[field]} sort={entrySort} onSort={sortEntries} disabled={busy} />;
   const canBulk = selectedRows.length > 0 && selectedRows.length <= MAX_BULK_ALLOCATION_ENTRIES && bulkProject &&
-    selectedRows.every(bulkEligible);
+    selectedRows.every(canSelectTimeForBulk);
   async function selectMatches() {
     if (busy || !summary?.matched) return;
     const controller = new AbortController();
+    request.current = controller;
     setBusy(true);
     setError("");
     try {
-      const query = new URLSearchParams({ month: appliedMonth });
+      const query = new URLSearchParams({ month: appliedMonth, limit: String(MAX_BULK_ALLOCATION_ENTRIES), selection: "bulk" });
       for (const [name, value] of Object.entries(applied)) if (value) query.set(name, value);
-      const matching = await allAuthorizedRows("sources", query, controller.signal, authorizedPages(client, tenant));
-      if (!mounted.current) return;
-      const available = matching.filter(bulkEligible);
-      if (available.length > MAX_BULK_ALLOCATION_ENTRIES) {
-        setError(available.length + " eligible entries match. Narrow the filters to " + MAX_BULK_ALLOCATION_ENTRIES + " or select individual entries.");
+      const results = await client.call<ProjectPage>(tenant, "sources?" + query, { signal: controller.signal });
+      if (!mounted.current || controller.signal.aborted) return;
+      const count = results.sourceSummary?.matched;
+      if (count === undefined) throw Error("The server did not provide selection counts.");
+      if (count > MAX_BULK_ALLOCATION_ENTRIES) {
+        setError(count + " eligible entries match. Narrow the filters to " + MAX_BULK_ALLOCATION_ENTRIES + " or select individual entries.");
         return;
       }
+      const available = results.sources ?? [];
+      if (available.length !== count || available.some(row => !canSelectTimeForBulk(row))) throw Error("The selection changed. Try again.");
       setSelected(available);
       setNotice(available.length + " eligible entries selected across all matches.");
     } catch (reason) {
-      if (mounted.current) failed(reason);
+      if (mounted.current && !controller.signal.aborted) failed(reason);
     } finally {
-      if (mounted.current) setBusy(false);
+      if (mounted.current && !controller.signal.aborted) setBusy(false);
     }
   }
   async function write(source: StaffSource, expected: number, parts: Allocation[], notes: AllocationAnnotations) {
@@ -480,7 +484,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
     {undo && <button type="button" className="secure-secondary" disabled={busy} onClick={() => { const prior = undo; setUndo(undefined); void save(prior.source, prior.source.portions, prior.source.annotations ?? blank, prior.revision, false); }}>Undo last change</button>}
     {!!rows?.length && !linkedId && <div className="secure-actions" aria-label="Select time entries">
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
-        setSelected(rows.slice(-25).filter(bulkEligible));
+        setSelected(lastPage.filter(canSelectTimeForBulk));
       }}>Select eligible entries on this page</button>
       <button type="button" className="secure-secondary" disabled={busy} onClick={() => void selectMatches()}>Select all eligible matches</button>
       {selected.length > 0 && <button type="button" className="secure-secondary" disabled={busy} onClick={() => setSelected([])}>Clear selection</button>}
@@ -510,7 +514,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       <table role="table"><thead role="rowgroup"><tr role="row"><th scope="col">Select</th>{header("date")}{showConsultant && header("consultant")}{showNotes && header("notes")}
         {header("workOrder")}{header("recorded")}{header("reporting")}{header("assignment")}{header("status")}<th scope="col">Actions</th></tr></thead>
       <tbody role="rowgroup">{rows.map(source => <tr key={source.id} role="row">
-        <td role="cell" data-cell="Select"><input aria-label={"Select entry on " + source.date} type="checkbox" disabled={Boolean(source.automaticClassification) || source.conflict || source.needsReview || source.portions.length > 0 || source.seconds === 0}
+        <td role="cell" data-cell="Select"><input aria-label={"Select entry on " + source.date} type="checkbox" disabled={!canSelectTimeForBulk(source)}
           checked={selected.some(row => row.id === source.id)} onChange={e => setSelected(old => e.target.checked ? [...old, source] : old.filter(row => row.id !== source.id))} /></td>
         <td role="cell" data-cell="Date">{reportDay(source.date)}</td>
         {showConsultant && <td role="cell" data-cell="Consultant"><div className="time-profile">

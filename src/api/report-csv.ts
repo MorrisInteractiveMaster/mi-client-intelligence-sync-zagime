@@ -101,12 +101,15 @@ export function overviewCsv(summary: SourceSummary): CsvData {
 
 export function sourceCsv(rows: StaffSource[]): CsvData {
   return {
-    headers: ["Work date", "Work order", "Work order ID", "Entry ID", "Consultant", "Provider user ID", "Recorded hours",
-      "Not yet allocated hours", "Status", "Provider approval", "Reporting description", "Original source note"],
+    headers: ["Work date", "QuickBooks Time Work Order", "Work order ID", "Entry ID", "Consultant", "Provider user ID", "Recorded hours",
+      "Not yet allocated hours", "Status", "Provider approval", "Reporting description", "Original QuickBooks Time Description",
+      "Staff-only automatic classification hours", "Mapped Delivery Project ID"],
     rows: rows.map(row => [row.date, row.workOrderName ?? row.sourceWorkOrderId, row.sourceWorkOrderId, row.id,
       row.consultantName, row.sourcePersonId, csvHours(row.deleted ? undefined : row.seconds), csvHours(row.unallocatedSeconds),
-      sourceStatus(row), row.approval, row.annotations?.reportingDescription,
-      row.originalNotesState === "populated" ? row.description : undefined]),
+      row.automaticClassification ? "automatically classified" : sourceStatus(row), row.approval,
+      row.annotations?.reportingDescription ?? row.automaticClassification?.reportingDescription,
+      row.originalNotesState === "populated" ? row.description : undefined, csvHours(row.automaticClassification?.seconds),
+      row.automaticClassification?.projectId]),
   };
 }
 
@@ -117,7 +120,7 @@ export function publishedProjectCsv(report: ProjectReport, projects: ClientProje
   const areas = new Map(report.portfolio?.areas.map(item => [item.id, item.name]));
   const asOf = today();
   return {
-    headers: ["Month", "Project", "Parent engagement", "Service area", "Delivery status", "Progress percent",
+    headers: ["Month", "Project", "Parent Project", "Department", "Delivery status", "Progress percent",
       "Reported hours", "Lifetime reported hours", "Monthly cap hours", "Monthly used hours", "Lifetime cap hours", "Lifetime used hours",
       "Start date", "Deadline"],
     rows: projects.flatMap(item => {

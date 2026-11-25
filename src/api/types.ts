@@ -63,6 +63,7 @@ export interface SourceFilters {
   consultant?: string;
   consultants?: string;
   provenance?: "automatic" | "manual" | "unclassified";
+  selection?: "bulk";
   area?: string;
   project?: string;
   from?: string;
@@ -110,6 +111,8 @@ export function sourceStatus(source: Pick<StaffSource, "deleted" | "needsReview"
   if (!source.unallocatedSeconds) return "allocated";
   return source.unallocatedSeconds === source.seconds ? "unallocated" : "partial";
 }
+export const canSelectTimeForBulk = (source: StaffSource) => source.seconds > 0 && !source.conflict &&
+  !source.deleted && !source.needsReview && !source.portions.length && !source.automaticClassification;
 export interface HistoryRow {
   revision: number;
   at: string;
