@@ -119,7 +119,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
   const errors: string[] = [];
   const inFlight = new Set<Promise<void>>();
   const [handleRequest] = server.listeners("request");
-  server.off("request", handleRequest);
+  server.removeAllListeners("request");
   server.on("request", (req, res) => {
     // Closing a browser socket can leave its async handler reading Firestore.
     const request: Promise<void> = handleRequest(req, res);
