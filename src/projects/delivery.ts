@@ -82,6 +82,7 @@ export function parseDelivery(input: unknown): Delivery {
   if (v.publishStartStatus !== undefined && typeof v.publishStartStatus !== "boolean") return invalid();
   const workOrderIds = v.workOrderIds === undefined ? undefined : uniqueIds(v.workOrderIds);
   if (workOrderIds && (workOrderIds.length > 10 || workOrderIds.some(id => !/^\d{1,32}$/.test(id)))) return invalid();
+  const activity = v.activity === undefined ? undefined : parseActivitySchedule(v.activity);
   const pendingJob = v.pendingTimeJobcodeId;
   if (pendingJob !== undefined && (typeof pendingJob !== "string" || !/^\d{1,32}$/.test(pendingJob) || v.kind === "service-area")) return invalid();
   const compact = <K extends string, T>(key: K, value?: T) => value === undefined ? {} : { [key]: value } as Record<K, T>;
@@ -103,8 +104,13 @@ export function parseDelivery(input: unknown): Delivery {
     if (v.type !== "hourly" && v.monthlyCap !== undefined) return invalid();
     if (v.type === "training" || v.type === "workshop") {
       if (!training || training.dates.length !== training.days || !training.facilitatorIds.length) return invalid();
-      start = training.dates[0];
-      deadline = training.dates.at(-1);
+      if (activity) {
+        if (training.dates.length !== activity.dates.length || training.dates.some((day, index) => day !== activity.dates[index]))
+          return invalid();
+      } else {
+        start = training.dates[0];
+        deadline = training.dates.at(-1);
+      }
     }
   }
   if (start && deadline && start > deadline) return invalid();
@@ -116,7 +122,7 @@ export function parseDelivery(input: unknown): Delivery {
     ...compact("monthlyCap", number(v.monthlyCap, 3_600_000_000)), ...compact("lifetimeCap", number(v.lifetimeCap, 3_600_000_000)),
     ...compact("manualCompletion", number(v.manualCompletion, 100)), ...compact("completedOn", date(v.completedOn)),
     ...compact("start", start), ...compact("deadline", deadline),
-    ...compact("activity", v.activity === undefined ? undefined : parseActivitySchedule(v.activity)),
+    ...compact("activity", activity),
     ...compact("publishSummary", v.publishSummary), ...compact("publishStartStatus", v.publishStartStatus),
     ...compact("training", training), ...compact("blocker", blocker),
     ...compact("countAgainstParentCap", v.countAgainstParentCap), ...compact("allowDirectAllocation", v.allowDirectAllocation) };

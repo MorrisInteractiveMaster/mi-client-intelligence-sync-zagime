@@ -25,3 +25,17 @@ test("separate activity dates and per-day venues stay distinct from lifecycle da
   assert.throws(() => parseActivitySchedule({ mode: "single", dates: ["2026-11-22"],
     sharedVenue: { kind: "not-applicable", details: "Should not be stored" } }));
 });
+
+test("new training activity has one authoritative date list and retains independent lifecycle dates", () => {
+  const dates = ["2026-11-15", "2026-11-22"];
+  const input = { ...deliveryDefaults, kind: "engagement", type: "training", structure: 3,
+    managerIds: ["manager"], start: "2026-11-01", deadline: "2026-12-01",
+    activity: { mode: "separate", dates },
+    training: { dates, days: 2, facilitatorIds: ["manager"] },
+  };
+  assert.equal(parseDelivery(input).start, "2026-11-01");
+  assert.equal(parseDelivery(input).deadline, "2026-12-01");
+  assert.deepEqual(parseDelivery(input).training?.dates, dates);
+  assert.throws(() => parseDelivery({ ...input, training: { ...input.training, dates: ["2026-11-15", "2026-11-23"] } }));
+  assert.equal(parseDelivery({ ...input, activity: undefined }).deadline, "2026-11-22");
+});

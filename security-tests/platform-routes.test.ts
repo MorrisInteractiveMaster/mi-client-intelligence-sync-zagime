@@ -1039,6 +1039,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await captureReference(publisher.page, "06-training-schedule-1209x907", 1209, 907);
     await newWizard.getByText("Delivery activity dates and venue", { exact: true }).click();
     await newWizard.getByLabel("Delivery days", { exact: true }).selectOption("consecutive");
+    assert.equal(await newWizard.getByLabel("Program length in days").count(), 0, "delivery dates replace the legacy training date form");
     for (const [label, date] of [["First delivery date", "5"], ["Last delivery date", "6"]]) {
       await newWizard.getByRole("button", { name: new RegExp("^" + label) }).click();
       await publisher.page.getByRole("dialog", { name: label, exact: true })

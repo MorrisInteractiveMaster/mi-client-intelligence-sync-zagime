@@ -91,6 +91,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
   const miscellaneous = kind === "project" && (selectedDepartment?.id === "miscellaneous" ||
     selectedDepartment?.name.trim().toLowerCase() === "miscellaneous");
   const program = isProgramType(type);
+  const hasActivityDates = activity.mode !== "unscheduled";
   const daysCount = Number(days);
   const validDays = Number.isSafeInteger(daysCount) && daysCount >= 1 && daysCount <= 60;
   const requiresCompleteProgram = !legacy || type !== saved?.type;
@@ -118,9 +119,9 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
       throw Error("Choose a parent project and department.");
     if (part === "arrangement") {
       selectedActivity(activity);
-      if (program && (!validDays || dates.length > daysCount || requiresCompleteProgram && dates.length !== daysCount))
+      if (program && !hasActivityDates && (!validDays || dates.length > daysCount || requiresCompleteProgram && dates.length !== daysCount))
         throw Error("Choose exactly one distinct calendar date per program day.");
-      if (!program && start && deadline && start > deadline)
+      if ((!program || hasActivityDates) && start && deadline && start > deadline)
         throw Error("Choose an expected end date on or after the start date.");
       if (!program) {
         if (type === "hourly" || miscellaneous) amount(monthly, saved?.monthlyCap);
@@ -164,11 +165,13 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         type === "hourly" || miscellaneous ? amount(monthly, saved?.monthlyCap) :
           legacy && type === saved?.type ? saved?.monthlyCap : undefined;
       const lifetimeCap = program ? existingProgram ? saved?.lifetimeCap : undefined : amount(lifetime, saved?.lifetimeCap);
-      const schedule = program && (!legacy || dates.length > 0)
+      const selectedSchedule = selectedActivity(activity);
+      const schedule = program && !selectedSchedule && (!legacy || dates.length > 0)
         ? { start: [...dates].sort()[0], deadline: latest }
         : { start: start || undefined, deadline: deadline || undefined };
-      const training = miscellaneous ? sourceProgram : program && (!legacy || sourceProgram || dates.length)
-        ? { ...sourceProgram, days: daysCount, dates, facilitatorIds: facilitators, venue: venue.trim() || undefined }
+      const training = miscellaneous ? sourceProgram : program && (!legacy || sourceProgram || dates.length || selectedSchedule)
+        ? { ...sourceProgram, days: selectedSchedule?.dates.length ?? daysCount, dates: selectedSchedule?.dates ?? dates,
+          facilitatorIds: facilitators, venue: selectedSchedule ? undefined : venue.trim() || undefined }
         : undefined;
       const delivery: Delivery = {
         ...unchanged,
@@ -177,7 +180,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         ...(!miscellaneous && kind === "project" && type === "hourly" ? { countAgainstParentCap: countForParent } : {}),
         ...(publishSummary || saved?.publishSummary !== undefined ? { publishSummary } : {}),
         ...(publishStartStatus || saved?.publishStartStatus !== undefined ? { publishStartStatus } : {}),
-        monthlyCap, lifetimeCap, training, ...schedule, activity: selectedActivity(activity),
+        monthlyCap, lifetimeCap, training, ...schedule, activity: selectedSchedule,
         pendingTimeJobcodeId: kind === "service-area" ? undefined : pendingJobCode || undefined,
       };
       const candidate: ManagedProject = {
@@ -274,7 +277,7 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
         {!miscellaneous && type === "hourly" && kind === "project" && <label className="creation-checkbox">
           <input type="checkbox" checked={countForParent} onChange={event => change(setCountForParent, event.target.checked)} />
           Count this project&rsquo;s delivery hours against the parent&rsquo;s budget</label>}
-        {program ? <>
+        {program && !hasActivityDates ? <>
           <div className="creation-columns">
             <label>Program length in days<input type="number" min={1} max={60} value={days}
               onChange={event => change(setDays, event.target.value)} /></label>
@@ -301,10 +304,10 @@ export function ProjectCreation({ projects, portfolio, project, busy, canPublish
           {!program && <div><dt>Hours caps</dt><dd>{[
             ((type === "hourly" || miscellaneous) && monthly) && monthly + " h per month", lifetime && lifetime + " h total",
           ].filter(Boolean).join(" / ") || "No cap"}</dd></div>}
-          <div><dt>Schedule</dt><dd>{program ? dates.slice().sort().join(", ") || "No dates selected" :
+          <div><dt>Schedule</dt><dd>{program && !hasActivityDates ? dates.slice().sort().join(", ") || "No dates selected" :
             [start, deadline].filter(Boolean).join(" to ") || "No dates selected"}</dd></div>
           {activity.mode !== "unscheduled" && <div><dt>Activity dates</dt><dd>{selectedActivity(activity)?.dates.join(", ")}</dd></div>}
-          {program && venue.trim() && <div><dt>Venue</dt><dd>{venue}</dd></div>}
+          {program && !hasActivityDates && venue.trim() && <div><dt>Venue</dt><dd>{venue}</dd></div>}
           <div><dt>Project managers</dt><dd>{people.filter(person => managers.includes(person.id)).map(person => person.name).join(", ") || "None selected"}</dd></div>
           {program && <div><dt>Facilitators</dt><dd>{people.filter(person => facilitators.includes(person.id)).map(person => person.name).join(", ") || "None selected"}</dd></div>}
           {team.length > 0 && <div><dt>Team members</dt><dd>{people.filter(person => team.includes(person.id)).map(person => person.name).join(", ")}</dd></div>}

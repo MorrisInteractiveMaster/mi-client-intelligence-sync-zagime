@@ -247,4 +247,29 @@ Reviewed delivery mappings create staff-only automatic Time classifications. The
 
 Permanent deletion is available to the configured Morris platform administrator. The dependency review is read-only until the administrator types the exact name and confirms. Publication history, time history, mappings, child projects, portfolio placements and client access assignments prevent deletion. A successful deletion removes the project and its reporting view and leaves a minimal audit event. Preserve an independently approved backup of any draft that must remain recoverable.
 
-Use the existing owner-controlled named-database and image release procedure above. First verify the database UID, tenant binding, work-order mappings, current dashboard and Time worker image digests, and the 06:00 America/Regina schedule. Compare candidate behavior in the named staging database. Promotion requires passing checks and separate approval of both image digests. Use the existing dashboard traffic rollback and restore the previous worker image if needed. The previous image can ignore the additive activity and classification records. A permanent deletion is a separate authorized data operation and is outside image rollback.
+Run the read-only checks above for the named database, four work-order mappings, baseline image digests and 06:00 America/Regina scheduler. Use named staging for candidate review. Image rollback leaves the additive activity and classification records in place. A permanent deletion is an independent data operation.
+
+Run the read-only preflight in the linked runbook first. Independently compare recorded seconds, allocation revisions, the four work-order IDs, and the current 06:00 America/Regina scheduler against one cutoff. Reconcile any differences before making a release decision.
+
+### Separately approved Time worker image change
+
+Use the preflight variables and private evidence directory in the same Cloud Shell. Supply the exact owner-approved immutable worker digest as `V5_WORKER_IMAGE`. Review the existing execution list and choose a window outside the scheduled run with zero active executions. Call the function only after the V5 candidate passes and the worker image change is authorized.
+
+```bash
+v5_worker_image_only() {
+  local requested_image="$1" evidence_file="$2"
+  [[ "${DELIVERY_PREFLIGHT_READY:-0}" == 1 ]] || return 1
+  [[ "$requested_image" =~ ^northamerica-northeast1-docker\.pkg\.dev/morris-client-dash-zagime/mi-client-build/[a-z0-9-]+@sha256:[a-f0-9]{64}$ ]] || return 1
+  gcloud run jobs executions list --job="$DELIVERY_TIME_JOB" --project="$DELIVERY_PROJECT" --region="$DELIVERY_REGION" --format=json > "$DELIVERY_EVIDENCE/executions.json" &&
+    jq -e 'all(.[]; (.status.completionTime // "") != "")' "$DELIVERY_EVIDENCE/executions.json" >/dev/null || return 1
+  gcloud run jobs update "$DELIVERY_TIME_JOB" --project="$DELIVERY_PROJECT" --region="$DELIVERY_REGION" --image="$requested_image" || return 1
+  gcloud run jobs describe "$DELIVERY_TIME_JOB" --project="$DELIVERY_PROJECT" --region="$DELIVERY_REGION" --format=json > "$evidence_file" || return 1
+  jq -e --arg image "$requested_image" '.spec.template.spec.template.spec.containers[0].image == $image' "$evidence_file" >/dev/null &&
+    diff -u <(jq -S '.spec.template.spec | del(.template.spec.containers[0].image)' "$DELIVERY_EVIDENCE/worker-before.json") \
+      <(jq -S '.spec.template.spec | del(.template.spec.containers[0].image)' "$evidence_file")
+}
+```
+
+- Owner-approved promotion uses `if v5_worker_image_only "$V5_WORKER_IMAGE" "$DELIVERY_EVIDENCE/worker-after.json"; then printf "Worker image verified\n"; fi`.
+- Owner-approved rollback uses the same function with the immutable prior image from `jq -er '.spec.template.spec.template.spec.containers[0].image' "$DELIVERY_EVIDENCE/worker-before.json"` and a new evidence filename. Use the separate traffic rollback in the application runbook if required.
+- Leave the scheduler as configured. Verify the next normal dispatch using the read-only monitor, then compare the reviewed mapped orders and allocation invariants. Do not run enrollment or historical reimport. [Cloud Run job update reference](https://docs.cloud.google.com/sdk/gcloud/reference/run/jobs/update)
