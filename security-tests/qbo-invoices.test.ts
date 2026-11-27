@@ -160,6 +160,13 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       await page.getByRole("button", { name: "Collapse navigation" }).click();
       assert.equal(await page.locator('.mi-workspace-sidebar button[aria-label="Invoices"] .mi-nav-notice').isVisible(), true);
       await page.getByRole("button", { name: "Expand navigation" }).click();
+      for (const [width, height] of [[768, 1024], [390, 844]]) {
+        await page.setViewportSize({ width, height });
+        await page.evaluate(() => window.scrollTo(0, 0));
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.screenshot({ path: join(evidence, "staff-" + width + "-light.png"), fullPage: true, animations: "disabled" });
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
       assert.deepEqual((await (await call("client")).json()).invoices, []);
       assert.equal((await call("owner", "/callback", { realm: "123", state, code: "synthetic-code" })).status, 403);
       const connection = (await root.collection("invoiceIntegration").doc("connection").get()).data()!;
@@ -191,6 +198,9 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       const portal = await client.newPage();
       await portal.goto(origin + "/clients/zagime/invoices");
       await portal.getByRole("article", { name: "Invoice 1024" }).getByText("Due today").waitFor();
+      await portal.setViewportSize({ width: 1440, height: 900 });
+      await portal.screenshot({ path: join(evidence, "client-1440-light.png"), fullPage: true, animations: "disabled" });
+      await portal.setViewportSize({ width: 768, height: 1024 });
       assert.equal(await portal.getByRole("button", { name: "Sync invoices" }).count(), 0);
       const published = await (await call("client")).json();
       assert.doesNotMatch(JSON.stringify(published), /QBO-PRIVATE-NOTE|Synthetic private customer|approval|customerId|connected|configured|token|audience/);
@@ -242,7 +252,17 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       const [stepperBox, previewBox] = await Promise.all([period.boundingBox(), previewMode.boundingBox()]);
       assert.ok(stepperBox && previewBox && Math.abs((stepperBox.y + stepperBox.height / 2) - (previewBox.y + previewBox.height / 2)) <= 2,
         "preview picker and reporting stepper share a center line");
+      const distribution = page.getByRole("region", { name: "Project Portfolio Distribution" });
+      const [options, sortBox] = await Promise.all([
+        distribution.getByRole("button", { name: "Departments" }).boundingBox(), distribution.getByLabel("Sort groups").boundingBox(),
+      ]);
+      assert.ok(options && sortBox && Math.abs((options.y + options.height / 2) - (sortBox.y + sortBox.height / 2)) <= 2,
+        "portfolio grouping and sort controls share a center line");
+      const signal = page.getByRole("button", { name: "Explain Blocked or at risk" });
+      await signal.focus();
+      await page.getByRole("tooltip").filter({ hasText: /Counts approved projects with an active blocker/ }).waitFor();
       await page.screenshot({ path: join(evidence, "staff-published-preview-1440-light.png"), fullPage: true, animations: "disabled" });
+      await page.keyboard.press("Escape");
       const empty = await browser.newContext({ viewport: { width: 390, height: 844 } });
       await empty.addInitScript(() => { Reflect.set(window, "__role", "empty"); });
       const noProjects = await empty.newPage();
