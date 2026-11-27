@@ -1989,7 +1989,8 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         await page.getByRole("option", { name: persisted.name, exact: true }).waitFor();
         await picker.press("Enter");
         const management = page.getByRole("form", { name: "Delivery progress" });
-        await management.getByRole("heading", { name: persisted.name, exact: true }).waitFor();
+        await page.locator(".mi-workspace-banner").getByRole("heading", { name: persisted.name, exact: true }).waitFor();
+        await management.waitFor();
         assert.equal(new URL(page.url()).pathname, "/workspace/project-management/" + persisted.id);
         const slider = management.getByRole("slider", { name: "Project completion" });
         await management.getByRole("button", { name: "50%", exact: true }).click();
