@@ -29,6 +29,8 @@ body:has(.platform-shell[data-workspace="true"]) { margin: 0; }
   min-width: 0;
 }
 .mi-banner-context { align-items: center; justify-content: flex-start; border-top: 1px solid #b1c9df40; padding-top: 12px; }
+.nordic.secure-shell .mi-banner-context > .secure-actions { margin:0; gap:8px; }
+.nordic.secure-shell .mi-banner-context :is(.secure-actions, .mi-overview-actions) button { margin:0; }
 .mi-banner-copy { flex: 1 1 14rem; min-width: 0; }
 .mi-banner-eyebrow { display: flex; align-items: center; gap: 8px; color: #f1d675; font-size: .78rem; font-weight: 750; }
 .nordic.secure-shell .mi-workspace-banner .mi-banner-copy h1 {

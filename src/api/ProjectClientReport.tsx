@@ -201,16 +201,40 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
     invoices: "Invoices", history: "Reporting history", milestones: "Milestones", notes: "Executive notes", engagements: "Parent projects", areas: "Departments" };
   const standardTitle = Object.hasOwn(labels, view) ? labels[view] : undefined;
   const title = area?.name ?? engagement?.name ?? contact?.name ?? milestone?.title ?? (project && kind === "timeline" ? "Project timeline" : project?.name) ?? standardTitle ?? "Report unavailable";
+  const showReportPeriod = view !== "invoices" && view !== "directory" && kind !== "contact";
+  const pendingBanner = <WorkspaceBanner title={title} eyebrow="Zagimē client workspace" actions={previewToolbar}
+    period={showReportPeriod && (nativeClient ? periodToolbar() : legacyMonth)} />;
   useEffect(() => {
-    if (!report) return;
+    if (!report && view !== "invoices") return;
     const previous = document.title;
     document.title = (presenting ? "Presentation · " : "") + title + " · Client Intelligence";
     return () => { document.title = previous; };
-  }, [report, title, presenting]);
+  }, [report, title, presenting, view]);
+  const groups: WorkspaceGroup[] = [{ label: "Client reporting", destinations: [
+    { id: "leadership", label: "Leadership summary", icon: LayoutGrid, active: view === "overview", select: () => choose("overview") },
+    { id: "projects", label: "Projects", icon: FolderKanban, active: view === "projects" || ["project", "group", "timeline"].includes(kind), select: () => choose("projects") },
+    { id: "invoices", label: "Invoices", icon: ReceiptText, active: view === "invoices", notice: invoiceNavNotice(invoiceModel.view, false), select: () => choose("invoices") },
+    { id: "departments", label: "Departments", icon: Layers3, active: view === "areas", select: () => choose("areas"),
+      children: (periodReport?.portfolio?.areas ?? []).map(area => ({ id: "client-department-" + area.id, label: area.name, icon: Layers3,
+        active: kind === "area" && id === area.id, select: () => choose("area:" + area.id) })) },
+    { id: "directory", label: "MI Directory", icon: UsersRound, active: view === "directory" || kind === "contact", select: () => choose("directory") },
+    { id: "presentation", label: "Presentation", icon: PresentationIcon, active: presenting, select: () => openOverlay("present", "1") },
+  ] }];
+  const reportShell = (content: ReactNode, delivery?: ReturnType<typeof clientDelivery>) =>
+    <WorkspaceNavigation groups={groups} heading="Client workspace" navigationLabel="Client workspace" embedded={Boolean(preview && !nativeClient)}
+      mobileLabel={preview && !nativeClient ? "Browse client preview" : "Workspace navigation"}
+      collapseLabel="sidebar" collapsed={collapsed} busy={false} onCollapse={() => setCollapsed(value => !value)}
+      searchResults={delivery?.projects.map(row => ({ id: "client-project-" + row.project.id, label: row.project.name,
+        context: row.department?.name ?? "Published projects", select: () => choose("project:" + row.project.id) }))}>
+      {content}
+    </WorkspaceNavigation>;
+  if (view === "invoices") return reportShell(<div className="exec-content" tabIndex={-1} ref={page}>
+    <Invoices client={client} tenant={tenant} model={invoiceModel} bannerActions={previewToolbar} />
+  </div>);
   if (current && !current.report)
-    return (
+    return reportShell(
       <section>
-        <WorkspaceBanner title={title} eyebrow="Zagimē client workspace" actions={previewToolbar} />
+        {pendingBanner}
         <p role="alert">
           The published report could not be loaded. Try again in a moment.
         </p>
@@ -225,9 +249,9 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
       </section>
     );
   if (!report)
-    return (
+    return reportShell(
       <div>
-        <WorkspaceBanner title={title} eyebrow="Zagimē client workspace" actions={previewToolbar} />
+        {pendingBanner}
         <p className="intel-empty intel-loading" role="status">Loading approved reporting…</p>
       </div>
     );
@@ -315,34 +339,18 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
     { label: "Board", members: directory.filter(member => isBoardRole(member.role)) },
     { label: "Morris Interactive team", members: directory.filter(member => !isBoardRole(member.role)) },
   ];
-  const presentationButton = !unavailable && view !== "invoices" && <button type="button" className="mi-present-button" onClick={event => openOverlay("present", "1", event.currentTarget)}>
+  const presentationButton = !unavailable && <button type="button" className="mi-present-button" onClick={event => openOverlay("present", "1", event.currentTarget)}>
     <PresentationIcon size={17} aria-hidden="true" />{view === "overview" ? "Presentation" : "Present this view"}</button>;
-  const groups: WorkspaceGroup[] = [{ label: "Client reporting", destinations: [
-    { id: "leadership", label: "Leadership summary", icon: LayoutGrid, active: view === "overview", select: () => choose("overview") },
-    { id: "projects", label: "Projects", icon: FolderKanban, active: view === "projects" || ["project", "group", "timeline"].includes(kind), select: () => choose("projects") },
-    { id: "invoices", label: "Invoices", icon: ReceiptText, active: view === "invoices", notice: invoiceNavNotice(invoiceModel.view, false), select: () => choose("invoices") },
-    { id: "departments", label: "Departments", icon: Layers3, active: view === "areas", select: () => choose("areas"),
-      children: (portfolio?.areas ?? []).map(area => ({ id: "client-department-" + area.id, label: area.name, icon: Layers3,
-        active: selectedArea?.id === area.id, select: () => choose("area:" + area.id) })) },
-    { id: "directory", label: "MI Directory", icon: UsersRound, active: view === "directory" || Boolean(contact), select: () => choose("directory") },
-    { id: "presentation", label: "Presentation", icon: PresentationIcon, active: presenting, select: () => openOverlay("present", "1") },
-  ] }];
-  return (
-    <WorkspaceNavigation groups={groups} heading="Client workspace" navigationLabel="Client workspace" embedded={Boolean(preview && !nativeClient)}
-      mobileLabel={preview && !nativeClient ? "Browse client preview" : "Workspace navigation"}
-      collapseLabel="sidebar" collapsed={collapsed} busy={false} onCollapse={() => setCollapsed(value => !value)}
-      searchResults={delivery.projects.map(row => ({ id: "client-project-" + row.project.id, label: row.project.name,
-        context: row.department?.name ?? "Published projects", select: () => choose("project:" + row.project.id) }))}>
+  return reportShell(<>
       <div className="exec-content intel-workspace mi-v4-client" tabIndex={-1} ref={page}>
-        {view !== "invoices" && <WorkspaceBanner title={title} eyebrow={report.tenant.name}
+        <WorkspaceBanner title={title} eyebrow={report.tenant.name}
           description={selectedArea?.description || contact?.role || (view === "overview" ? "Track approved delivery, milestones and project effort." : undefined)}
-          period={(view !== "directory" && !contact) && (nativeClient ? periodToolbar(<>{previewToolbar}{presentationButton}</>) : legacyMonth)}
-          actions={(!nativeClient || view === "directory" || Boolean(contact)) && (previewToolbar || presentationButton) && <>{previewToolbar}{presentationButton}</>} />}
-        {view === "invoices" && <Invoices client={client} tenant={tenant} model={invoiceModel} bannerActions={previewToolbar} />}
+          period={showReportPeriod && (nativeClient ? periodToolbar(<>{previewToolbar}{presentationButton}</>) : legacyMonth)}
+          actions={(!nativeClient || !showReportPeriod) && (previewToolbar || presentationButton) && <>{previewToolbar}{presentationButton}</>} />
         {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose} effortUnit={effortUnit}
           onEffortUnit={unit => portalNavigate({ "effort-unit": unit === "hours" ? unit : null }, true)}
           onChart={(type, trigger) => openOverlay("chart", type, trigger)} />}
-        {view !== "overview" && view !== "invoices" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
+        {view !== "overview" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
           <button type="button" className="exec-text-button" onClick={() => choose("overview")}><ChevronLeft size={16} /> Leadership summary</button>
           {(project || engagement) && <><ChevronRight size={14} aria-hidden="true" /><button type="button" className="exec-text-button"
             onClick={() => {
@@ -517,6 +525,5 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
         <Presentation report={presentReport} scope={view} scopeTitle={title} onLink={choose} onClose={() => closePortalOverlay("present")}
           draft={preview?.mode === "draft"} linked={nativeClient} />
       </Suspense>}
-    </WorkspaceNavigation>
-  );
+    </>, delivery);
 }

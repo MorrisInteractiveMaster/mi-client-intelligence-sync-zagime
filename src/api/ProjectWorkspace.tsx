@@ -514,10 +514,39 @@ export function ProjectStaffWorkspace({
     area === "management" && managed ? allProjects.find(project => project.id === managed)?.name ?? "Project details" :
     area === "departments" && department ? portfolio?.areas.find(row => row.id === department)?.name ?? "Department" : sections[area];
   const showPeriod = !editorRoute && ["overview", "projects", "management", "departments", "portfolio", "health", "milestones"].includes(area);
+  const overviewActions = area === "overview" && <div className="mi-overview-actions">
+    <button type="button" className="mi-create-project" onClick={() => openDeliveryProject("new")}>Create Project</button>
+    {nativeWorkspace ? <PlatformLink className="mi-client-launch" href={periodHref(clientBase, month)}
+      aria-label={"View " + workspace.tenant.name + " Dashboard"}>Client Dashboard</PlatformLink> :
+      <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Client Preview</button>}
+    <details className="mi-overview-more" onKeyDown={event => {
+      if (event.key !== "Escape" || !event.currentTarget.open) return;
+      event.stopPropagation();
+      event.currentTarget.open = false;
+      event.currentTarget.querySelector("summary")?.focus();
+    }}>
+      <summary aria-label="More overview actions"><Ellipsis size={18} aria-hidden="true" /></summary>
+      <div className="mi-overview-menu">
+        {overviewTime && <CsvExport filename={["Morris", workspace.tenant.name, "Overview", overviewTime.period.start ?? "All_History", overviewTime.period.end].filter(Boolean).join("_")}
+          label="Export overview CSV" data={overviewCsv(overviewTime)} />}
+        <button type="button" className="secure-secondary" onClick={() => changeArea("directory")}>Assign Team</button>
+        {nativeWorkspace && <>
+          <PlatformLink href={periodHref(clientBase, month, { previewMode: "draft" })}>Preview Draft Changes</PlatformLink>
+          <PlatformLink href={periodHref(staffPath("hours"), month, { period: "all" })}>Browse All History</PlatformLink>
+        </>}
+      </div>
+    </details>
+  </div>;
+  const projectActions = area === "projects" && !editorRoute && <div className="secure-actions">
+    <button type="button" disabled={busy || page.revision === 0} onClick={() => { if (permit()) portalNavigate({ staff: "projects", editor: "new" }); }}>Create project</button>
+    <button type="button" className="secure-secondary" disabled={busy} onClick={() => { setError(""); setNotice(""); setEpoch(value => value + 1); }}>Refresh workspace</button>
+  </div>;
   const content = <>
     {area !== "hours" && area !== "invoices" && area !== "preview" && <WorkspaceBanner title={pageTitle} headingId="staff-page-title" headingRef={areaHeading}
       eyebrow={area === "overview" ? workspace.tenant.name : "Morris workspace"}
-      description={area === "projects" && editorRoute === "new" ? "Set up a parent or delivery project in five steps." : undefined}
+      description={area === "projects" && editorRoute === "new" ? "Set up a parent or delivery project in five steps." :
+        area === "projects" && !editorRoute ? "Manage delivery, plans and what the client can see." : undefined}
+      actions={overviewActions || projectActions}
       period={showPeriod && <ReportingPeriod month={month} availableMonths={overviewTrend?.hours.byPeriod.map(row => row.label)}
       latestMonth={overviewTrend?.hours.byPeriod.at(-1)?.label}
       onMonth={value => { if (permit()) portalNavigate({ month: value, period: null }); }}
@@ -554,29 +583,6 @@ export function ProjectStaffWorkspace({
           overCap={overviewTotals ? deliveryOverview.filter(row => (row.health.monthlyRemaining ?? 0) < 0 || (row.health.lifetimeRemaining ?? 0) < 0).length : undefined}
           upcoming={upcoming.map(row => ({ project: row.project, date: row.health.upcoming! }))}
           training={trainings.map(({ p, date }) => ({ project: p, date }))}
-          toolbar={<div className="mi-overview-actions">
-            <button type="button" className="mi-create-project" onClick={() => openDeliveryProject("new")}>Create Project</button>
-            {nativeWorkspace ? <PlatformLink className="mi-client-launch" href={periodHref(clientBase, month)}
-              aria-label={"View " + workspace.tenant.name + " Dashboard"}>Client Dashboard</PlatformLink> :
-              <button type="button" className="secure-secondary" onClick={() => changeArea("preview")}>Client Preview</button>}
-            <details className="mi-overview-more" onKeyDown={event => {
-              if (event.key !== "Escape" || !event.currentTarget.open) return;
-              event.stopPropagation();
-              event.currentTarget.open = false;
-              event.currentTarget.querySelector("summary")?.focus();
-            }}>
-              <summary aria-label="More overview actions"><Ellipsis size={18} aria-hidden="true" /></summary>
-              <div className="mi-overview-menu">
-                {overviewTime && <CsvExport filename={["Morris", workspace.tenant.name, "Overview", overviewTime.period.start ?? "All_History", overviewTime.period.end].filter(Boolean).join("_")}
-                  label="Export overview CSV" data={overviewCsv(overviewTime)} />}
-                <button type="button" className="secure-secondary" onClick={() => changeArea("directory")}>Assign Team</button>
-                {nativeWorkspace && <>
-                  <PlatformLink href={periodHref(clientBase, month, { previewMode: "draft" })}>Preview Draft Changes</PlatformLink>
-                  <PlatformLink href={periodHref(staffPath("hours"), month, { period: "all" })}>Browse All History</PlatformLink>
-                </>}
-              </div>
-            </details>
-          </div>}
           onMonth={value => openTimeScope({}, value)} onProject={openDeliveryProject}
           onProjects={status => {
             if (!permit()) return;
@@ -712,33 +718,6 @@ export function ProjectStaffWorkspace({
           onOpen={id => portalNavigate({ staff: "projects", editor: id, engagements: null, engagement: null, "service-area": null })} />}
         {area === "projects" && publicationReview && <PublicationReview projects={allProjects} client={client} tenant={tenant}
           revision={page.revision} onClose={() => setPublicationReview(false)} onSaved={refresh} />}
-        <div className="secure-section-heading">
-          <div>
-            <p>Manage progress, plans and what the client can see.</p>
-          </div>
-          <div className="secure-actions">
-            <button
-              disabled={busy || page.revision === 0}
-              onClick={() => {
-                if (!editorDirty || window.confirm("Discard the unsaved project changes?"))
-                  portalNavigate({ staff: "projects", editor: "new" });
-              }}
-            >
-              Create project
-            </button>
-            <button
-              className="secure-secondary"
-              disabled={busy}
-              onClick={() => {
-                setError("");
-                setNotice("");
-                setEpoch((x) => x + 1);
-              }}
-            >
-              Refresh workspace
-            </button>
-          </div>
-        </div>
         <form
           className="secure-form secure-search"
           onSubmit={(event) => {

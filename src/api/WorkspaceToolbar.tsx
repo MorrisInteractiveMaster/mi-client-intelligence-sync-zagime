@@ -13,7 +13,7 @@ export function WorkspaceToolbarControls() {
   return <div className="mi-page-tools">{navigation}{session}</div>;
 }
 
-export function WorkspaceBanner({ title, eyebrow, description, actions, period, headingId, headingRef, utilities = true }: {
+export function WorkspaceBanner({ title, eyebrow, description, actions, period, headingId, headingRef }: {
   title: string;
   eyebrow?: ReactNode;
   description?: ReactNode;
@@ -21,7 +21,6 @@ export function WorkspaceBanner({ title, eyebrow, description, actions, period, 
   period?: ReactNode;
   headingId?: string;
   headingRef?: React.Ref<HTMLHeadingElement>;
-  utilities?: boolean;
 }) {
   return <header className="mi-workspace-banner">
     <div className="mi-banner-top">
@@ -30,7 +29,7 @@ export function WorkspaceBanner({ title, eyebrow, description, actions, period, 
         <h1 id={headingId} ref={headingRef} tabIndex={-1}>{title}</h1>
         {description && <p>{description}</p>}
       </div>
-      {utilities && <WorkspaceToolbarControls />}
+      <WorkspaceToolbarControls />
     </div>
     {(period || actions) && <div className="mi-banner-context">{period}{actions}</div>}
   </header>;

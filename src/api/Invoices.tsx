@@ -216,10 +216,10 @@ export function Invoices({ client, tenant, staff, model, bannerActions }: {
         <button type="button" disabled={busy || view.readyToSync === false} onClick={() => void manage("sync")}>Sync invoices</button>
         <button type="button" className="secure-secondary" disabled={busy} onClick={() => void connect()}>Reconnect</button>
         <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
-          if (window.confirm("Disconnect QuickBooks Online and remove this invoice mirror from both workspaces?")) void manage("disconnect", { confirm: true });
+          if (window.confirm("Disconnect QuickBooks Online? This removes the synced invoice view and its client approvals from both workspaces.")) void manage("disconnect", { confirm: true });
         }}>Disconnect</button>
       </> : <button type="button" disabled={busy} onClick={() => void connect()}>Connect QuickBooks Online</button>}</div> :
-        <PlatformLink href="/control/staff">Staff access settings</PlatformLink>}
+        <PlatformLink href="/control/staff">Administrator access settings</PlatformLink>}
     </div>}
     {(notice || busy) && <p role="status" className="mi-invoice-feedback">{busy ? "Working with QuickBooks Online…" : notice}</p>}
     {(error || failure) && <p role="alert" className="mi-invoice-feedback">{failure || error} {error && <button type="button" onClick={reload}>Retry</button>}</p>}
@@ -229,10 +229,10 @@ export function Invoices({ client, tenant, staff, model, bannerActions }: {
       <p>Amounts and alerts use the last successful sync. Recent payments or credits may still be missing.</p></div>
     </aside>}
     {view?.setup && view.canManage && <QboCustomerSetup key={view.setup.company.realm} client={client} tenant={tenant} setup={view.setup} reload={reload} month={view.today.slice(0, 7)} />}
-    {view && !all.length && <div className="mi-invoice-empty"><ReceiptText size={28} aria-hidden="true" />
+    {view && !all.length && (!staff || view.freshness !== "unavailable" || setupState === "Ready to sync") && <div className="mi-invoice-empty"><ReceiptText size={28} aria-hidden="true" />
       <h3>{view.freshness === "unavailable" ? "Invoice balances unavailable" : staff ? "No invoices in the last sync" : "No approved invoices yet"}</h3>
       <p>{view.freshness === "unavailable" ? staff && view.configured
-        ? "Connect the approved company and complete a successful sync to see verified balances."
+        ? "Run the first successful sync to see verified balances."
         : "Verified invoice balances are unavailable. Contact Morris Interactive if you need a current balance."
         : staff ? "The last complete snapshot contained no invoices in the verified customer scope."
         : "Invoices will appear here once Morris Interactive approves them for your workspace."}</p></div>}

@@ -11,9 +11,6 @@
   color: var(--mi-ink, var(--secure-ink, #122c43));
   min-inline-size: 0;
 }
-.mi-cockpit-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 2px 12px; }
-.nordic.secure-shell .mi-cockpit-toolbar :is(a,button) { min-height: 44px; margin: 0; }
-.nordic.secure-shell .mi-cockpit-toolbar button.mi-create-project { background: var(--mi-action, linear-gradient(110deg,#173a55,#2c5f9d)); color: #fff; }
 .mi-cockpit-grid { display: grid; grid-template-columns: minmax(0,1.14fr) minmax(0,1fr) minmax(0,.92fr); gap: 12px; }
 .mi-cockpit-panel {
   background: var(--mi-staff-panel);

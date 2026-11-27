@@ -1338,15 +1338,15 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           await analytics.getByRole("table").waitFor();
           await page.screenshot({ path: join(evidence, "analytics.png"), animations: "disabled" });
           await analytics.getByRole("button", { name: /Browser saved project/ }).click();
-          await page.getByRole("heading", { name: "Browser saved project", level: 2, exact: true }).waitFor();
+          await page.getByRole("heading", { name: "Browser saved project", level: 1, exact: true }).waitFor();
           await page.reload({ waitUntil: "networkidle" });
-          await page.getByRole("heading", { name: "Browser saved project", level: 2, exact: true }).waitFor();
+          await page.getByRole("heading", { name: "Browser saved project", level: 1, exact: true }).waitFor();
           await page.screenshot({ path: join(evidence, "project-detail.png"), animations: "disabled" });
           await page.getByRole("button", { name: "Project timeline", exact: true }).click();
           await page.getByRole("heading", { name: "Project timeline", exact: true }).waitFor();
           await page.screenshot({ path: join(evidence, "project-timeline.png"), animations: "disabled" });
           await page.goBack();
-          await page.getByRole("heading", { name: "Browser saved project", level: 2, exact: true }).waitFor();
+          await page.getByRole("heading", { name: "Browser saved project", level: 1, exact: true }).waitFor();
           await page.goForward();
           await page.getByRole("heading", { name: "Project timeline", exact: true }).waitFor();
           await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Browser saved project", exact: true }).click();
@@ -2157,7 +2157,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           const query = new URLSearchParams({ month: "2026-11", view });
           const page = legacyClient.page;
           await page.goto(`${origin}/?${query}#/secure`);
-          await page.getByRole("heading", { name: heading, exact: true, level: 2 }).waitFor();
+          await page.getByRole("heading", { name: heading, exact: true, level: 1 }).waitFor();
           assert.equal(await page.getByText("This link is unavailable for your approved report.").count(), 0, view);
           if (view === "engagements") {
             await page.getByRole("region", { name: "Parent projects" }).waitFor();

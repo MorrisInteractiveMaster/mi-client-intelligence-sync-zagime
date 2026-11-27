@@ -171,11 +171,45 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       const browserErrors: string[] = [];
       page.on("pageerror", error => browserErrors.push(error.message));
       page.on("console", message => { if (message.type() === "error") browserErrors.push(message.text()); });
+      const invoiceRead = origin + "/api/v2/tenants/" + tenant + "/invoices";
+      let finishLoading!: () => void;
+      const delayed = new Promise<void>(resolve => { finishLoading = resolve; });
+      await page.route(invoiceRead, async route => { await delayed; await route.continue(); });
       await page.goto(origin + "/workspace/invoices");
+      await page.getByText("Loading invoices…", { exact: true }).waitFor();
+      await page.screenshot({ path: join(evidence, "qbo-loading-verified-staff-1440.png") });
+      finishLoading();
       try {
         const connect = page.getByRole("button", { name: "Connect QuickBooks Online", exact: true });
         await connect.waitFor({ timeout: 8000 });
         await page.screenshot({ path: join(evidence, "qbo-disconnected-verified-staff-1440.png") });
+        await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+        for (const [width, height] of [[768, 1024], [390, 844]]) {
+          await page.setViewportSize({ width, height });
+          assert.ok(await connect.isVisible());
+          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+          await page.screenshot({ path: join(evidence, "qbo-disconnected-verified-staff-dark-" + width + ".png") });
+        }
+        await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.unroute(invoiceRead);
+        for (const state of [
+          { name: "disabled", heading: "Integration disabled", configured: false, canManage: true },
+          { name: "restricted", heading: "Administrator permission required", configured: true, canManage: false },
+        ]) {
+          await page.route(invoiceRead, route => route.fulfill({ json: { ...state, today: "2026-11-27", freshness: "unavailable", invoices: [] } }));
+          await page.reload();
+          await page.getByRole("heading", { name: state.heading, exact: true }).waitFor();
+          assert.equal(await connect.count(), 0);
+          await page.screenshot({ path: join(evidence, "qbo-" + state.name + "-1440.png") });
+          await page.unroute(invoiceRead);
+        }
+        await page.route(invoiceRead, route => route.fulfill({ status: 503, json: { error: "unavailable" } }));
+        await page.reload();
+        await page.getByRole("alert").filter({ hasText: "Invoices could not be refreshed" }).waitFor();
+        await page.screenshot({ path: join(evidence, "qbo-load-error-1440.png") });
+        await page.unroute(invoiceRead);
+        await page.getByRole("button", { name: "Retry", exact: true }).click();
         await connect.click();
       } catch (error) {
         throw new Error("Staff invoice screen did not load: " + JSON.stringify(browserErrors) + " " + (await page.locator("body").innerText()).slice(0, 1200), { cause: error });
@@ -317,12 +351,13 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       const previewMode = page.getByLabel("Preview mode");
       await previewMode.waitFor();
       const period = page.locator(".reporting-period__stepper");
+      const distribution = page.getByRole("region", { name: "Project Portfolio Distribution" });
+      await distribution.waitFor();
       await period.waitFor();
       await page.screenshot({ path: join(evidence, "staff-published-preview-1440-light.png"), fullPage: true, animations: "disabled" });
       const [stepperBox, previewBox] = await Promise.all([period.boundingBox(), previewMode.boundingBox()]);
       assert.ok(stepperBox && previewBox && Math.abs((stepperBox.y + stepperBox.height / 2) - (previewBox.y + previewBox.height / 2)) <= 2,
         "preview picker and reporting stepper share a center line");
-      const distribution = page.getByRole("region", { name: "Project Portfolio Distribution" });
       const [options, sortBox] = await Promise.all([
         distribution.getByRole("button", { name: "Departments" }).boundingBox(), distribution.getByLabel("Sort groups").boundingBox(),
       ]);

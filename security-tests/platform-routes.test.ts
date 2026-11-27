@@ -383,7 +383,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       await explorer.getByRole("button", { name: "Next", exact: true }).click();
       await explorer.getByText("Showing 11–20 of 100 projects", { exact: true }).waitFor();
       await explorer.getByRole("button", { name: "Open project V4 project 011", exact: true }).click();
-      await sample.page.getByRole("heading", { name: "V4 project 011", level: 2 }).waitFor();
+      await sample.page.getByRole("heading", { name: "V4 project 011", level: 1 }).waitFor();
       assert.equal(await sample.page.getByText("V4-PRIVATE-NOTE").count(), 0);
       await sample.page.screenshot({ path: join(scaleEvidence, "project-detail-full.png"), fullPage: true, animations: "disabled" });
       await sample.page.getByRole("button", { name: "Back to Project Explorer", exact: true }).click();
@@ -889,7 +889,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await octoberPoint.click();
     await monthlyEffort.getByRole("button", { name: "Open October 2026 detail" }).click();
     await client.page.waitForURL(url => url.pathname === "/clients/zagime/projects/" + projectId && url.searchParams.get("month") === previousMonth);
-    await client.page.getByRole("heading", { name: projectName, level: 2 }).waitFor();
+    await client.page.getByRole("heading", { name: projectName, level: 1 }).waitFor();
     await client.page.goBack();
     await effortProject.waitFor();
     assert.equal(await effortProject.inputValue(), projectId);
@@ -930,7 +930,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     assert.equal(await clientNav.getByRole("button", { name: "Health", exact: true }).getAttribute("aria-current"), "page");
     await clientNav.getByRole("button", { name: "HR", exact: true }).click();
     await client.page.waitForURL(route("/clients/zagime/departments/hr"));
-    await client.page.getByRole("heading", { name: "HR", level: 2 }).waitFor();
+    await client.page.getByRole("heading", { name: "HR", level: 1 }).waitFor();
     await captureReference(client.page, "02-hr-department-1674x887", 1674, 887);
     await clientNav.getByRole("button", { name: "Health", exact: true }).click();
     await client.page.waitForURL(route("/clients/zagime/departments/health"));
@@ -975,11 +975,11 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     const projectPath = "/clients/zagime/projects/" + projectId;
     const projectResponse = await client.page.goto(route(projectPath));
     assert.equal(projectResponse?.status(), 200);
-    await client.page.getByRole("heading", { name: projectName, level: 2 }).waitFor();
+    await client.page.getByRole("heading", { name: projectName, level: 1 }).waitFor();
     assert.match(await client.page.title(), /Board reporting pilot/);
     assert.equal(await client.page.getByText(/Private staff status|Synthetic planning project/).count(), 0);
     await client.page.reload();
-    await client.page.getByRole("heading", { name: projectName, level: 2 }).waitFor();
+    await client.page.getByRole("heading", { name: projectName, level: 1 }).waitFor();
     await client.page.screenshot({ path: join(evidence, "client-project-native-route.png"), fullPage: true, animations: "disabled" });
 
     await client.page.goto(origin + projectPath + "?month=" + previousMonth);
