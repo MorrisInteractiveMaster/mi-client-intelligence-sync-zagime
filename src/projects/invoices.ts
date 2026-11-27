@@ -1,3 +1,4 @@
+import type { QboSetup } from "./qbo-discovery";
 export type InvoiceStatus = "paid" | "partiallyPaid" | "unpaid" | "dueSoon" | "overdue";
 export const invoiceStatuses: Record<InvoiceStatus, string> = {
   paid: "Paid", partiallyPaid: "Partially paid", unpaid: "Unpaid", dueSoon: "Due soon", overdue: "Overdue",
@@ -13,6 +14,9 @@ export type Invoice = {
   balance: number;
   projects: { id: string; name: string }[];
   customer?: string;
+  sourceProjects?: { key: string; name: string }[];
+  unverifiedProjects?: boolean;
+  missingProjectLink?: boolean;
   note?: string;
   approval?: { approved: boolean; revision: string; audience?: string[] };
 };
@@ -23,6 +27,8 @@ export type InvoiceView = {
   configured?: boolean;
   connected?: boolean;
   canManage?: boolean;
+  readyToSync?: boolean;
+  setup?: QboSetup;
   syncedAt?: string;
   freshness: InvoiceFreshness;
 };

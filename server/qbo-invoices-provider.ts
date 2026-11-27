@@ -1,18 +1,21 @@
 import { invoiceFraction } from "../src/projects/invoices";
 import { calendarDate } from "../src/projects/delivery";
+import { QboDiscoveryProvider } from "./qbo-discovery-provider";
 
 export type InvoiceSource = {
   id: string; number: string; customerId: string; customer?: string; note?: string;
   txnDate: string; dueDate?: string; currency: string; total: number; balance: number;
   projectIds: string[];
+  sourceProjects?: string[];
+  unverifiedProjects?: boolean;
 };
 export type InvoiceMapping = { projectId: string; qboProjectId?: string; workOrder?: string };
 export type QboConfig = {
   tenant: string; realm: string; customerIds: string[]; currency: string; mappings: InvoiceMapping[];
-  clientId: string; clientSecret: string; key: Buffer; redirect: string; sandbox: boolean;
+  clientId: string; clientSecret: string; key: Buffer; redirect: string; sandbox: boolean; nativeProjects?: boolean;
 };
 type Ref = { value?: string; name?: string };
-type Line = { Description?: string; SalesItemLineDetail?: { ProjectRef?: Ref }; GroupLineDetail?: { Line?: Line[] } };
+type Line = { Description?: string; ProjectRef?: Ref; SalesItemLineDetail?: { ProjectRef?: Ref }; GroupLineDetail?: { Line?: Line[] } };
 type Entity = {
   Id?: string; DocNumber?: string; CustomerRef?: Ref; ProjectRef?: Ref; CurrencyRef?: Ref; TxnDate?: string;
   DueDate?: string; TotalAmt?: number; Balance?: number; PrivateNote?: string; Line?: Line[]; TxnStatus?: string;
@@ -25,16 +28,17 @@ const boundedText = (value: unknown, size: number) => typeof value === "string" 
 export function qboConfig(env: NodeJS.ProcessEnv, mode: string): QboConfig | undefined {
   if (env.QBO_INVOICES_ENABLED !== "true") return;
   const tenant = env.QBO_INVOICES_TENANT;
-  const realm = env.QBO_INVOICES_REALM;
+  const realm = env.QBO_INVOICES_REALM ?? "";
   const currency = env.QBO_INVOICES_CURRENCY ?? "";
-  const customerIds = [...new Set((env.QBO_INVOICES_CUSTOMER_IDS ?? "").split(",").map(value => value.trim()))];
+  const customerIds = env.QBO_INVOICES_CUSTOMER_IDS ? [...new Set(env.QBO_INVOICES_CUSTOMER_IDS.split(",").map(value => value.trim()))] : [];
   const clientId = env.QBO_INVOICES_CLIENT_ID;
   const clientSecret = env.QBO_INVOICES_CLIENT_SECRET;
   const key = Buffer.from(env.QBO_INVOICES_TOKEN_KEY ?? "", "base64");
   const origin = env.ALLOWED_ORIGIN ?? "";
   const sandbox = env.QBO_INVOICES_SANDBOX === "true";
   const mappings: InvoiceMapping[] = JSON.parse(env.QBO_INVOICES_PROJECT_MAP ?? "[]");
-  if (!localId(tenant) || !numericQboId(realm) || !currencies.has(currency) || !customerIds.every(numericQboId) ||
+  if (!localId(tenant) || (realm ? !numericQboId(realm) || !customerIds.length || !currencies.has(currency) : customerIds.length !== 0) ||
+      (currency && !currencies.has(currency)) || !customerIds.every(numericQboId) ||
       customerIds.length > 30 || !clientId || !clientSecret || key.length !== 32 ||
       !/^https:\/\/[a-z0-9.-]+$/.test(origin) || (mode === "production" ? sandbox : !sandbox) ||
       !Array.isArray(mappings) || mappings.length > 100 || mappings.some(mapping => !mapping ||
@@ -44,7 +48,7 @@ export function qboConfig(env: NodeJS.ProcessEnv, mode: string): QboConfig | und
       new Set(mappings.flatMap(row => row.qboProjectId ? [row.qboProjectId] : [])).size !== mappings.filter(row => row.qboProjectId).length ||
       new Set(mappings.flatMap(row => row.workOrder ? [row.workOrder.toUpperCase()] : [])).size !== mappings.filter(row => row.workOrder).length)
     throw Error("Invalid QBO invoices configuration");
-  return { tenant, realm, customerIds, currency, mappings, clientId, clientSecret, key, sandbox, redirect: origin + "/qbo-invoice-callback.html" };
+  return { tenant, realm, customerIds, currency, mappings, clientId, clientSecret, key, sandbox, nativeProjects: env.QBO_INVOICES_NATIVE_PROJECTS === "true", redirect: origin + "/qbo-invoice-callback.html" };
 }
 
 function minorUnits(value: unknown, currency: string) {
@@ -55,7 +59,7 @@ function minorUnits(value: unknown, currency: string) {
   return minor;
 }
 
-export function projectInvoice(row: Entity, config: QboConfig): InvoiceSource | undefined {
+export function projectInvoice(row: Entity, config: QboConfig, projectRefs?: { keys: Set<string>; aliases: Map<string, string> }): InvoiceSource | undefined {
   const id = row.Id, customerId = row.CustomerRef?.value;
   if (!numericQboId(id) || !numericQboId(customerId) || !config.customerIds.includes(customerId)) throw Error("QBO invoice scope mismatch");
   // QBO marks a void with zero amounts and prepends “Voided” to the private note.
@@ -65,11 +69,17 @@ export function projectInvoice(row: Entity, config: QboConfig): InvoiceSource | 
   if (!currencies.has(currency) || !calendarDate(row.TxnDate) || (row.DueDate && !calendarDate(row.DueDate)))
     throw Error("Invalid QBO invoice dates or currency");
   const refs = new Set([customerId, row.ProjectRef?.value]);
+  const native = new Set<string>();
+  if (row.ProjectRef?.value) native.add(row.ProjectRef.value);
   const descriptions: string[] = [];
   function inspect(lines: Line[] | undefined, depth = 0) {
     if (depth > 5 || !Array.isArray(lines)) return;
     for (const line of lines) {
-      if (line.SalesItemLineDetail?.ProjectRef?.value) refs.add(line.SalesItemLineDetail.ProjectRef.value);
+      for (const ref of [line.ProjectRef?.value, line.SalesItemLineDetail?.ProjectRef?.value]) {
+        if (!ref) continue;
+        refs.add(ref);
+        native.add(ref);
+      }
       if (typeof line.Description === "string") descriptions.push(line.Description.slice(0, 2000));
       inspect(line.GroupLineDetail?.Line, depth + 1);
     }
@@ -79,18 +89,30 @@ export function projectInvoice(row: Entity, config: QboConfig): InvoiceSource | 
     (qboProjectId && refs.has(qboProjectId)) || (workOrder && descriptions.some(description =>
       new RegExp("(^|[^a-z0-9.])" + workOrder.replaceAll(".", "\\.") + "(?![a-z0-9]|\\.[a-z0-9])", "i").test(description)))
   ).map(mapping => mapping.projectId))].sort();
+  const sourceProjects = projectRefs ? new Set([
+    ...[...native].map(id => "project:" + id),
+    ...(projectRefs.keys.has("job:" + customerId) ? ["job:" + customerId] : []),
+    ...[...projectRefs.aliases.entries()].filter(([alias]) => descriptions.some(description =>
+      new RegExp("(^|[^a-z0-9.])" + alias.replaceAll(".", "\\.") + "(?![a-z0-9]|\\.[a-z0-9])", "i").test(description)))
+      .map(([, key]) => key),
+  ]) : undefined;
   return { id, customerId, currency, txnDate: row.TxnDate!, number: boundedText(row.DocNumber, 64),
+    ...(sourceProjects && { sourceProjects: [...sourceProjects].sort(),
+      unverifiedProjects: [...sourceProjects].some(key => !projectRefs!.keys.has(key)) }),
     ...(row.DueDate && { dueDate: row.DueDate }), ...(row.CustomerRef?.name && { customer: boundedText(row.CustomerRef.name, 160) }),
     ...(row.PrivateNote && { note: boundedText(row.PrivateNote, 500) }),
     total: minorUnits(row.TotalAmt, currency), balance: minorUnits(row.Balance, currency), projectIds };
 }
 
-export class QboInvoicesProvider {
-  constructor(readonly config: QboConfig, private request: typeof fetch = fetch) {}
+export class QboInvoicesProvider extends QboDiscoveryProvider {
+  constructor(config: QboConfig, request: typeof fetch = fetch) { super(config, request); }
+  forScope(realm: string, customerIds: string[], currency: string) {
+    return new QboInvoicesProvider({ ...this.config, realm, customerIds, currency, mappings: [] }, this.request);
+  }
   authorizationUrl(state: string) {
     return "https://appcenter.intuit.com/connect/oauth2?" + new URLSearchParams({
       client_id: this.config.clientId, redirect_uri: this.config.redirect, response_type: "code",
-      scope: "com.intuit.quickbooks.accounting", state,
+      scope: "com.intuit.quickbooks.accounting" + (this.config.nativeProjects ? " project-management.project" : ""), state,
     });
   }
   private async oauth(path: string, body: URLSearchParams) {
@@ -119,16 +141,18 @@ export class QboInvoicesProvider {
     });
     if (!response.ok) throw Error("QBO revocation unavailable");
   }
-  async invoices(access: string): Promise<InvoiceSource[]> {
+  async invoices(access: string, projectRefs?: { keys: Set<string>; aliases: Map<string, string> }, operation?: AbortSignal): Promise<InvoiceSource[]> {
+    if (!numericQboId(this.config.realm) || !this.config.customerIds.length || !this.config.customerIds.every(numericQboId))
+      throw Error("QBO invoice scope unavailable");
     const host = this.config.sandbox ? "sandbox-quickbooks.api.intuit.com" : "quickbooks.api.intuit.com";
     const rows = new Map<string, InvoiceSource>();
     const seen = new Set<string>();
     const pageSize = 100;
 
-    const deadline = AbortSignal.timeout(75_000);
+    const deadline = AbortSignal.any([AbortSignal.timeout(75_000), ...(operation ? [operation] : [])]);
     for (const customerId of this.config.customerIds) for (let start = 1; start <= 501; start += pageSize) {
       const query = "select * from Invoice where CustomerRef = '" + customerId + "' startposition " + start + " maxresults " + pageSize;
-      const response = await this.request("https://" + host + "/v3/company/" + this.config.realm + "/query?" + new URLSearchParams({ query }), {
+      const response = await this.request("https://" + host + "/v3/company/" + this.config.realm + "/query?" + new URLSearchParams({ query, minorversion: "75" }), {
         headers: { accept: "application/json", authorization: "Bearer " + access }, redirect: "error",
         signal: AbortSignal.any([deadline, AbortSignal.timeout(15_000)]),
       });
@@ -141,7 +165,7 @@ export class QboInvoicesProvider {
         throw Error("Invalid QBO invoice response");
       if (start > 500 && page.length) throw Error("QBO invoice scope too large");
       for (const item of page) {
-        const invoice = projectInvoice(item, this.config);
+        const invoice = projectInvoice(item, this.config, projectRefs);
         if (item.CustomerRef?.value !== customerId) throw Error("QBO invoice scope mismatch");
         if (seen.has(item.Id)) throw Error("QBO invoices changed while paging");
         seen.add(item.Id);

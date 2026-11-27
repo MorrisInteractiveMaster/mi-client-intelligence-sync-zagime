@@ -76,3 +76,35 @@
 }
 @container (max-width:300px) { .mi-invoice-summary { grid-template-columns:1fr; } }
 @media (prefers-reduced-motion:reduce) { .mi-invoice-row { transition:none; } }
+.mi-qbo-setup { display:grid; gap:14px; padding:16px; border:1px solid var(--mi-line); border-radius:14px; background:var(--mi-surface,#fff); }
+.mi-qbo-company,.mi-qbo-binding,.mi-qbo-picker form,.mi-qbo-link-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+.mi-qbo-company { padding-bottom:12px; border-bottom:1px solid var(--mi-line); }
+.mi-qbo-company > div,.mi-qbo-binding > div { flex:1 1 14rem; min-width:0; }
+.mi-qbo-setup :is(h3,p) { margin:0; }
+.mi-qbo-setup p { color:var(--mi-muted); overflow-wrap:anywhere; }
+.mi-qbo-company > svg { flex:none; color:#5386a5; }
+.mi-qbo-confirmed { display:inline-flex; gap:5px; align-items:center; color:var(--mi-ink); font-size:.85rem; }
+.mi-qbo-picker,.mi-qbo-link-project { display:grid; gap:12px; }
+.mi-qbo-picker form { align-items:end; }
+.mi-qbo-setup label { display:grid; gap:4px; min-width:0; font-size:.88rem; text-align:start; }
+.mi-qbo-picker label { flex:1 1 17rem; }
+.mi-qbo-setup :is(input,select) { max-width:100%; min-height:40px; }
+.mi-qbo-choice-list { display:grid; gap:6px; margin-block-start:8px; }
+.nordic.secure-shell .mi-qbo-choice-list button { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; text-align:start; gap:2px 12px; }
+.mi-qbo-choice-list button small { grid-row:2; grid-column:1; color:var(--mi-muted); }
+.mi-qbo-choice-list button svg { grid-row:1 / span 2; grid-column:2; }
+.mi-qbo-choice-list button[aria-pressed=true] { outline:2px solid #5386a5; outline-offset:-2px; }
+.mi-qbo-inventory > summary { display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:700; }
+.mi-qbo-inventory > summary b { margin-inline-start:auto; }
+.mi-qbo-inventory > :is(p,label) { margin-block-start:8px; }
+.mi-qbo-inventory ul { display:grid; gap:0; list-style:none; padding:0; margin:8px 0 0; max-height:30rem; overflow:auto; }
+.mi-qbo-inventory li { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; padding-block:10px; border-top:1px solid var(--mi-line); }
+.mi-qbo-inventory li p,.mi-qbo-diagnostics { font-size:.83rem; }
+.mi-qbo-link-actions { gap:7px; }
+.mi-qbo-setup button:has(svg) { display:inline-flex; align-items:center; gap:6px; }
+.nordic.secure-shell .mi-qbo-choice-list button:has(svg) { display:grid; }
+.mi-qbo-create-link { display:inline-flex; align-items:center; min-height:40px; padding:5px 10px; border:1px solid var(--mi-line); border-radius:8px; color:var(--mi-ink); text-decoration:none; font-size:.85rem; font-weight:700; }
+.mi-qbo-create-link:hover { background:var(--mi-background); text-decoration:underline; }
+.mi-qbo-create-link:focus-visible { outline:2px solid #5386a5; outline-offset:2px; }
+.mi-qbo-link-project { padding:12px; border:1px solid var(--mi-line); border-radius:10px; }
+.mi-qbo-diagnostics summary { cursor:pointer; }

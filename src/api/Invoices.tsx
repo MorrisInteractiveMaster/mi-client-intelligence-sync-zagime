@@ -5,6 +5,7 @@ import { ApiError, type SecuredApiClient } from "./client";
 import { reportMonth } from "./dashboard-format";
 import { portalNavigate, usePortalLocation } from "./portal-location";
 import { WorkspaceToolbarControls } from "./WorkspaceToolbar";
+import { QboCustomerSetup } from "./QboCustomerSetup";
 import "./invoices.css";
 
 export function useInvoices(client: SecuredApiClient, tenant: string, preview?: { mode: string; scope?: string }) {
@@ -124,8 +125,9 @@ export function Invoices({ client, tenant, staff, model }: {
         if (event.data.failed) { fail(); return; }
         const { code, realm } = event.data;
         cleanup();
-        void client.call(tenant, "invoices/callback", { method: "POST", body: { state, realm, code } }).then(() => {
-          setNotice("QuickBooks Online connected. Sync invoices to review them.");
+        void client.call<{ setup?: boolean }>(tenant, "invoices/callback", { method: "POST", body: { state, realm, code } }).then(result => {
+          setNotice(result.setup ? "QuickBooks Online connected. Confirm the company and customer." :
+            "QuickBooks Online connected. Sync invoices to review them.");
           setBusy(false);
           reload();
         }).catch(fail);
@@ -140,14 +142,19 @@ export function Invoices({ client, tenant, staff, model }: {
   const availableProjects = useMemo(() => [...new Map(invoices?.flatMap(i => i.projects.map(p => [p.id, p] as const))).values()]
     .sort((a, b) => a.name.localeCompare(b.name)), [invoices]);
   const status = (Object.keys(invoiceStatuses) as InvoiceStatus[]).find(key => key === location.get("invoice-status")) ?? "all";
-  const project = availableProjects.find(item => item.id === location.get("invoice-project"))?.id ?? "";
+  const sourceProjects = useMemo(() => [...new Map([
+    ...(view?.setup?.projects ?? []).map(item => [item.key, { key: item.key, name: item.name }] as const),
+    ...(invoices ?? []).flatMap(row => (row.sourceProjects ?? []).map(item => [item.key, item] as const)),
+  ]).values()].sort((a, b) => a.name.localeCompare(b.name)), [invoices, view?.setup]);
+  const selectedProject = location.get("invoice-project");
+  const project = availableProjects.find(item => item.id === selectedProject)?.id ?? sourceProjects.find(item => item.key === selectedProject)?.key ?? "";
   const currentMonth = view?.today.slice(0, 7) ?? "";
   const requestedMonth = location.get("invoice-month");
   const invoiceMonth = requestedMonth === "all" ? "all" : requestedMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth) ? requestedMonth
     : months.includes(currentMonth) ? currentMonth : months[0] ?? currentMonth;
   const all = invoices ?? [];
   const dated = all.filter(row => invoiceMonth === "all" || row.txnDate.startsWith(invoiceMonth));
-  const matches = dated.filter(row => (!project || row.projects.some(link => link.id === project)) &&
+  const matches = dated.filter(row => (!project || (row.projects.some(link => link.id === project) || row.sourceProjects?.some(link => link.key === project))) &&
     (status === "all" || invoiceState(row, view!.today)[status]));
   const requestedPage = Number(location.get("invoice-page"));
   const pages = Math.max(1, Math.ceil(matches.length / pageSize));
@@ -198,13 +205,14 @@ export function Invoices({ client, tenant, staff, model }: {
     {view?.canManage && view.configured && <div className="mi-invoice-operator">
       <span><strong>QuickBooks Online</strong> · {view.connected ? "Connected" : "Disconnected"}</span>
       <div>{view.connected ? <>
-        <button type="button" disabled={busy} onClick={() => void manage("sync")}>Sync invoices</button>
+        <button type="button" disabled={busy || view.readyToSync === false} onClick={() => void manage("sync")}>Sync invoices</button>
         <button type="button" className="secure-secondary" disabled={busy} onClick={() => void connect()}>Reconnect</button>
         <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
           if (window.confirm("Disconnect QuickBooks Online and remove this invoice mirror from both workspaces?")) void manage("disconnect");
         }}>Disconnect</button>
       </> : <button type="button" disabled={busy} onClick={() => void connect()}>Connect QuickBooks Online</button>}</div>
     </div>}
+    {view?.setup && view.canManage && <QboCustomerSetup key={view.setup.company.realm} client={client} tenant={tenant} setup={view.setup} reload={reload} month={view.today.slice(0, 7)} />}
     {view && !all.length && <div className="mi-invoice-empty"><ReceiptText size={28} aria-hidden="true" />
       <h3>{view.freshness === "unavailable" ? "Invoice balances unavailable" : staff ? "No invoices in the last sync" : "No approved invoices yet"}</h3>
       <p>{view.freshness === "unavailable" ? staff && view.configured
@@ -232,7 +240,8 @@ export function Invoices({ client, tenant, staff, model }: {
             <label>Invoice month<select value={invoiceMonth} onChange={e => portalNavigate({ "invoice-month": e.target.value, "invoice-page": null })}>
               <option value="all">All months</option>{monthOptions.map(value => <option value={value} key={value}>{reportMonth(value)}</option>)}</select></label>
             <label>Project<select aria-label="Project" value={project} onChange={e => portalNavigate({ "invoice-project": e.target.value || null, "invoice-page": null })}>
-              <option value="">All projects</option>{availableProjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+              <option value="">All projects</option>{availableProjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+              {sourceProjects.length > 0 && <optgroup label="Discovered in QuickBooks">{sourceProjects.map(item => <option key={item.key} value={item.key}>{item.name}</option>)}</optgroup>}</select></label>
           </div>
         </div>
         {matches.length === 0 && <p className="mi-invoice-empty">No invoices match these filters.</p>}
@@ -244,7 +253,8 @@ export function Invoices({ client, tenant, staff, model }: {
           return <article className="mi-invoice-row" key={invoice.id} aria-label={invoice.number ? "Invoice " + invoice.number : "Invoice without a number"}>
             <div className="mi-invoice-identity"><ReceiptText aria-hidden="true" size={20} /><div><h4>{invoice.number ? "Invoice " + invoice.number : "Invoice number unavailable"}</h4>
               <p>{invoice.projects.map(item => item.name).join(" · ") || "No linked project"}</p>
-              {staff && invoice.customer && <small>{invoice.customer}</small>}</div></div>
+              {staff && invoice.customer && <small>{invoice.customer}</small>}
+              {staff && Boolean(invoice.sourceProjects?.length) && <small>QuickBooks: {invoice.sourceProjects!.map(item => item.name).join(" · ")}</small>}</div></div>
             <dl className="mi-invoice-details"><div><dt>Issued</dt><dd>{shortDate(invoice.txnDate)}</dd></div>
               <div><dt>Due</dt><dd>{shortDate(invoice.dueDate)}</dd></div><div><dt>Total</dt><dd>{money(invoice.total, invoice.currency)}</dd></div></dl>
             <div className="mi-invoice-balance"><small>Balance remaining</small><strong>{money(cents, invoice.currency)}</strong>
@@ -255,7 +265,9 @@ export function Invoices({ client, tenant, staff, model }: {
             {staff && invoice.approval && <div className="mi-invoice-approval">
               <small>{invoice.approval.approved ? "Approved for client" : "Staff only"}</small>
               {invoice.note && <details><summary>Private memo</summary><p>{invoice.note}</p></details>}
-              {view?.canManage && <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
+              {invoice.unverifiedProjects ? <small>Project verification needed</small> :
+                invoice.missingProjectLink && <small>Link every discovered project before client approval</small>}
+              {view?.canManage && (!(invoice.unverifiedProjects || invoice.missingProjectLink) || invoice.approval.approved) && <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
                 if (!invoice.approval!.approved) {
                   if (!invoice.projects.length) { void reviewAudience(invoice); return; }
                   if (!window.confirm("Approve this invoice for client members who can access every linked project?")) return;

@@ -36,11 +36,12 @@ function amount(value: string, previous?: number) {
   return !value.trim() ? undefined : previous !== undefined && value === String(previous / 3600) ? previous : hoursToSeconds(value.trim());
 }
 
-export function ProjectCreation({ fromTime, projects, portfolio, project, busy, canPublish, discovered, onDirty, onCancel, onSave }: {
+export function ProjectCreation({ fromTime, initialName, projects, portfolio, project, busy, canPublish, discovered, onDirty, onCancel, onSave }: {
   projects: StaffProjectSummary[];
   portfolio?: Portfolio;
   project?: Project;
   fromTime?: { parent: string; area: string };
+  initialName?: string;
   busy: boolean;
   canPublish: boolean;
   discovered?: TimeMapping[];
@@ -55,7 +56,7 @@ export function ProjectCreation({ fromTime, projects, portfolio, project, busy, 
   const canPublishNow = canPublish;
   const [step, setStep] = useState<Step>("identity");
   const [kind, setKind] = useState<Delivery["kind"]>(saved?.kind ?? (project || fromTime ? "project" : "engagement"));
-  const [name, setName] = useState(project?.name ?? "");
+  const [name, setName] = useState(project?.name ?? initialName ?? "");
   const [parent, setParent] = useState(saved?.parentId ?? fromTime?.parent ?? "");
   const [area, setArea] = useState(saved?.areaId ?? fromTime?.area ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
