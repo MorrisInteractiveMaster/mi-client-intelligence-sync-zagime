@@ -90,7 +90,7 @@ export class SecuredApiClient {
     if (
       !/^[-a-zA-Z0-9_]{1,128}$/.test(tenant) ||
       (!/^(report|workspace|projects|sources|allocations|audits|time|portfolio)([/?].*)?$/.test(path) &&
-        !(this.workflow === "projects" && /^(control|client-preview(?:\/scopes|\?.*)?|directory\/(?:wordpress-sync|employee-mappings(?:\?.*)?)|invoices(?:\?.*|\/(?:connect|callback|sync|disconnect|approval))?)$/.test(path)))
+        !(this.workflow === "projects" && /^(control|client-preview(?:\/scopes|\?.*)?|directory\/(?:wordpress-sync|employee-mappings(?:\?.*)?)|invoices(?:\?.*|\/(?:connect|callback|sync|disconnect|approval|discovery))?)$/.test(path)))
     )
       throw Error("Invalid reporting scope");
     const token = await this.token();

@@ -134,6 +134,9 @@ export function ProjectStaffWorkspace({
   const platform = usePlatformRoute();
   const nativeWorkspace = platform?.kind === "staff";
   const invoiceModel = useInvoices(client, tenant);
+  const qboSource = location.get("qbo-source");
+  const invoiceSource = invoiceModel.view?.setup?.projects.find(project => project.key === qboSource);
+  const awaitInvoiceSource = qboSource && !invoiceModel.view && !invoiceModel.error;
   const managed = location.get("managed");
   const staffRoute = location.get("staff");
   const area: Area = staffRoute === "time" ? "integrations" : staffRoute && Object.hasOwn(sections, staffRoute) ? staffRoute as Area : "projects";
@@ -631,15 +634,18 @@ export function ProjectStaffWorkspace({
           <p role="alert">Project setup could not load the departments and team directory.</p>
           <button type="button" className="secure-secondary" onClick={() => setEpoch(value => value + 1)}>Retry project setup</button>
         </div>}
+        {editing === "new" && awaitInvoiceSource ? <p role="status">Opening QuickBooks project details…</p> :
         <ProjectCreation key={editing === "new" ? "new" : editing.id + ":" + editingDetail?.revision} discovered={wizardTime?.mappings}
           project={editing === "new" ? undefined : editing} projects={allProjects} portfolio={portfolio}
           fromTime={editing === "new" && timeReturn ? { parent: location.get("time-parent-project") ?? "", area: location.get("time-department") ?? "" } : undefined}
-          busy={busy || !page.revision || !portfolio} canPublish={workspace.canPublish === true}
+          initialName={editing === "new" ? invoiceSource?.name.slice(0, 160) : undefined}
+          busy={busy || !page.revision || !portfolio} canPublish={workspace.canPublish === true && !invoiceSource}
           onDirty={() => setEditorDirty(true)} onCancel={() => {
             if (editorDirty && !window.confirm("Discard the unsaved project changes?")) return;
             setEditorDirty(false);
             creation.current = undefined;
-            if (timeReturn && editing === "new") returnToTime();
+            if (invoiceSource && editing === "new") navigatePlatform(periodHref(staffPath("invoices"), month));
+            else if (timeReturn && editing === "new") returnToTime();
             else portalNavigate({ ...(nativeWorkspace && { staff: "management", managed: editing === "new" ? null : editing.id }), editor: null });
           }} onSave={(project, publish) => void perform(async () => {
             if (editing === "new") {
@@ -648,7 +654,8 @@ export function ProjectStaffWorkspace({
               });
               creation.current = undefined;
               setEditorDirty(false);
-              if (timeReturn) returnToTime();
+              if (invoiceSource) navigatePlatform(periodHref(staffPath("invoices"), month));
+              else if (timeReturn) returnToTime();
               else portalNavigate(nativeWorkspace ? { staff: "management", managed: result.id, editor: null } : { editor: null }, true);
               setEpoch(value => value + 1);
               setNotice(publish ? "Project created and published." : "Project saved as a private draft.");
@@ -667,7 +674,7 @@ export function ProjectStaffWorkspace({
               portalNavigate(nativeWorkspace ? { staff: "management", managed: editing.id, editor: null } : { editor: null }, true);
               setNotice(result.changed ? publish ? "Project changes published." : "Project changes saved." : "No project changes to save.");
             }
-          })} />
+          })} />}
         {editing !== "new" && <div className="secure-actions creation-related" aria-label="Project actions">
           {deleteAction(editing.id)}
           <button type="button" className="secure-secondary" disabled={busy}

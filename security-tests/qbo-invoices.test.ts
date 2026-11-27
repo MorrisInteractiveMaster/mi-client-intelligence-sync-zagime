@@ -26,7 +26,8 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
   const p1 = "synthetic-delivery", p2 = "synthetic-planning";
   for (const [id, name] of [[p1, "Board reporting"], [p2, "Regular consulting"]]) {
     const ref = root.collection("projects").doc(id);
-    const project = { ...(await ref.get()).data(), name, published: true } as Project;
+    const project = { ...(await ref.get()).data(), name, published: true,
+      workOrderReference: id === p1 ? "WO1268" : "WO1267" } as Project;
     await ref.set(project);
     await root.collection("projectViews").doc(id).set(projectView(project, 0));
   }
@@ -53,10 +54,17 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
   let queryBarrier: Promise<void> | undefined;
   let reportQuery: (() => void) | undefined;
   let fixtureRows = [fixture, paid, next, unmapped], refreshes = 0, disconnected = false, upstreamFailure = false;
+  const customers = [
+    { Id: "600", DisplayName: "Zagimē Synthetic Nation", Active: true },
+    { Id: "601", DisplayName: "WO1267 — Regular consulting", Job: true, ParentRef: { value: "600" }, Active: true },
+    { Id: "602", DisplayName: "WO1267.1 — Historical review", Job: true, ParentRef: { value: "601" }, Active: false },
+    { Id: "900", DisplayName: "Zagimē Synthetic Nation Foundation", Active: true },
+  ];
+  const native = [{ id: "31", name: "WO1268 — Board reporting", status: "OPEN", account: { id: "123" }, customer: { id: "600" } }];
+  const queriedCustomers: string[] = [];
   const cfg = {
-    tenant, realm: "123", customerIds: ["600"], currency: "CAD", clientId: "fixture", clientSecret: "fixture",
-    key: Buffer.alloc(32, 1), sandbox: true, redirect: "",
-    mappings: [{ projectId: p1, qboProjectId: "31" }, { projectId: p2, workOrder: "WO1267" }],
+    tenant, realm: "", customerIds: [], currency: "", clientId: "fixture", clientSecret: "fixture",
+    key: Buffer.alloc(32, 1), sandbox: true, redirect: "", nativeProjects: true, mappings: [],
   };
   const provider = new QboInvoicesProvider(cfg, async (input, init) => {
     const url = new URL(String(input));
@@ -70,10 +78,25 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       return Response.json({ access_token: "synthetic-access", refresh_token: "synthetic-refresh-" + refreshes });
     }
     if (url.pathname.endsWith("tokens/revoke")) { disconnected = true; return new Response(null, { status: 200 }); }
+    if (url.pathname.endsWith("/companyinfo/124")) return new Response(null, { status: 403 });
+    if (url.pathname.endsWith("/companyinfo/123")) return Response.json({ CompanyInfo: { CompanyName: "Synthetic Morris Company" } });
+    if (url.pathname.endsWith("/preferences")) return Response.json({ Preferences: { CurrencyPrefs: { HomeCurrency: { value: "CAD" } } } });
+    const customerId = /\/customer\/(\d+)$/.exec(url.pathname)?.[1];
+    if (customerId) return Response.json({ Customer: customers.find(row => row.Id === customerId) });
+    if (url.pathname === "/graphql") {
+      assert.equal(new Headers(init?.headers).get("authorization"), "Bearer synthetic-access");
+      assert.ok(JSON.parse(String(init?.body)).variables.filter.customer.in.every((row: { id: string }) => /^\d+$/.test(row.id)));
+      assert.match(String(init?.body), /query InvoiceProjects/);
+      return Response.json({ data: { projectManagementProjects: { pageInfo: { hasNextPage: false }, edges: native.map(node => ({ node })) } } });
+    }
+    const query = url.searchParams.get("query")!;
+    if (query.includes("from Customer")) return Response.json({ QueryResponse: { Customer: customers } });
     reportQuery?.();
     await queryBarrier;
-    assert.match(url.searchParams.get("query")!, /from Invoice where CustomerRef = '600'/);
-    return upstreamFailure ? new Response(null, { status: 502 }) : Response.json({ QueryResponse: { Invoice: fixtureRows } });
+    const match = /from Invoice where CustomerRef = '(\d+)'/.exec(query);
+    assert.ok(match);
+    queriedCustomers.push(match[1]);
+    return upstreamFailure ? new Response(null, { status: 502 }) : Response.json({ QueryResponse: { Invoice: fixtureRows.filter(row => row.CustomerRef.value === match[1]) } });
   });
   const options = { projects, invoices: new QboInvoices(store, provider, now), frontend: directory,
     allowedOrigin: "", limit: new RequestLimit(2000),
@@ -122,7 +145,9 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
     assert.equal((await call("client", "?preview=published")).status, 403);
     const begin = await call("owner", "/connect", {});
     const state = new URL((await begin.json()).url).searchParams.get("state")!;
-    assert.equal((await call("owner", "/callback", { realm: "124", state, code: "synthetic-code" })).status, 403);
+    assert.equal((await call("owner", "/callback", { realm: "124", state, code: "synthetic-code" })).status, 503);
+    assert.equal((await call("owner", "/sync", {})).status, 503);
+    assert.equal(queriedCustomers.length, 0);
     assert.equal((await call("owner", "/callback", { realm: "123", state, code: "incorrect-state", extra: "forbidden" })).status, 400);
 
     const evidence = resolve("test-results/platform-routes-browser/qbo-invoices");
@@ -145,11 +170,44 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       } catch (error) {
         throw new Error("Staff invoice screen did not load: " + JSON.stringify(browserErrors) + " " + (await page.locator("body").innerText()).slice(0, 1200), { cause: error });
       }
-      await page.getByText("QuickBooks Online connected. Sync invoices to review them.").waitFor();
+      await page.getByText("QuickBooks Online connected. Confirm the company and customer.").waitFor();
+      const setup = page.getByRole("region", { name: "QuickBooks connection setup" });
+      await setup.getByRole("heading", { name: "Synthetic Morris Company" }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "Sync invoices" }).isDisabled(), true);
+      await setup.getByRole("button", { name: "Confirm company" }).click();
+      await setup.getByRole("searchbox", { name: "Search for a customer" }).fill("Zagimē Synthetic");
+      await setup.getByRole("button", { name: "Search", exact: true }).click();
+      await setup.getByRole("button", { name: /Zagimē Synthetic Nation Foundation/ }).waitFor();
+      await page.screenshot({ path: join(evidence, "qbo-customer-discovery-1440.png"), fullPage: true, animations: "disabled" });
+      await setup.getByRole("button", { name: /Zagimē Synthetic Nation Active/ }).click();
+      page.once("dialog", dialog => dialog.accept());
+      await setup.getByRole("button", { name: "Confirm customer binding" }).click();
+      await setup.getByText("3 discovered projects and jobs · 0 linked").waitFor();
+      assert.equal(queriedCustomers.length, 0);
+      await setup.getByText(/Customer job · Historical/).waitFor();
+      for (const [name, project] of [["WO1267 — Regular consulting", p2], ["WO1268 — Board reporting", p1]]) {
+        const row = setup.getByRole("listitem").filter({ hasText: name });
+        await row.getByRole("button", { name: "Link to Existing Project" }).click();
+        assert.equal(await setup.getByRole("combobox", { name: "Platform project" }).inputValue(), project);
+        await setup.getByRole("button", { name: "Confirm link" }).click();
+        await row.getByText(/Linked to/).waitFor();
+      }
+      await page.setViewportSize({ width: 390, height: 844 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await page.screenshot({ path: join(evidence, "qbo-project-inventory-390.png"), fullPage: true, animations: "disabled" });
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await setup.getByRole("listitem").filter({ hasText: "Historical review" }).getByRole("link", { name: "Create Project" }).click();
+      const draft = page.getByRole("form", { name: "Create a project" });
+      assert.equal(await draft.getByRole("textbox", { name: "Project name" }).inputValue(), "WO1267.1 — Historical review");
+      await draft.getByRole("button", { name: "Cancel", exact: true }).click();
+      await setup.getByText("3 discovered projects and jobs · 2 linked").waitFor();
+      assert.equal((await call("client", "/discovery", { action: "search", realm: "123", term: "Zagimē", page: 1 })).status, 403);
       await page.getByRole("button", { name: "Sync invoices" }).click();
       await page.getByText("4 invoices synced from QuickBooks Online.").waitFor();
+      assert.deepEqual(new Set(queriedCustomers), new Set(["600", "601", "602"]));
       await page.getByRole("article", { name: "Invoice 1024" }).waitFor();
       assert.equal(await page.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Invoices" }).getAttribute("aria-description"), "3 outstanding");
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({ path: join(evidence, "staff-1440-light.png"), fullPage: true, animations: "disabled" });
       const aligned = await page.evaluate(() => {
         const sidebar = document.querySelector(".mi-workspace-sidebar")!.getBoundingClientRect();
@@ -203,7 +261,7 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       await portal.setViewportSize({ width: 768, height: 1024 });
       assert.equal(await portal.getByRole("button", { name: "Sync invoices" }).count(), 0);
       const published = await (await call("client")).json();
-      assert.doesNotMatch(JSON.stringify(published), /QBO-PRIVATE-NOTE|Synthetic private customer|approval|customerId|connected|configured|token|audience/);
+      assert.doesNotMatch(JSON.stringify(published), /QBO-PRIVATE-NOTE|Synthetic private customer|approval|customerId|connected|configured|token|audience|sourceProjects|setup/);
       assert.notEqual(published.invoices.find((r: { number: string }) => r.number === "1024").id, "1");
       await portal.getByLabel("Payment status").selectOption("partiallyPaid");
       await portal.getByText("1 matching invoice · 2 total").waitFor();
@@ -305,10 +363,41 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
     assert.equal((await call("owner", "/approval", { id: "1", approved: true, revision: before.approval.revision })).status, 409);
     assert.equal((await (await call("client")).json()).invoices.length, 1);
     assert.equal((await (await call("client")).json()).freshness, "current");
+    const reauthorization = await call("owner", "/connect", {});
+    const reconnectState = new URL((await reauthorization.json()).url).searchParams.get("state")!;
+    assert.equal((await call("owner", "/callback", { realm: "124", state: reconnectState, code: "synthetic-code" })).status, 403);
+    assert.equal((await call("owner", "/callback", { realm: "123", state: reconnectState, code: "synthetic-code" })).status, 200);
+    assert.equal((await (await call("client")).json()).invoices.length, 1);
+    for (const id of ["ambiguous-a", "ambiguous-b"]) {
+      const template = (await root.collection("projects").doc(p1).get()).data()!;
+      await root.collection("projects").doc(id).set({ ...template, id, name: id, workOrderReference: "WO1411", published: false });
+    }
+    customers[1].DisplayName = "WO1267 — Renamed consulting";
+    customers.push({ Id: "603", DisplayName: "WO1411 — Newly discovered", Job: true, ParentRef: { value: "602" }, Active: true });
+    fixtureRows.push({ ...next, Id: "5", DocNumber: "1100", CustomerRef: { value: "603", name: "New scoped project" }, ProjectRef: undefined });
+    assert.equal((await scheduled()).status, 200);
+    const updated = await (await call("owner")).json();
+    assert.ok(updated.setup.projects.some((row: { key: string; linked: string; name: string }) => row.key === "job:601" && row.linked === p2 && /Renamed/.test(row.name)));
+    const newlyDiscovered = updated.setup.projects.find((row: { key: string }) => row.key === "job:603");
+    assert.equal(newlyDiscovered.newlyDiscovered, true);
+    assert.equal(newlyDiscovered.linked, undefined);
+    assert.deepEqual(newlyDiscovered.suggestions, ["ambiguous-a", "ambiguous-b"]);
+    assert.equal(updated.invoices.find((row: { number: string }) => row.number === "1100").approval.approved, false);
+    assert.equal((await (await call("client")).json()).invoices.length, 1);
+    // A verified mover disappears even if the subsequent financial query fails.
+    native[0].customer.id = "900";
+    customers[1].ParentRef!.value = "900";
+    upstreamFailure = true;
+    assert.equal((await scheduled()).status, 503);
+    assert.deepEqual((await (await call("client")).json()).invoices, []);
+    upstreamFailure = false;
+    native[0].customer.id = "600";
     fixtureRows = [{ ...next, TotalAmt: 0, Balance: 0, PrivateNote: "Voided — fixture" }];
     assert.equal((await scheduled()).status, 200);
     assert.deepEqual((await (await call("owner")).json()).invoices, [], "successful full mirror removes deleted and voided rows");
-    await root.collection("projectViews").doc(p1).update({ published: false });
+    const binding = (await (await call("owner")).json()).setup.binding;
+    assert.equal((await call("owner", "/discovery", { action: "bind", realm: "123", rootId: "900", bindingId: binding })).status, 200);
+    assert.equal((await (await call("owner")).json()).setup.root.id, "900");
     assert.deepEqual((await (await call("client")).json()).invoices, []);
     assert.equal((await call("owner", "/disconnect", {})).status, 200);
     assert.equal(disconnected, true);
