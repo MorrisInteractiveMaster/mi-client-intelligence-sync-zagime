@@ -139,6 +139,9 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       await page.getByRole("article", { name: "Invoice 1024" }).waitFor();
       assert.equal(await page.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Invoices" }).getAttribute("aria-description"), "2 outstanding");
       await page.screenshot({ path: join(evidence, "staff-1440-light.png"), fullPage: true, animations: "disabled" });
+      await page.getByRole("button", { name: "Collapse navigation" }).click();
+      assert.equal(await page.locator('.mi-workspace-sidebar button[aria-label="Invoices"] .mi-nav-notice').isVisible(), true);
+      await page.getByRole("button", { name: "Expand navigation" }).click();
       assert.deepEqual((await (await call("client")).json()).invoices, []);
       assert.equal((await call("owner", "/callback", { realm: "123", state, code: "synthetic-code" })).status, 403);
       const connection = (await root.collection("invoiceIntegration").doc("connection").get()).data()!;

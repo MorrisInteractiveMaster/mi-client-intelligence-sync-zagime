@@ -84,7 +84,7 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
         select();
       }}>
       <Icon size={18} aria-hidden="true" /><span>{label}</span>{external && <ArrowUpRight className="mi-nav-jump" aria-hidden="true" />}
-      {notice && <span className="mi-nav-notice" aria-hidden="true" />}
+      {notice && <i className="mi-nav-notice" aria-hidden="true" />}
     </button>;
     return <nav aria-label={mobile ? navigationLabel + " menu" : navigationLabel}>
       {groups.map((group, index) => <div className="mi-nav-group" key={group.label ?? index}>
