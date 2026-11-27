@@ -254,6 +254,11 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
             for (const [width, height] of [[2560, 1440], [1920, 1080], [1440, 900], [1366, 768], [768, 1024], [390, 844]]) {
               await review.page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
               probes.push(await auditViewport(review.page, role + " dark " + path, width, height, { compactSidebar, workspaceBanner }));
+              if (path === "/control" && width === 390) {
+                const back = review.page.locator(".mi-workspace-banner .platform-back");
+                assert.equal(await back.evaluate(link => getComputedStyle(link).backgroundColor), "rgb(24, 51, 77)");
+                assert.ok((await back.boundingBox())!.height >= 44);
+              }
               await review.page.screenshot({ path: join(v62Evidence, `${scene}-dark-${width}x${height}.jpg`), quality: 72, animations: "disabled" });
             }
             await review.page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });

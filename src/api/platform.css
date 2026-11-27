@@ -193,7 +193,7 @@
   .platform-control-compact-nav[open] { flex-basis: 100%; }
   .nordic.secure-shell .platform-control-compact-nav > summary {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    min-height: 44px; padding: 8px 12px; border: 1px solid var(--mi-line); border-radius: 10px;
+    box-sizing: border-box; min-height: 44px; padding: 8px 12px; border: 1px solid var(--mi-line); border-radius: 10px;
     color: var(--mi-ink); background: var(--mi-surface); font-weight: 700; cursor: pointer;
   }
   .platform-control-compact-nav > summary::-webkit-details-marker { display: none; }

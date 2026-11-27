@@ -54,7 +54,10 @@ body:has(.platform-shell[data-workspace="true"]) { margin: 0; }
 }
 .nordic.secure-shell.platform-shell .mi-workspace-banner :is(.reporting-period__hint, .reporting-period__label, .time-history-toolbar label, .mi-report-month label) { color: #dae6f0; }
 .nordic.secure-shell.platform-shell .mi-workspace-banner :is(button, select, input, summary, .platform-back) { min-height: var(--banner-control-height); }
-.nordic.secure-shell .mi-workspace-banner .platform-back { background:#eaf2fa; color:#132f4b; border-radius:8px; padding-inline:12px; }
+.nordic.secure-shell .mi-workspace-banner .platform-back {
+  background:light-dark(#eaf2fa,#18334d); color:light-dark(#132f4b,#e7f2fb);
+  border-radius:8px; padding-inline:12px;
+}
 .nordic.secure-shell .mi-workspace-banner .reporting-period__stepper { background: var(--mi-surface); color: var(--mi-ink); }
 .nordic.secure-shell .mi-workspace-banner :focus-visible { outline-color: #f1d675; }
 .nordic.secure-shell .mi-workspace-banner .time-history-toolbar { flex: 1 1 auto; background: none; padding: 0; border: 0; margin: 0; }
