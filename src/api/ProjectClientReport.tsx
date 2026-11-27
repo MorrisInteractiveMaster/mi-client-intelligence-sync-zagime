@@ -321,10 +321,10 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
   const groups: WorkspaceGroup[] = [{ label: "Client reporting", destinations: [
     { id: "leadership", label: "Leadership summary", icon: LayoutGrid, active: view === "overview", select: () => choose("overview") },
     { id: "projects", label: "Projects", icon: FolderKanban, active: view === "projects" || ["project", "group", "timeline"].includes(kind), select: () => choose("projects") },
+    { id: "invoices", label: "Invoices", icon: ReceiptText, active: view === "invoices", notice: invoiceNavNotice(invoiceModel.view, false), select: () => choose("invoices") },
     { id: "departments", label: "Departments", icon: Layers3, active: view === "areas", select: () => choose("areas"),
       children: (portfolio?.areas ?? []).map(area => ({ id: "client-department-" + area.id, label: area.name, icon: Layers3,
         active: selectedArea?.id === area.id, select: () => choose("area:" + area.id) })) },
-    { id: "invoices", label: "Invoices", icon: ReceiptText, active: view === "invoices", notice: invoiceNavNotice(invoiceModel.view, false), select: () => choose("invoices") },
     { id: "directory", label: "MI Directory", icon: UsersRound, active: view === "directory" || Boolean(contact), select: () => choose("directory") },
     { id: "presentation", label: "Presentation", icon: PresentationIcon, active: presenting, select: () => openOverlay("present", "1") },
   ] }];

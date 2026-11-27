@@ -87,13 +87,13 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
         import {PlatformApplication} from "./src/api/PlatformApplication"; import {SecuredApiClient} from "./src/api/client";
         import {ThemeSelector,usePlatformTheme} from "./src/api/PlatformTheme"; import "./src/api/secure.css";
         import "./src/api/platform.css"; import "./src/api/platform-theme.css";
-        const api = new SecuredApiClient(true, location.origin, async () => window.__role, fetch, undefined, "projects");
+        const api = new SecuredApiClient(true, location.origin, async () => window.__role, undefined, undefined, "projects");
         const tenant = ${JSON.stringify(tenant)};
         function App({workspace}) { const {theme,appearance,change} = usePlatformTheme();
-          return <div className="nordic secure-shell platform-shell" data-theme={theme}>
-            <ThemeSelector theme={appearance} onChange={change} />
+          return <section className="nordic secure-shell platform-shell" data-theme={appearance}>
+            <ThemeSelector theme={theme} onChange={change} />
             <PlatformApplication client={api} workspace={workspace} month="2026-11" unsaved={false} onUnsavedChange={()=>{}} onDenied={()=>{}} />
-          </div>; }
+          </section>; }
         api.call(tenant, "workspace").then(workspace => createRoot(document.getElementById("root")).render(<App workspace={workspace}/>));`,
         resolveDir: process.cwd(), loader: "jsx" },
       bundle: true, outfile: join(directory, "test.js"), jsx: "automatic", external: ["/branding/*"],
@@ -124,8 +124,15 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
         return route.fulfill({ status: 302, headers: { location: cfg.redirect + "?code=synthetic-code&realmId=123&state=" + state } });
       });
       const page = await staff.newPage();
+      const browserErrors: string[] = [];
+      page.on("pageerror", error => browserErrors.push(error.message));
+      page.on("console", message => { if (message.type() === "error") browserErrors.push(message.text()); });
       await page.goto(origin + "/workspace/invoices");
-      await page.getByRole("button", { name: "Connect QuickBooks Online" }).click();
+      try {
+        await page.getByRole("button", { name: "Connect QuickBooks Online" }).click({ timeout: 8000 });
+      } catch (error) {
+        throw new Error("Staff invoice screen did not load: " + JSON.stringify(browserErrors) + " " + (await page.locator("body").innerText()).slice(0, 1200), { cause: error });
+      }
       await page.getByText("QuickBooks Online connected. Sync invoices to review them.").waitFor();
       await page.getByRole("button", { name: "Sync invoices" }).click();
       await page.getByText("3 invoices synced from QuickBooks Online.").waitFor();
@@ -168,8 +175,12 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
           const phone = await context.newPage();
           await phone.goto(origin + "/clients/zagime/invoices");
           await phone.getByRole("article", { name: "Invoice 1024" }).waitFor();
+          assert.equal(await phone.locator(".platform-shell").getAttribute("data-theme"), "dark");
           assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-          assert.equal(await phone.locator('button[aria-label="Invoices"][aria-description="1 overdue or due today"]').count() > 0, true);
+          await phone.getByRole("button", { name: "Workspace navigation" }).click();
+          const mobileNav = phone.getByRole("dialog", { name: "Workspace menu" });
+          assert.equal(await mobileNav.getByRole("button", { name: "Invoices" }).getAttribute("aria-description"), "1 overdue or due today");
+          await mobileNav.getByRole("button", { name: "Close menu" }).click();
           await phone.screenshot({ path: join(evidence, "client-390-dark-" + engine + ".png"), fullPage: true, animations: "disabled" });
         } finally { await mobile.close(); }
       }

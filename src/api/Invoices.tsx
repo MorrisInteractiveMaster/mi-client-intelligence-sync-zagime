@@ -4,6 +4,7 @@ import { invoiceFraction, invoiceState, invoiceStatuses, type Invoice, type Invo
 import { ApiError, type SecuredApiClient } from "./client";
 import { reportMonth } from "./dashboard-format";
 import { portalNavigate, usePortalLocation } from "./portal-location";
+import { WorkspaceToolbarControls } from "./WorkspaceToolbar";
 import "./invoices.css";
 
 export function useInvoices(client: SecuredApiClient, tenant: string, preview?: { mode: string; scope?: string }) {
@@ -154,6 +155,7 @@ export function Invoices({ client, tenant, staff, model }: {
     { label: "Paid · issued this month", rows: paidIssued, field: "total", hint: paidIssued.length + " fully paid", icon: CircleCheck },
   ] as const;
   return <section className="mi-invoices" aria-label="Invoices" aria-busy={busy}>
+    <div className="mi-invoice-tools"><WorkspaceToolbarControls /></div>
     <header className="mi-invoice-hero">
       <div><div className="mi-kicker"><ReceiptText size={15} aria-hidden="true" /> Billing</div>
         <h2 id={staff ? "staff-page-title" : undefined} tabIndex={-1}>Invoices</h2><p>{staff ? "Review balances and control which invoices are visible to the client." : "See approved invoices, upcoming due dates, and what remains to be paid."}</p></div>
@@ -194,7 +196,7 @@ export function Invoices({ client, tenant, staff, model }: {
               <option value="all">All statuses</option>{Object.entries(invoiceStatuses).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
             <label>Invoice month<select value={invoiceMonth} onChange={e => portalNavigate({ "invoice-month": e.target.value, "invoice-page": null })}>
               <option value="all">All months</option>{monthOptions.map(value => <option value={value} key={value}>{reportMonth(value)}</option>)}</select></label>
-            <label>Project<select value={project} onChange={e => portalNavigate({ "invoice-project": e.target.value || null, "invoice-page": null })}>
+            <label>Project<select aria-label="Project" value={project} onChange={e => portalNavigate({ "invoice-project": e.target.value || null, "invoice-page": null })}>
               <option value="">All projects</option>{availableProjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           </div>
         </div>

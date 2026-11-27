@@ -478,7 +478,8 @@ export function ProjectStaffWorkspace({
     id, label, icon, external: true, select: () => { if (permit()) navigatePlatform(href); },
   });
   const groups: WorkspaceGroup[] = [
-    { label: "Operations", destinations: [workspaceArea("overview"), workspaceArea("clients")] },
+    { label: "Operations", destinations: [workspaceArea("overview"), workspaceArea("clients"),
+      { ...workspaceArea("invoices"), notice: invoiceNavNotice(invoiceModel.view, true) }] },
     { label: "Projects", destinations: [
       workspaceArea("projects"),
       ...(nativeWorkspace ? [{ id: "create-project", label: "Create Project", icon: FolderKanban, active: editorRoute === "new",
@@ -491,7 +492,7 @@ export function ProjectStaffWorkspace({
         })) },
     ] },
     { label: "Time & Budgets", destinations: (["hours", "mapping", "health"] as const).map(workspaceArea) },
-    { label: "Billing", destinations: [{ ...workspaceArea("invoices"), notice: invoiceNavNotice(invoiceModel.view, true) }] },
+
     { label: "People", destinations: [workspaceArea("directory")] },
     { label: "Reporting", destinations: nativeWorkspace ? [
       crossLink("published-view", "Published client report", Building2, periodHref(clientBase, month)),
