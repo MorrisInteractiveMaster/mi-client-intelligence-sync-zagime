@@ -23,6 +23,8 @@ import { PersonPhoto } from "./PersonPhoto";
 import { OtherContacts } from "./OtherContacts";
 import { isOtherContact } from "../projects/other-contacts";
 import { WorkspaceNavigation, type WorkspaceGroup } from "./WorkspaceNavigation";
+import { ReceiptText } from "lucide-react";
+import { Invoices, useInvoices, invoiceNavNotice } from "./Invoices";
 import { ReportingMonthField, ReportingPeriod } from "./ReportingPeriod";
 import { readReportingRange } from "./reporting-period";
 import { reportingTimeMonth } from "../projects/time-history";
@@ -74,6 +76,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
   const location = usePortalLocation();
   const nativeClient = usePlatformRoute()?.kind === "client";
   const view = location.get("view") || "overview";
+  const invoiceModel = useInvoices(client, tenant, preview);
   const search = location.get("q")?.slice(0, 120) || "";
   const status = location.get("status") || "all";
   const effortUnit = location.get("effort-unit") === "hours" ? "hours" : "percentage";
@@ -195,7 +198,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
   const contact = kind === "contact" ? report?.portfolio?.directory.find(p => p.id === id) : undefined;
   const milestone = kind === "milestone" ? project?.milestones?.find(m => m.id === itemId) : undefined;
   const labels: Record<string, string> = { overview: "Leadership summary", projects: nativeClient ? "Project Explorer" : "Projects", directory: "MI Directory",
-    history: "Reporting history", milestones: "Milestones", notes: "Executive notes", engagements: "Parent projects", areas: "Departments" };
+    invoices: "Invoices", history: "Reporting history", milestones: "Milestones", notes: "Executive notes", engagements: "Parent projects", areas: "Departments" };
   const standardTitle = Object.hasOwn(labels, view) ? labels[view] : undefined;
   const title = area?.name ?? engagement?.name ?? contact?.name ?? milestone?.title ?? (project && kind === "timeline" ? "Project timeline" : project?.name) ?? standardTitle ?? "Report unavailable";
   useEffect(() => {
@@ -313,7 +316,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
     { label: "Board", members: directory.filter(member => isBoardRole(member.role)) },
     { label: "Morris Interactive team", members: directory.filter(member => !isBoardRole(member.role)) },
   ];
-  const presentationButton = !unavailable && <button type="button" className="mi-present-button" onClick={event => openOverlay("present", "1", event.currentTarget)}>
+  const presentationButton = !unavailable && view !== "invoices" && <button type="button" className="mi-present-button" onClick={event => openOverlay("present", "1", event.currentTarget)}>
     <PresentationIcon size={17} aria-hidden="true" />{view === "overview" ? "Presentation" : "Present this view"}</button>;
   const groups: WorkspaceGroup[] = [{ label: "Client reporting", destinations: [
     { id: "leadership", label: "Leadership summary", icon: LayoutGrid, active: view === "overview", select: () => choose("overview") },
@@ -321,6 +324,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
     { id: "departments", label: "Departments", icon: Layers3, active: view === "areas", select: () => choose("areas"),
       children: (portfolio?.areas ?? []).map(area => ({ id: "client-department-" + area.id, label: area.name, icon: Layers3,
         active: selectedArea?.id === area.id, select: () => choose("area:" + area.id) })) },
+    { id: "invoices", label: "Invoices", icon: ReceiptText, active: view === "invoices", notice: invoiceNavNotice(invoiceModel.view, false), select: () => choose("invoices") },
     { id: "directory", label: "MI Directory", icon: UsersRound, active: view === "directory" || Boolean(contact), select: () => choose("directory") },
     { id: "presentation", label: "Presentation", icon: PresentationIcon, active: presenting, select: () => openOverlay("present", "1") },
   ] }];
@@ -331,8 +335,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
       searchResults={delivery.projects.map(row => ({ id: "client-project-" + row.project.id, label: row.project.name,
         context: row.department?.name ?? "Published projects", select: () => choose("project:" + row.project.id) }))}>
       <div className="exec-content intel-workspace mi-v4-client" tabIndex={-1} ref={page}>
-        {(nativeClient || legacyMonth || view !== "overview") && <div className="mi-report-top" data-preview={Boolean(previewToolbar)}>
-          {nativeClient ? periodToolbar(<>{previewToolbar}{presentationButton}</>) : <>{previewToolbar}{legacyMonth}{view !== "overview" && presentationButton}{!preview && <WorkspaceToolbarControls />}</>}
+        {(view !== "invoices" ? nativeClient || legacyMonth || view !== "overview" : previewToolbar) && <div className="mi-report-top" data-preview={Boolean(previewToolbar)}>
+          {view === "invoices" ? previewToolbar : nativeClient ? periodToolbar(<>{previewToolbar}{presentationButton}</>) : <>{previewToolbar}{legacyMonth}{view !== "overview" && presentationButton}{!preview && <WorkspaceToolbarControls />}</>}
         </div>}
         {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose} effortUnit={effortUnit}
           onEffortUnit={unit => portalNavigate({ "effort-unit": unit === "hours" ? unit : null }, true)}
@@ -350,7 +354,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
           <ChevronRight size={14} aria-hidden="true" />
           <span aria-current="page">{title}</span>
         </nav>}
-        {view !== "overview" && <section className="intel-page-hero mi-compact-report-hero" data-area={selectedArea && searchText(selectedArea.name)}>
+        {view === "invoices" && <Invoices client={client} tenant={tenant} model={invoiceModel} />}
+        {view !== "overview" && view !== "invoices" && <section className="intel-page-hero mi-compact-report-hero" data-area={selectedArea && searchText(selectedArea.name)}>
           <div><span className="exec-kicker">{period}</span><h2>{title}</h2>
             {selectedArea?.description && <p>{selectedArea.description}</p>}
             {activeDepartment && activeDepartment.counts.blocked > 0 && <p className="mi-department-attention"><CircleAlert size={16} aria-hidden="true" />

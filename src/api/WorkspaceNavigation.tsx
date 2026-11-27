@@ -13,6 +13,7 @@ export type WorkspaceDestination = {
   icon: LucideIcon;
   active?: boolean;
   external?: boolean;
+  notice?: string;
   select: () => void;
   children?: WorkspaceDestination[];
 };
@@ -73,8 +74,8 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
     return () => window.removeEventListener("keydown", shortcut);
   }, [embedded]);
   function navigation(mobile = false) {
-    const button = ({ id, label, icon: Icon, active, select, external }: WorkspaceDestination) => <button key={id} type="button" className="mi-nav-item"
-      aria-label={label} title={!mobile && collapsed ? label : undefined} aria-current={active ? "page" : undefined}
+    const button = ({ id, label, icon: Icon, active, select, external, notice }: WorkspaceDestination) => <button key={id} type="button" className="mi-nav-item"
+      aria-label={label} aria-description={notice} title={notice ? label + " · " + notice : !mobile && collapsed ? label : undefined} aria-current={active ? "page" : undefined}
       disabled={busy} onClick={() => {
         if (mobile) {
           menuSelection.current = true;
@@ -83,6 +84,7 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
         select();
       }}>
       <Icon size={18} aria-hidden="true" /><span>{label}</span>{external && <ArrowUpRight className="mi-nav-jump" aria-hidden="true" />}
+      {notice && <span className="mi-nav-notice" aria-hidden="true" />}
     </button>;
     return <nav aria-label={mobile ? navigationLabel + " menu" : navigationLabel}>
       {groups.map((group, index) => <div className="mi-nav-group" key={group.label ?? index}>

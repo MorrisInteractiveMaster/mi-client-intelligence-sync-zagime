@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
   FieldPath,
+  type DocumentReference,
   Timestamp,
   type Firestore,
   type Transaction,
@@ -445,6 +446,20 @@ export class ProjectStore {
         ...(draft && { draft: draftMetadata(draft) }) };
     });
   }
+  async clientPreviewProjectIds(tx: Transaction, root: DocumentReference, scope?: string) {
+    const collection = root.collection("memberships");
+    const docs = scope ? [await tx.get(collection.doc(safeId(scope)))] :
+      (await tx.get(collection.where("role", "==", "client").limit(251))).docs;
+    if (docs.length > 250) throw Error("Invalid preview scope");
+    const members = docs.map(doc => doc.data()).filter(member =>
+      member?.schemaVersion === 2 && member.tenantId === root.id && member.role === "client" && member.enabled === true && member.approved === true &&
+      (assertProjectDatabase(this.db).mode !== "production" || Boolean(member.googleSubject && typeof member.googleSubject === "string")) &&
+      Array.isArray(member.projectIds) && member.projectIds.length <= 100);
+    if (scope && !members.length) throw Error("Forbidden");
+    const grants = members.map(member => new Set<string>(member!.projectIds.map((id: string) => safeId(id))));
+    return [...(grants[0] ?? [])].filter(id => grants.every(grant => grant.has(id))).sort();
+  }
+
   async report(
     tenant: string,
     who: VerifiedIdentity,
@@ -459,19 +474,7 @@ export class ProjectStore {
       const a = await this.access(tx, tenant, who);
       if (a.staff !== Boolean(preview)) throw Error("Forbidden");
       let projectIds = a.projectIds;
-      if (preview?.mode === "published") {
-        const collection = a.root.collection("memberships");
-        const docs = preview.scope ? [await tx.get(collection.doc(safeId(preview.scope)))] :
-          (await tx.get(collection.where("role", "==", "client").limit(251))).docs;
-        if (docs.length > 250) throw Error("Invalid preview scope");
-        const members = docs.map(doc => doc.data()).filter(member =>
-          member?.schemaVersion === 2 && member.tenantId === tenant && member.role === "client" && member.enabled === true && member.approved === true &&
-          (assertProjectDatabase(this.db).mode !== "production" || Boolean(member.googleSubject && typeof member.googleSubject === "string")) &&
-          Array.isArray(member.projectIds) && member.projectIds.length <= 100);
-        if (preview.scope && !members.length) throw Error("Forbidden");
-        const grants = members.map(member => new Set<string>(member!.projectIds.map((id: string) => safeId(id))));
-        projectIds = [...(grants[0] ?? [])].filter(id => grants.every(grant => grant.has(id))).sort();
-      }
+      if (preview?.mode === "published") projectIds = await this.clientPreviewProjectIds(tx, a.root, preview.scope);
       const views = preview?.mode === "draft"
         ? (await tx.get(a.root.collection("projectViews").where("schemaVersion", "==", 2).limit(MAX_DELIVERY_PROJECTS + 1))).docs
         : projectIds.length

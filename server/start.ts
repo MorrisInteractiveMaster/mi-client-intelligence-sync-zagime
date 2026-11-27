@@ -5,6 +5,8 @@ import { apiServer } from "./http";
 import { MorrisStaffVerifier, staffConfiguration } from "./morris-staff";
 import { ProjectBackend, ProjectStore } from "./project-workspace";
 import { configureTime } from "./time-config";
+import { QboInvoices } from "./qbo-invoices";
+import { qboConfig, QboInvoicesProvider } from "./qbo-invoices-provider";
 import { readFile } from "node:fs/promises";
 import {
   STAGING_DATABASE, COMPANY_PROJECT, EXPECTED_STAGING_UID,
@@ -65,7 +67,15 @@ const backend = new ReportingBackend(
 const projectStore = new ProjectStore(runtime.db, process.env.MORRIS_PLATFORM_ADMIN_UID);
 const serveFrontend = mode === "production" ||
   (mode === "staging" && process.env.SERVE_STAGING_FRONTEND === "true");
+let invoiceProvider: QboInvoicesProvider | undefined;
+try {
+  const config = qboConfig(process.env, mode);
+  if (config) invoiceProvider = new QboInvoicesProvider(config);
+} catch {
+  console.error("QBO Invoice integration disabled: review its runtime configuration.");
+}
 const server = apiServer(backend, {
+  invoices: new QboInvoices(projectStore, invoiceProvider),
   allowedOrigin: process.env.ALLOWED_ORIGIN,
   projects: new ProjectBackend(projectStore, identity, { issuer: `https://securetoken.google.com/${projectId}`, audience: projectId, now: Date.now }),
   time: configureTime(projectStore, mode, process.env),

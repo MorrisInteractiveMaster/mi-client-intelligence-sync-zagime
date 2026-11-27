@@ -165,7 +165,12 @@
 .nordic.secure-shell.platform-shell:has(.mi-v4-client) .secure-masthead { padding-block: 4px; }
 .mi-v4-client { --status-active: #236b9c; --status-completed: #187765; --status-upcoming: #946011; --status-other: #63758c; }
 .nordic.secure-shell .mi-v4-client .intel-page-hero { padding: clamp(12px,2vw,24px); margin-block: 8px 12px; }
-.nordic.secure-shell .mi-v4-client .mi-report-top { margin: 0 0 8px; align-items: center; gap: 4px 12px; }
+.nordic.secure-shell .mi-v4-client .mi-report-top { margin: 0 0 6px; align-items: center; gap: 4px 8px; }
+.nordic.secure-shell .mi-v4-client .mi-report-top .reporting-period { align-items: center; gap: 8px; }
+.nordic.secure-shell .mi-client-cockpit .mi-cockpit-hero[data-empty="true"] { grid-template-columns: minmax(0, 1fr); }
+.nordic.secure-shell .mi-empty-portfolio { display: flex; align-items: center; gap: 12px; }
+.mi-empty-portfolio > svg { flex: none; }
+.mi-empty-portfolio :is(h3,p) { margin: 0; }
 .nordic.secure-shell .mi-v4-client .mi-report-top[data-preview="true"] {
   background: var(--mi-surface); border: 1px solid var(--mi-line); border-radius: 12px; padding: 4px 12px;
 }

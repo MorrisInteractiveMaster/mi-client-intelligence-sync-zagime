@@ -40,6 +40,8 @@ import { StaffOverview } from "./StaffOverview";
 import { staffPulseStatus } from "./staff-overview-metrics";
 import { ReportingPeriod } from "./ReportingPeriod";
 import { WorkspaceNavigation, type WorkspaceGroup } from "./WorkspaceNavigation";
+import { ReceiptText } from "lucide-react";
+import { Invoices, useInvoices, invoiceNavNotice } from "./Invoices";
 import { DepartmentWorkspace } from "./DepartmentWorkspace";
 import { navigatePlatform } from "./portal-location";
 import {
@@ -60,6 +62,7 @@ const sections = {
   management: "Project Management",
   departments: "Departments",
   hours: "Time Allocation",
+  invoices: "Invoices",
   mapping: "QuickBooks Time Mapping",
   directory: "Team Directory",
   milestones: "Milestones",
@@ -71,7 +74,7 @@ const sections = {
 };
 type Area = keyof typeof sections;
 const sectionIcons = { overview: LayoutGrid, projects: FolderKanban, management: ClipboardList, portfolio: Layers3, hours: Clock3, mapping: Layers3, activity: Activity, integrations: Plug,
-  clients: Building2, directory: UsersRound, departments: Layers3, milestones: CalendarDays, health: ChartNoAxesCombined, preview: Monitor };
+  invoices: ReceiptText, clients: Building2, directory: UsersRound, departments: Layers3, milestones: CalendarDays, health: ChartNoAxesCombined, preview: Monitor };
 const StaffPresentation = lazy(() => import("./ExecutivePresentation"));
 export function ProjectStaffWorkspace({
   client,
@@ -130,6 +133,7 @@ export function ProjectStaffWorkspace({
   const rangeEnd = location.get("overview-end") || "";
   const platform = usePlatformRoute();
   const nativeWorkspace = platform?.kind === "staff";
+  const invoiceModel = useInvoices(client, tenant);
   const managed = location.get("managed");
   const staffRoute = location.get("staff");
   const area: Area = staffRoute === "time" ? "integrations" : staffRoute && Object.hasOwn(sections, staffRoute) ? staffRoute as Area : "projects";
@@ -487,6 +491,7 @@ export function ProjectStaffWorkspace({
         })) },
     ] },
     { label: "Time & Budgets", destinations: (["hours", "mapping", "health"] as const).map(workspaceArea) },
+    { label: "Billing", destinations: [{ ...workspaceArea("invoices"), notice: invoiceNavNotice(invoiceModel.view, true) }] },
     { label: "People", destinations: [workspaceArea("directory")] },
     { label: "Reporting", destinations: nativeWorkspace ? [
       crossLink("published-view", "Published client report", Building2, periodHref(clientBase, month)),
@@ -503,9 +508,9 @@ export function ProjectStaffWorkspace({
   const pageTitle = staffRoute === "time" ? "QuickBooks Time status" : area === "projects" && editorRoute === "new" ? "Create Project" : area === "projects" && editing ? "Project setup" :
     area === "departments" && department ? portfolio?.areas.find(row => row.id === department)?.name ?? "Department" : sections[area];
   const content = <>
-      {area !== "portfolio" && <header className="mi-page-heading"><p className="mi-kicker">{area === "overview" ? workspace.tenant.name : "Morris workspace"}</p>
+      {area !== "portfolio" && area !== "invoices" && <header className="mi-page-heading"><p className="mi-kicker">{area === "overview" ? workspace.tenant.name : "Morris workspace"}</p>
       <h2 id="staff-page-title" ref={areaHeading} tabIndex={-1}>{pageTitle}</h2></header>}
-    {area !== "hours" && <ReportingPeriod month={month} availableMonths={overviewTrend?.hours.byPeriod.map(row => row.label)}
+    {area !== "hours" && area !== "invoices" && <ReportingPeriod month={month} availableMonths={overviewTrend?.hours.byPeriod.map(row => row.label)}
       latestMonth={overviewTrend?.hours.byPeriod.at(-1)?.label}
       onMonth={value => { if (permit()) portalNavigate({ month: value, period: null }); }}
       onRange={nativeWorkspace && area === "overview" ? range => { if (!permit()) return;
@@ -520,6 +525,7 @@ export function ProjectStaffWorkspace({
         <button className="exec-text-button" type="button" onClick={() => changeArea("overview")}>Morris Overview</button>
         <span aria-current="page">{sections[area]}</span>
       </nav>}
+      {area === "invoices" && <Invoices client={client} tenant={tenant} staff model={invoiceModel} />}
       {area === "overview" && <>
         {!nativeWorkspace && <div className="delivery-section-heading">
           <label>Time period<select value={overviewPeriod} onChange={event => portalNavigate({ period: event.target.value })}>

@@ -52,7 +52,7 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
   const narrative = portfolio?.narrative || portfolio?.action;
 
   return <div className="mi-client-cockpit">
-    <section className="mi-cockpit-hero" aria-labelledby="executive-title">
+    <section className="mi-cockpit-hero" aria-labelledby="executive-title" data-empty={counts.all === 0}>
       <div className="mi-cockpit-intro">
         <p>{report.tenant.name} <span aria-hidden="true">·</span> <time dateTime={report.month}>{period}</time></p>
         <h2 id="executive-title">Leadership summary</h2>
@@ -65,12 +65,17 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
           {!platform && <button className="mi-cockpit-secondary" type="button" onClick={event => onPresentation(event.currentTarget)}><Presentation size={16} aria-hidden="true" />At a Glance</button>}
         </div>
       </div>
-      <div className="mi-cockpit-portfolio" aria-label="All-time delivery projects">
+      {counts.all > 0 && <div className="mi-cockpit-portfolio" aria-label="All-time delivery projects">
         <p>All-time approved portfolio</p>
         <StatusComposition counts={counts} onFilter={openFilter} />
-      </div>
+      </div>}
     </section>
 
+    {counts.all === 0 && <section className="mi-exec-panel mi-empty-portfolio" aria-label="Project reporting status">
+      <FolderKanban size={22} aria-hidden="true" /><div><h3>No approved delivery projects yet</h3>
+        <p>Delivery charts and project updates will appear here as projects are approved for your workspace.</p></div>
+    </section>}
+    {counts.all > 0 && <>
     <section className="mi-cockpit-signals" aria-label="Delivery at a glance">
       {signals.map(({ label, value, icon: Icon, filter, tone }) => <div className="mi-signal-card" key={filter}><button className="mi-signal-action" type="button" data-tone={tone} onClick={() => openFilter(filter)}>
         <span className="mi-signal-glyph"><Icon size={18} aria-hidden="true" /></span>
@@ -98,6 +103,7 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
         </section>
     </div>
     <div className="mi-v4-analytics-grid"><MilestonePerformance delivery={delivery} onLink={onLink} /><ParentPerformance delivery={delivery} onLink={onLink} /></div>
+    </>}
     <section className="mi-v4-effort" aria-label="Approved effort and budget"><h3>Approved effort and budget</h3>
     <div className="mi-effort-pair">
     <section className="mi-exec-panel mi-effort-summary" aria-label="Published portfolio summary">

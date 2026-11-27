@@ -18,6 +18,7 @@ export function ProjectPortfolioDistribution({ delivery, onLink }: { delivery: R
   const group = (Object.keys(dimensions) as Dimension[]).find(key => key === location.get("portfolio-group")) ?? "department";
   const order = (Object.keys(orders) as Order[]).find(key => key === location.get("portfolio-order") && (key !== "configured" || group === "department"));
   const total = delivery.counts.all;
+  if (total === 0) return null;
   const rows = group === "status" ? portfolioStatuses.map(([key, label]) => ({
     key, label, count: segmentCount(delivery.counts, key), open: () => onLink("projects", undefined, key),
   })) : group === "parent" ? [
