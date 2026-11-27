@@ -268,7 +268,7 @@
   .time-entries .mi-sort-header { visibility: hidden; }
 }
 .mi-signal-card { display: grid; grid-template-columns: minmax(0,1fr) 28px; min-width: 0; background: var(--mi-surface); border: 1px solid var(--mi-insight-edge); border-radius: 12px; }
-.nordic.secure-shell .mi-signal-card .mi-signal-action { width: 100%; height: 100%; padding-inline-end: 2px; grid-template-columns: auto minmax(0,1fr); border: 0; background: transparent; box-shadow: none; }
+.nordic.secure-shell .mi-cockpit-signals .mi-signal-card .mi-signal-action { width: 100%; height: 100%; padding-inline-end: 2px; grid-template-columns: auto minmax(0,1fr); border: 0; background: transparent; box-shadow: none; }
 .mi-signal-card .mi-signal-action > svg { display: none; }
 .nordic.secure-shell .mi-signal-card > .exec-help { position: static; align-self: start; justify-self: end; margin: 3px 3px 0 0; }
 .nordic.secure-shell :is(.mi-signal-card,.mi-portfolio-distribution) .exec-help { color: var(--mi-ink); }

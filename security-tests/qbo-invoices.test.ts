@@ -260,7 +260,11 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
         "portfolio grouping and sort controls share a center line");
       const signal = page.getByRole("button", { name: "Explain Blocked or at risk" });
       await signal.focus();
-      await page.getByRole("tooltip").filter({ hasText: /Counts approved projects with an active blocker/ }).waitFor();
+      const tooltip = page.getByRole("tooltip").filter({ hasText: /Counts approved projects with an active blocker/ });
+      await tooltip.waitFor();
+      const [popupBox, cardBox] = await Promise.all([tooltip.boundingBox(), signal.locator("..").boundingBox()]);
+      assert.ok(popupBox && cardBox && (popupBox.y >= cardBox.y + cardBox.height || popupBox.y + popupBox.height <= cardBox.y),
+        "help tooltip keeps the entire KPI card readable");
       await page.screenshot({ path: join(evidence, "staff-published-preview-1440-light.png"), fullPage: true, animations: "disabled" });
       await page.keyboard.press("Escape");
       const empty = await browser.newContext({ viewport: { width: 390, height: 844 } });

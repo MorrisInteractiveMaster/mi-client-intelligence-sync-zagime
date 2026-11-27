@@ -83,7 +83,7 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
         <span className="mi-signal-glyph"><Icon size={18} aria-hidden="true" /></span>
         <span><small>{label}</small><strong>{value}</strong></span>
         <ArrowUpRight size={16} aria-hidden="true" />
-      </button><ContextHelp watch=".mi-signal-action" label={"Explain " + label}>{signalHelp[filter] + " Open Project Explorer to see the matching projects."}</ContextHelp></div>)}
+      </button><ContextHelp watch=".mi-signal-action" avoid=".mi-signal-card" label={"Explain " + label}>{signalHelp[filter] + " Open Project Explorer to see the matching projects."}</ContextHelp></div>)}
     </section>
 
     <ProjectPortfolioDistribution delivery={delivery} onLink={onLink} />
