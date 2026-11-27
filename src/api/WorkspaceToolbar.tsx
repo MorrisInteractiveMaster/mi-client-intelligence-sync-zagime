@@ -26,7 +26,7 @@ export function WorkspaceBanner({ title, eyebrow, description, actions, period, 
     <div className="mi-banner-top">
       <div className="mi-banner-copy">
         {eyebrow && <span className="mi-banner-eyebrow">{eyebrow}</span>}
-        <h1 id={headingId} ref={headingRef} tabIndex={-1}>{title}</h1>
+        <h1 id={headingId} ref={headingRef} tabIndex={headingRef ? -1 : undefined}>{title}</h1>
         {description && <p>{description}</p>}
       </div>
       <WorkspaceToolbarControls />

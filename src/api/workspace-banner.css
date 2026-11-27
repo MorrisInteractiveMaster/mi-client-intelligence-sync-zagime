@@ -31,6 +31,7 @@ body:has(.platform-shell[data-workspace="true"]) { margin: 0; }
 .mi-banner-context { align-items: center; justify-content: flex-start; border-top: 1px solid #b1c9df40; padding-top: 12px; }
 .nordic.secure-shell .mi-banner-context > .secure-actions { margin:0; gap:8px; }
 .nordic.secure-shell .mi-banner-context :is(.secure-actions, .mi-overview-actions) button { margin:0; }
+.nordic.secure-shell.platform-shell .mi-workspace-banner .mi-overview-actions .mi-create-project { background:var(--mi-action); color:#fff; }
 .mi-banner-copy { flex: 1 1 14rem; min-width: 0; }
 .mi-banner-eyebrow { display: flex; align-items: center; gap: 8px; color: #f1d675; font-size: .78rem; font-weight: 750; }
 .nordic.secure-shell .mi-workspace-banner .mi-banner-copy h1 {
@@ -53,6 +54,7 @@ body:has(.platform-shell[data-workspace="true"]) { margin: 0; }
 }
 .nordic.secure-shell.platform-shell .mi-workspace-banner :is(.reporting-period__hint, .reporting-period__label, .time-history-toolbar label, .mi-report-month label) { color: #dae6f0; }
 .nordic.secure-shell.platform-shell .mi-workspace-banner :is(button, select, input, summary, .platform-back) { min-height: var(--banner-control-height); }
+.nordic.secure-shell .mi-workspace-banner .platform-back { background:#eaf2fa; color:#132f4b; border-radius:8px; padding-inline:12px; }
 .nordic.secure-shell .mi-workspace-banner .reporting-period__stepper { background: var(--mi-surface); color: var(--mi-ink); }
 .nordic.secure-shell .mi-workspace-banner :focus-visible { outline-color: #f1d675; }
 .nordic.secure-shell .mi-workspace-banner .time-history-toolbar { flex: 1 1 auto; background: none; padding: 0; border: 0; margin: 0; }

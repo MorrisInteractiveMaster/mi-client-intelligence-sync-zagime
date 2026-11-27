@@ -228,7 +228,7 @@ export function Invoices({ client, tenant, staff, model, bannerActions }: {
       <CalendarClock size={20} aria-hidden="true" /><div><strong>Balances may be out of date</strong>
       <p>Amounts and alerts use the last successful sync. Recent payments or credits may still be missing.</p></div>
     </aside>}
-    {view?.setup && view.canManage && <QboCustomerSetup key={view.setup.company.realm} client={client} tenant={tenant} setup={view.setup} reload={reload} month={view.today.slice(0, 7)} />}
+    {view?.connected && view.setup && view.canManage && <QboCustomerSetup key={view.setup.company.realm} client={client} tenant={tenant} setup={view.setup} reload={reload} month={view.today.slice(0, 7)} />}
     {view && !all.length && (!staff || view.freshness !== "unavailable" || setupState === "Ready to sync") && <div className="mi-invoice-empty"><ReceiptText size={28} aria-hidden="true" />
       <h3>{view.freshness === "unavailable" ? "Invoice balances unavailable" : staff ? "No invoices in the last sync" : "No approved invoices yet"}</h3>
       <p>{view.freshness === "unavailable" ? staff && view.configured

@@ -3,7 +3,7 @@
   .mi-invoice-summary { animation: invoice-appear .24s ease-out both; }
   @keyframes invoice-appear { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
 }
-.mi-invoices .mi-workspace-banner { margin-bottom:0; }
+.nordic.secure-shell .mi-invoices .mi-workspace-banner { margin-bottom:0; }
 .nordic.secure-shell .mi-invoice-freshness { font-size:.83rem; color:#dae6f0; margin:0; }
 .mi-invoice-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
 .mi-invoice-summary article, .mi-invoice-register, .mi-invoice-operator, .mi-invoice-attention, .mi-invoice-empty { background:var(--mi-surface,#fff); border:1px solid var(--mi-line,#dbe2e9); border-radius:12px; }

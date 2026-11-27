@@ -652,7 +652,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       .getByRole("button", { name: /November 2026, .* recorded hours/ });
     await novemberDot.focus();
     await admin.page.waitForFunction(() => document.activeElement?.getAttribute("aria-label")?.includes("November 2026"));
-    const createProject = admin.page.getByRole("region", { name: "Morris operating overview" })
+    const createProject = admin.page.locator(".mi-workspace-banner")
       .getByRole("button", { name: "Create Project", exact: true });
     await createProject.waitFor();
     assert.match(await createProject.evaluate(button => getComputedStyle(button).backgroundImage), /linear-gradient/);

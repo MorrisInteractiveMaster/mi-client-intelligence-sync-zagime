@@ -340,7 +340,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
     { label: "Morris Interactive team", members: directory.filter(member => !isBoardRole(member.role)) },
   ];
   const presentationButton = !unavailable && <button type="button" className="mi-present-button" onClick={event => openOverlay("present", "1", event.currentTarget)}>
-    <PresentationIcon size={17} aria-hidden="true" />{view === "overview" ? "Presentation" : "Present this view"}</button>;
+    <PresentationIcon size={17} aria-hidden="true" />{view === "overview" ? nativeClient ? "Presentation" : "At a Glance" : "Present this view"}</button>;
   return reportShell(<>
       <div className="exec-content intel-workspace mi-v4-client" tabIndex={-1} ref={page}>
         <WorkspaceBanner title={title} eyebrow={report.tenant.name}
