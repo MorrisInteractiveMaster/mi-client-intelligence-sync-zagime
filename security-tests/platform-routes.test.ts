@@ -79,7 +79,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
         function Portal({workspace}) {
           const {theme,change,appearance}=usePlatformTheme(); const month=useReportingMonth("${month}"), [dirty,setDirty]=useState(false);
           const session=<><ThemeSelector theme={theme} onChange={change} compact/><WorkspaceAccount onSignOut={()=>{}} returnHref={workspace.role === "staff" && location.pathname.startsWith("/clients/") ? periodHref("/workspace",month) : undefined}/></>;
-          return <WorkspaceSessionControls.Provider value={session}><section className="nordic secure-shell platform-shell" data-theme={appearance}>
+          return <WorkspaceSessionControls.Provider value={session}><section className="nordic secure-shell platform-shell" data-theme={appearance} data-workspace="true">
             <div id="auth-status" role="status"></div>
             <PlatformApplication client={client} workspace={workspace} month={month} unsaved={dirty} onUnsavedChange={setDirty} onDenied={denied}/>
           </section></WorkspaceSessionControls.Provider>;
@@ -207,6 +207,8 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     const referenceEvidence = join(auditEvidence, "reference-sizes");
     await mkdir(auditEvidence, { recursive: true });
     await mkdir(referenceEvidence, { recursive: true });
+    const v62Evidence = join(auditEvidence, "v6.2");
+    await mkdir(v62Evidence, { recursive: true });
     const probes: Awaited<ReturnType<typeof auditViewport>>[] = [];
     const references: Record<string, [string, number, number][]> = {
       "/workspace/portfolio": [["01-portfolio-layout", 1792, 920]],
@@ -225,7 +227,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       ["owner", ["/", ...Object.keys(staffSegments).map(key => staffPath(key as StaffSection)), staffPath("departments", "health"),
         staffPath("projects", "new"), editPath, staffPath("management", projectId), "/workspace/portfolio?subsection=engagements",
         "/control", ...Object.keys(controlSections).map(key => "/control/" + key), clientBase, clientBase + "?previewMode=draft"]],
-      ["client", ["overview", "engagements", "areas", "area:health", "projects", "project:" + projectId, "timeline:" + projectId,
+      ["client", ["overview", "invoices", "engagements", "areas", "area:health", "projects", "project:" + projectId, "timeline:" + projectId,
         "milestones", "directory", "history", "notes"].map(view => clientPath("zagime", view)).concat(clientBase + "/service-areas", clientBase + "/present", clientBase + "?month=2026-08")],
     ] as const) {
       const review = await session(browser, role);
@@ -236,23 +238,23 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
           try {
             await review.page.setViewportSize({ width: 1440, height: 900 });
             await review.page.goto(destination.href, { waitUntil: "domcontentloaded" });
-            await review.page.locator(path.endsWith("/present") ? "dialog[open]" : "#platform-content h2:visible").first().waitFor({ timeout: 15_000 });
+            await review.page.locator(path.endsWith("/present") ? "dialog[open]" : "#platform-content .mi-workspace-banner h1:visible").first().waitFor({ timeout: 15_000 });
             await review.page.waitForLoadState("networkidle");
             if (path === "/control/team") await review.page.getByRole("region", { name: "MI Other Contacts" }).waitFor();
             if (path === clientBase + "?month=2026-08")
               await review.page.getByText("No approved effort yet for this period.", { exact: true }).waitFor();
             const compactSidebar = path.startsWith("/workspace") || path.startsWith("/control") ||
               path.startsWith(clientBase) && !path.endsWith("/present");
-            for (const [width, height] of [[1440, 900], [768, 1024], [390, 844], [320, 568]]) {
-              probes.push(await auditViewport(review.page, role + " " + path, width, height, { compactSidebar }));
-              if (["/workspace/time", "/control/branding", clientBase + "/team", clientBase + "/projects"].includes(path)) {
-                const scene = path.slice(1).replaceAll("/", "-");
-                await review.page.screenshot({ path: join(auditEvidence, `${scene}-${width}x${height}.png`), animations: "disabled" });
-              }
+            const workspaceBanner = !path.endsWith("/present") && !path.includes("previewMode");
+            const scene = role + "-" + (path === "/" ? "home" : path.slice(1).replace(/[^a-z0-9-]+/gi, "-"));
+            for (const [width, height] of [[2560, 1440], [1920, 1080], [1440, 900], [1366, 768], [768, 1024], [390, 844], [320, 568]]) {
+              probes.push(await auditViewport(review.page, role + " " + path, width, height, { compactSidebar, workspaceBanner }));
+              if (width > 320) await review.page.screenshot({ path: join(v62Evidence, `${scene}-light-${width}x${height}.jpg`), quality: 72, animations: "disabled" });
             }
-            for (const [width, height] of [[1440, 900], [390, 844]]) {
+            for (const [width, height] of [[2560, 1440], [1920, 1080], [1440, 900], [1366, 768], [768, 1024], [390, 844]]) {
               await review.page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
-              probes.push(await auditViewport(review.page, role + " dark " + path, width, height, { compactSidebar }));
+              probes.push(await auditViewport(review.page, role + " dark " + path, width, height, { compactSidebar, workspaceBanner }));
+              await review.page.screenshot({ path: join(v62Evidence, `${scene}-dark-${width}x${height}.jpg`), quality: 72, animations: "disabled" });
             }
             await review.page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
             if (path === "/control/branding") {
@@ -947,7 +949,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
     await client.page.setViewportSize({ width: 1440, height: 1000 });
     assert.equal(await client.page.getByRole("link", { name: /Morris Workspace|Control Panel/ }).count(), 0);
     const viewportBeforeToolbar = client.page.viewportSize()!;
-    const clientToolbar = client.page.getByRole("region", { name: "Reporting period" });
+    const clientToolbar = client.page.locator(".mi-workspace-banner");
     for (const [width, height] of [[1440, 900], [1920, 1080], [768, 1024], [390, 844]]) {
       await client.page.setViewportSize({ width, height });
       await clientToolbar.getByRole("combobox", { name: "Appearance" }).waitFor();
@@ -960,8 +962,7 @@ test("native portal URLs keep authenticated roles, approved reporting, editable 
       assert.ok(appearance && account && monthControl);
       assert.ok(Math.abs(appearance.y - account.y) <= 1 && appearance.width === account.width && appearance.height === account.height);
       await client.page.screenshot({ path: join(evidence, "v51-client-toolbar-" + width + ".png"), animations: "disabled" });
-      assert.ok(Math.abs(appearance.y + appearance.height / 2 - monthControl.y - monthControl.height / 2) <= 2,
-        "Toolbar controls align with the reporting month at " + width + " pixels: " + JSON.stringify({ appearance, monthControl }));
+      assert.ok(monthControl.y > appearance.y, "The reporting row sits inside the banner after the account controls");
       if (width >= 1440) assert.equal(await client.page.locator(".mi-sidebar-partner-mark").evaluate(el =>
         getComputedStyle(el).backgroundColor), "rgba(0, 0, 0, 0)");
     }

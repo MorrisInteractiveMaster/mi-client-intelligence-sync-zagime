@@ -206,7 +206,6 @@ export function ProjectCreation({ fromTime, initialName, projects, portfolio, pr
 
   return <><form className="secure-form creation-wizard" data-step={step} aria-label={project ? "Edit a project" : "Create a project"} onSubmit={submit} noValidate>
     <header className="creation-head">
-      <h3>{project ? "Edit project" : "Create a project"}</h3>
       {project?.published && <p>{canPublishNow ? "Save a private draft or publish these changes to authorized clients." :
         "Changes are saved as a private draft for review."}</p>}
     </header>
@@ -217,7 +216,7 @@ export function ProjectCreation({ fromTime, initialName, projects, portfolio, pr
       </li>)}</ol>
     <div className="creation-body">
       <p className="creation-step-label">Step {position + 1} of {steps.length}</p>
-      <h4 ref={heading} tabIndex={-1}>{titles[step]}</h4>
+      <h2 ref={heading} tabIndex={-1}>{titles[step]}</h2>
     </div>
     <fieldset className="creation-fields" disabled={busy} aria-describedby={error ? fieldId + "-error" : undefined}>
       <legend className="creation-legend">{titles[step]}</legend>

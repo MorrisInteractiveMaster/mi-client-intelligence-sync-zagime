@@ -1,4 +1,4 @@
-import { WorkspaceToolbarControls } from "./WorkspaceToolbar";
+import { WorkspaceBanner } from "./WorkspaceToolbar";
 import { isZagimeClient } from "../config/client-identity";
 import { ArrowLeft, ArrowUpRight, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
@@ -13,7 +13,6 @@ import { clientBase, controlSections, type ControlSection } from "./platform-rou
 import { navigatePlatform, periodHref, portalNavigate } from "./portal-location";
 import { TimeConnectionPanel } from "./TimeConnectionPanel";
 import { EmployeeMapping } from "./EmployeeMapping";
-import { ReportingMonthField } from "./ReportingPeriod";
 
 type Props = {
   client: SecuredApiClient;
@@ -128,9 +127,9 @@ export function PlatformControl({ client, workspace, section, month, onDenied, o
         </details>
       </aside>
       <section className="platform-control-card" aria-label={title}>
-        <header className="mi-page-heading"><p className="mi-kicker">{workspace.tenant.name}</p><h2>{title}</h2></header>
-        <div className="mi-control-toolbar"><PlatformLink href={periodHref("/workspace", month)} beforeNavigate={permit} className="platform-back"><ArrowLeft size={16} aria-hidden="true" /> Back to Morris Workspace</PlatformLink>
-        <ReportingMonthField month={month} onMonth={selected => { if (permit()) portalNavigate({ month: selected }); }} /><WorkspaceToolbarControls /></div>
+        <WorkspaceBanner title={title} eyebrow={workspace.tenant.name}
+          actions={<PlatformLink href={periodHref("/workspace", month)} beforeNavigate={permit} className="platform-back"><ArrowLeft size={16} aria-hidden="true" /> Back to Morris Workspace</PlatformLink>} />
+        <div className="platform-control-content">
         {error && <p role="alert" className="secure-message secure-error">{error} <button type="button" className="secure-secondary" disabled={busy} onClick={() => { if (permit()) refresh(); }}>Reload</button></p>}
         {notice && <p role="status" className="secure-message">{notice}</p>}
         {!control && !error && <p role="status">Checking Control Panel access…</p>}
@@ -148,7 +147,7 @@ export function PlatformControl({ client, workspace, section, month, onDenied, o
             </li>)}</ul> : <p>No approved profiles currently have published access.</p>}</>}
           {section === "staff" && <><h3>Workspace permissions</h3><dl className="platform-policy-list">
             <div><dt>Platform administrator</dt><dd>Verified Morris Microsoft account with the owner-configured administrator identity. Can manage Control Panel settings.</dd></div>
-            <div><dt>Morris operational staff</dt><dd>Verified Morris Microsoft account scoped to this client workspace. Can manage projects, team assignments and Time allocations.</dd></div>
+            <div><dt>Morris operational staff</dt><dd>Verified Morris Microsoft account scoped to this client workspace. Can manage projects, team assignments, Time allocations and QuickBooks Online invoices.</dd></div>
             <div><dt>Client user</dt><dd>Approved Google account with explicit access to published projects.</dd></div>
           </dl></>}
           {section === "team" && <DeliveryDirectory client={client} tenant={tenant} portfolio={portfolio} revision={control.revision} onSaved={refresh} onDenied={onDenied} />}
@@ -178,6 +177,7 @@ export function PlatformControl({ client, workspace, section, month, onDenied, o
             <button type="submit" disabled={busy || !dirty}>{busy ? "Saving…" : "Save settings"}</button>
           </form>}
         </>)}
+        </div>
       </section>
     </div>
   </main>;

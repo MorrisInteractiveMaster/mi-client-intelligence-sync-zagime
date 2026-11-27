@@ -208,7 +208,7 @@ function ProgressEditor({ id, path, client, tenant, areas, legacyArea, canPublis
   return <form className="mi-management-editor secure-form" aria-label="Delivery progress"
     onSubmit={event => { event.preventDefault(); void save(false); }}>
     <header className="mi-management-heading">
-      <div>{!!path.length && <p className="mi-management-path">{path.join(" / ")}</p>}<h3>{project.name}</h3>
+      <div>{!!path.length && <p className="mi-management-path">{path.join(" / ")}</p>}
         <p className="mi-management-subtitle">{project.workOrderReference && project.workOrderReference + " · "}
           {project.published ? (detail?.draft ? "Published · Draft changes" : "Published") : "Private project"}</p>
       </div>

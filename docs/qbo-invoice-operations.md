@@ -1,6 +1,56 @@
 # QuickBooks Online invoice discovery · owner activation and recovery
 
-V6.1 starts disabled. The Morris platform owner connects QuickBooks, confirms the company identity and chooses the customer in **Invoices**. The platform persists the verified company realm, customer root and reviewed links in the existing named Firestore database. QuickBooks Time keeps its independent 06:00 America/Regina job. Invoice automation retains its separate 07:00 America/Regina schedule.
+An active, verified Morris employee with access to the tenant connects QuickBooks, confirms the company identity and chooses the customer in **Invoices**. The platform persists the verified company realm, customer root and reviewed links in the existing named Firestore database. QuickBooks Time keeps its independent 06:00 America/Regina job. Invoice automation retains its separate 07:00 America/Regina schedule.
+
+## V6.2 · Diagnose connection access and deploy with the existing credentials
+
+V6.1 admitted verified Morris employees to the invoice workspace but required the single `MORRIS_PLATFORM_ADMIN_UID` for connection, discovery, sync and invoice approval. The shared unavailable state concealed whether the caller lacked permission or the integration was disabled. V6.2 authorizes those invoice operations through the existing tenant-scoped Morris staff verifier. The server verifies the Microsoft tenant, provider account, active Entra member status and corporate UPN. The platform administrator UID still controls unrelated administration. Disconnect requires explicit confirmation, and the application records the verified actor for management actions.
+
+- Sign in using **Sign in with Microsoft** with the authorized Morris work account. If access fails, have the existing administrator verify Entra membership, that the account is enabled, and the tenant assignment. Sign out and back in to renew proof. A personal or guest account with a corporate-looking email cannot grant access.
+- If **Integration disabled** appears after staff admission, check that the active revision enables QBO for the existing tenant. The verified version-one secret bindings establish that the credentials are wired to the candidate. They do not establish that the candidate is receiving traffic or that OAuth has been authorized.
+- **Connect QuickBooks Online** means the integration is available and no connection is established. Use the Intuit popup, confirm the company, then select the customer. Select **Sync invoices** for a staff-only initial read. Verify financial scope and balances before separately approving any client visibility.
+
+For the V6.2 image-only release, run [read-only preflight](#1--read-only-production-preflight) and define `qbuild` using the [approved build procedure](#3--approved-build-and-zero-traffic-verification). Verify the reviewed merged SHA, submit the build with the existing build account, and record the successful regional build ID as `Q_BUILD`. Use the following candidate function **in place of** the general `qcandidate` function. It stops if the expected setup differs from the latest service template. Keep the existing version-one secrets and runtime grants. [Cloud Run deployment flags](https://docs.cloud.google.com/sdk/gcloud/reference/run/deploy)
+
+```bash
+qcandidate_v62() {
+  Q_READY=0
+  local pinned=mi-client-prod-dashboard-00030-gel
+  local pin_check='(.containers[0].env | map({key:.name,value:.}) | from_entries) as $e |
+    $e.QBO_INVOICES_ENABLED.value=="true" and $e.QBO_INVOICES_TENANT.value==$tenant and
+    $e.QBO_INVOICES_CLIENT_ID.valueFrom.secretKeyRef=={name:"mi-qbo-invoices-client-id",key:"1"} and
+    $e.QBO_INVOICES_CLIENT_SECRET.valueFrom.secretKeyRef=={name:"mi-qbo-invoices-client-secret",key:"1"} and
+    $e.QBO_INVOICES_TOKEN_KEY.valueFrom.secretKeyRef=={name:"mi-qbo-invoices-token-key",key:"1"}'
+  [[ -n "${Q_EVIDENCE:-}" && -n "${Q_BUILD:-}" ]] || return 1
+  Q_IMAGE=$(python3 scripts/production-build.py verify --build-id "$Q_BUILD" --revision "$REVIEWED_SHA" --source-bucket "$SOURCE_BUCKET") || return 1
+  [[ "$Q_IMAGE" =~ @sha256:[a-f0-9]{64}$ ]] || return 1
+  qg run revisions describe "$pinned" --project="$Q_PROJECT" --region="$Q_REGION" --format=json > "$Q_EVIDENCE/v61.json" || return 1
+  qg run services describe "$Q_SERVICE" --project="$Q_PROJECT" --region="$Q_REGION" --format=json > "$Q_EVIDENCE/live.json" || return 1
+  [[ $(qtraffic "$Q_EVIDENCE/live.json") == "$Q_PRIOR" ]] || return 1
+  jq -e --arg tenant "$Q_TENANT" ".spec | $pin_check" "$Q_EVIDENCE/v61.json" >/dev/null || return 1
+  jq -e --arg tenant "$Q_TENANT" ".spec.template.spec | $pin_check" "$Q_EVIDENCE/live.json" >/dev/null || return 1
+  Q_TAG="v62-${REVIEWED_SHA:0:8}-$(date -u +%H%M%S)"
+  qg run deploy "$Q_SERVICE" --project="$Q_PROJECT" --region="$Q_REGION" --image="$Q_IMAGE" --no-traffic --tag="$Q_TAG" || return 1
+  qg run services describe "$Q_SERVICE" --project="$Q_PROJECT" --region="$Q_REGION" --format=json > "$Q_EVIDENCE/candidate.json" || return 1
+  [[ $(qtraffic "$Q_EVIDENCE/candidate.json") == "$Q_PRIOR" ]] || return 1
+  Q_REV=$(jq -er --arg tag "$Q_TAG" '.status.traffic[] | select(.tag==$tag) | .revisionName' "$Q_EVIDENCE/candidate.json") || return 1
+  Q_CANDIDATE=$(jq -er --arg tag "$Q_TAG" '.status.traffic[] | select(.tag==$tag) | .url' "$Q_EVIDENCE/candidate.json") || return 1
+  qg run revisions describe "$Q_REV" --project="$Q_PROJECT" --region="$Q_REGION" --format=json > "$Q_EVIDENCE/revision.json" || return 1
+  jq -e --arg account "$Q_RUNTIME" --arg image "$Q_IMAGE" '.spec.serviceAccountName==$account and .spec.containers[0].image==$image and
+    any(.status.conditions[];.type=="Ready" and .status=="True")' "$Q_EVIDENCE/revision.json" >/dev/null || return 1
+  diff <(jq -S '.spec.template.spec.containers[0].env | sort_by(.name)' "$Q_EVIDENCE/live.json") \
+    <(jq -S '.spec.containers[0].env | sort_by(.name)' "$Q_EVIDENCE/revision.json") >/dev/null || return 1
+  curl -fsS --max-time 20 "$Q_CANDIDATE/health" | jq -e '.status=="ready"' >/dev/null || return 1
+  [[ $(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' "$Q_CANDIDATE/api/v2/tenants/$Q_TENANT/invoices") == 401 ]] || return 1
+  curl -fsS --max-time 20 "$Q_CANDIDATE/qbo-invoice-callback.html" >/dev/null || return 1
+  Q_READY=1
+  printf 'Reviewed V6.2 candidate %s is at zero traffic.\n' "$Q_REV"
+}
+# Only after separate owner approval for candidate deployment:
+# if qcandidate_v62; then printf 'Review the candidate before authorizing promotion.\n'; fi
+```
+
+Compare full revision settings privately before approving [promotion](#4--owner-promotion-connection-reconciliation-and-publication). Verify the canonical signed-in experience as a regular verified employee and as a client. Use the recorded prior traffic for [rollback](#6--rollback). Preserve the two existing worker schedules and keep real OAuth and the first read-only sync owner-controlled. The feature does not require a new Scheduler job, credential version or data migration.
 
 ## Company and customer selection
 

@@ -19,8 +19,10 @@ export async function invoiceRequest(service: QboInvoices, backend: ProjectBacke
   if (req.method !== "POST" || !action || url.search) return { status: 405, body: { error: "method_not_allowed" } };
   const input = await readBody();
   const fields = action === "callback" ? ["state", "realm", "code"] : action === "approval" ? ["id", "revision", "approved", "audience"] :
-    action === "discovery" ? ["action", "realm", "rootId", "term", "page", "bindingId", "source", "projectId"] : [];
+    action === "discovery" ? ["action", "realm", "rootId", "term", "page", "bindingId", "source", "projectId"] :
+    action === "disconnect" ? ["confirm"] : [];
   if (Object.keys(input).some(key => !fields.includes(key))) throw Error("Invalid invoice request");
+  if (action === "disconnect" && input.confirm !== true) throw Error("Invalid invoice disconnect confirmation");
   const body = action === "discovery" ? await service.discovery(tenant, who, input) : action === "approval" ? await service.approve(tenant, who, input) : action === "callback" ? await service.callback(tenant, who, input) :
     action === "connect" ? await service.connect(tenant, who) : action === "sync" ? await service.sync(tenant, who) : await service.disconnect(tenant, who);
   return { status: 200, body };

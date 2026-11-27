@@ -2192,7 +2192,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           const query = new URLSearchParams({ month: "2026-11", staff });
           const page = legacyStaff.page;
           await page.goto(`${origin}/?${query}#/secure`, { waitUntil: "domcontentloaded" });
-          await page.locator("#platform-content h2:visible").first().waitFor();
+          await page.locator("#platform-content :is(h1,h2):visible").first().waitFor();
           await page.waitForLoadState("networkidle");
           for (const [width, height] of [[1440, 900], [768, 1024], [390, 844], [320, 568]]) {
             legacyStaffAudit.push(await auditViewport(page, `legacy staff ${staff}`, width, height, { compactSidebar: true }));

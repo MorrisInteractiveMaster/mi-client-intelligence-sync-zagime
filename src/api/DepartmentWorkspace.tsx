@@ -50,12 +50,14 @@ export function DepartmentWorkspace({ portfolio, projects, selected, onDepartmen
     {selected ? department ? <>
       {department.description && <p>{department.description}</p>}
       <div className="mi-department-snapshot mi-exec-panel">
-        <div><h3>Delivery snapshot</h3><p>{departmentProjects.length} delivery projects · {reportHours(allocated)} h allocated this month</p>
-          {pending > 0 && <p>{reportHours(pending)} h automatically classified and awaiting approval</p>}
+        <div><h2>Delivery snapshot</h2>
+          <dl className="mi-department-metrics"><div><dt>Delivery projects</dt><dd>{departmentProjects.length}</dd></div>
+            <div><dt>Allocated this month</dt><dd>{reportHours(allocated)} h</dd></div>
+            {pending > 0 && <div><dt>Awaiting approval</dt><dd>{reportHours(pending)} h</dd></div>}</dl>
           <div className="secure-actions">{[...statusCounts].map(([status, count]) => <button type="button" className="secure-secondary" key={status}
             aria-pressed={status === currentStatus} onClick={() => setFilter(status === currentStatus ? undefined : { department: department.id, status })}>
             {projectStatus[status]} · {count}</button>)}</div>
-          <p className="mi-effort-muted">Trend tracking begins from the first verified snapshot.</p></div>
+        </div>
         {department.monthlyCap !== undefined && <DottedTrack value={metricPercent(reported, department.monthlyCap)} label="Monthly department cap used"
           detail={reportHours(reported) + " h reported / " + reportHours(department.monthlyCap) + " h monthly cap"} />}
       </div>
@@ -65,7 +67,7 @@ export function DepartmentWorkspace({ portfolio, projects, selected, onDepartmen
         const completion = measureDelivery(project, { monthly: project.seconds, lifetime: project.lifetimeSeconds }, today).completion;
         return <article className="mi-department-project" key={project.id}>
           <button className="mi-department-card" type="button" onClick={() => onProject(project.id)}>
-            <div><strong>{project.name}</strong><span>{projectStatus[project.status]} · {reportHours(project.workOrderEffort?.assignedSeconds ?? project.seconds)} h allocated</span>
+            <div><strong>{project.name}</strong><span><b className="mi-department-status">{projectStatus[project.status]}</b> {reportHours(project.workOrderEffort?.assignedSeconds ?? project.seconds)} h allocated</span>
               {Boolean(project.pendingMappedEffort?.monthly) && <span>{reportHours(project.pendingMappedEffort!.monthly)} h awaiting approval</span>}</div><ChevronRight aria-hidden="true" />
           </button>
           {completion !== undefined && <DottedTrack value={completion} label="Project work completion" />}

@@ -1,4 +1,4 @@
-import { ArrowUpRight, CalendarClock, CircleAlert, ClipboardCheck, FolderKanban, Presentation } from "lucide-react";
+import { ArrowUpRight, CalendarClock, CircleAlert, ClipboardCheck, FolderKanban } from "lucide-react";
 import type { ProjectReport } from "../projects/model";
 import { clientDelivery, publishedMonthlyCap, type ProjectFilter } from "./client-delivery";
 import { CompletionPerformance, MilestonePerformance, ParentPerformance } from "./ClientPortfolioPerformance";
@@ -12,10 +12,9 @@ import { reportDay, reportHours, reportMonth, reportTimestamp, today } from "./d
 
 type Delivery = ReturnType<typeof clientDelivery>;
 
-export function ExecutiveOverview({ report, delivery, onPresentation, onLink, onChart, platform, draft, effortUnit, onEffortUnit }: {
+export function ExecutiveOverview({ report, delivery, onLink, onChart, platform, draft, effortUnit, onEffortUnit }: {
   report: ProjectReport;
   delivery: Delivery;
-  onPresentation: (trigger: HTMLButtonElement) => void;
   onLink: OpenClientView;
   onChart: (kind: ChartKind, trigger: HTMLButtonElement) => void;
   platform?: boolean;
@@ -54,24 +53,13 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
     Boolean(portfolio?.history.some(row => row.seconds > 0));
 
   return <div className="mi-client-cockpit">
-    <section className="mi-cockpit-hero" aria-labelledby="executive-title" data-empty={counts.all === 0}>
-      <div className="mi-cockpit-intro">
-        <p>{report.tenant.name} <span aria-hidden="true">·</span> <time dateTime={report.month}>{period}</time></p>
-        <h2 id="executive-title">Leadership summary</h2>
-        <p className="mi-cockpit-hero-detail">
-          {parentRows.length} {parentRows.length === 1 ? "parent project" : "parent projects"}
-          {delivery.departmentRows.length > 0 && " · " + delivery.departmentRows.length + (delivery.departmentRows.length === 1 ? " approved department" : " approved departments")}
-        </p>
-        <div className="mi-cockpit-actions">
-          <button className="mi-cockpit-primary" type="button" onClick={() => onLink("projects")}>Explore projects <ArrowUpRight size={16} aria-hidden="true" /></button>
-          {!platform && <button className="mi-cockpit-secondary" type="button" onClick={event => onPresentation(event.currentTarget)}><Presentation size={16} aria-hidden="true" />At a Glance</button>}
-        </div>
+    {counts.all > 0 && <section className="mi-exec-panel mi-leadership-snapshot" aria-label="All-time delivery projects">
+      <div><h2>All-time approved portfolio</h2>
+        <p>{parentRows.length} {parentRows.length === 1 ? "parent project" : "parent projects"} · {delivery.departmentRows.length} approved departments</p>
+        <button className="secure-secondary" type="button" onClick={() => onLink("projects")}>Explore projects <ArrowUpRight size={16} aria-hidden="true" /></button>
       </div>
-      {counts.all > 0 && <div className="mi-cockpit-portfolio" aria-label="All-time delivery projects">
-        <p>All-time approved portfolio</p>
-        <StatusComposition counts={counts} onFilter={openFilter} />
-      </div>}
-    </section>
+      <StatusComposition counts={counts} onFilter={openFilter} />
+    </section>}
 
     {counts.all === 0 && <section className="mi-exec-panel mi-empty-portfolio" aria-label="Project reporting status">
       <FolderKanban size={22} aria-hidden="true" /><div><h3>No approved delivery projects yet</h3>

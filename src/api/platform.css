@@ -98,15 +98,15 @@
 .platform-card-arrow { position: absolute; right: .8rem; top: 1.35rem; }
 .platform-home-wordmark { margin: 1.5rem 0 0; width: min(180px, 60vw); }
 .nordic.secure-shell.platform-shell > main.platform-control { max-width: none; min-width: 0; padding: 0; }
-.platform-control-layout { display: grid; grid-template-columns: clamp(204px,17vw,248px) minmax(0, 1fr); align-items: start; gap: clamp(12px,1.5vw,24px); margin-block: 10px 24px; }
+.platform-control-layout { display: grid; grid-template-columns: clamp(228px,17vw,248px) minmax(0, 1fr); align-items: start; gap: clamp(12px,1.5vw,24px); margin-block-end: 24px; }
 .platform-control-rail { position: sticky; inset-block-start: 10px; min-width: 0; max-height: calc(100dvh - 20px); overflow-y: auto; scrollbar-width: thin; }
 .platform-control-compact-nav { display: none; }
 .platform-control-nav { display: grid; gap: .2rem; background: #10273f; padding: .55rem; border-radius: 16px; }
 .nordic .platform-control-nav a { color: #f7fafc; border-radius: 9px; font-size: .9rem; font-weight: 650; min-height: 44px; box-sizing: border-box; padding: .6rem .7rem; text-decoration: none; display: flex; align-items: center; gap: 8px; }
 .nordic .platform-control-nav a:hover { background: #254765; }
 .nordic .platform-control-nav a[aria-current="page"] { background: var(--platform-gold); color: #091d31; }
-.platform-control-card, .platform-denied { background: #fcfbf7; border: 1px solid #d2dce3; border-radius: 16px; margin: 0; padding: clamp(16px, 3vw, 36px); }
-.platform-control-card { min-width: 0; padding: clamp(12px, 2vw, 24px); }
+.platform-control-content, .platform-denied { background: var(--mi-surface, #fcfbf7); border: 1px solid var(--mi-line, #d2dce3); border-radius: 16px; margin: 0; padding: clamp(16px, 2vw, 24px); }
+.platform-control-card { min-width: 0; }
 .platform-denied { margin-top: 1rem; }
 .platform-control-card h3 { margin-block: .65rem !important; }
 .platform-control-shortcuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: .75rem; }

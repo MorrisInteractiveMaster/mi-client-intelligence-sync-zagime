@@ -210,7 +210,7 @@ export function SecureDashboard() {
     }} />;
   return (
     <WorkspaceSessionControls.Provider value={activeShell ? <><ThemeSelector theme={theme} onChange={change} compact />{account}</> : null}>
-    <section className={"nordic secure-shell" + (modernShell ? " platform-shell" : "")} data-theme={appearance}>
+    <section className={"nordic secure-shell" + (modernShell ? " platform-shell" : "")} data-theme={appearance} data-workspace={activeShell || undefined}>
       {signedIn && workspace && <a className="mi-skip-link" href="#platform-content" onClick={event => {
         const content = document.getElementById("platform-content");
         if (!content) return;

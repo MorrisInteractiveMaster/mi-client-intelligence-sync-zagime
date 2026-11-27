@@ -1,4 +1,4 @@
-import { WorkspaceToolbarControls } from "./WorkspaceToolbar";
+import { WorkspaceBanner } from "./WorkspaceToolbar";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { ProjectReport } from "../projects/model";
 import { ApiError, type SecuredApiClient } from "./client";
@@ -209,9 +209,8 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
   }, [report, title, presenting]);
   if (current && !current.report)
     return (
-      <section className="secure-empty">
-        {nativeClient ? periodToolbar() : legacyMonth}
-        <h2>Reporting is temporarily unavailable</h2>
+      <section>
+        <WorkspaceBanner title={title} eyebrow="Zagimē client workspace" actions={previewToolbar} />
         <p role="alert">
           The published report could not be loaded. Try again in a moment.
         </p>
@@ -228,7 +227,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
   if (!report)
     return (
       <div>
-        {nativeClient ? scopedResult && periodToolbar() : legacyMonth}
+        <WorkspaceBanner title={title} eyebrow="Zagimē client workspace" actions={previewToolbar} />
         <p className="intel-empty intel-loading" role="status">Loading approved reporting…</p>
       </div>
     );
@@ -335,13 +334,15 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
       searchResults={delivery.projects.map(row => ({ id: "client-project-" + row.project.id, label: row.project.name,
         context: row.department?.name ?? "Published projects", select: () => choose("project:" + row.project.id) }))}>
       <div className="exec-content intel-workspace mi-v4-client" tabIndex={-1} ref={page}>
-        {(view !== "invoices" ? nativeClient || legacyMonth || view !== "overview" : previewToolbar) && <div className="mi-report-top" data-preview={Boolean(previewToolbar)}>
-          {view === "invoices" ? previewToolbar : nativeClient ? periodToolbar(<>{previewToolbar}{presentationButton}</>) : <>{previewToolbar}{legacyMonth}{view !== "overview" && presentationButton}{!preview && <WorkspaceToolbarControls />}</>}
-        </div>}
+        {view !== "invoices" && <WorkspaceBanner title={title} eyebrow={report.tenant.name}
+          description={selectedArea?.description || contact?.role || (view === "overview" ? "Track approved delivery, milestones and project effort." : undefined)}
+          period={(view !== "directory" && !contact) && (nativeClient ? periodToolbar(<>{previewToolbar}{presentationButton}</>) : legacyMonth)}
+          actions={(!nativeClient || view === "directory" || Boolean(contact)) && (previewToolbar || presentationButton) && <>{previewToolbar}{presentationButton}</>} />}
+        {view === "invoices" && <Invoices client={client} tenant={tenant} model={invoiceModel} bannerActions={previewToolbar} />}
         {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose} effortUnit={effortUnit}
           onEffortUnit={unit => portalNavigate({ "effort-unit": unit === "hours" ? unit : null }, true)}
-          onChart={(type, trigger) => openOverlay("chart", type, trigger)} onPresentation={trigger => openOverlay("present", "1", trigger)} />}
-        {view !== "overview" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
+          onChart={(type, trigger) => openOverlay("chart", type, trigger)} />}
+        {view !== "overview" && view !== "invoices" && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
           <button type="button" className="exec-text-button" onClick={() => choose("overview")}><ChevronLeft size={16} /> Leadership summary</button>
           {(project || engagement) && <><ChevronRight size={14} aria-hidden="true" /><button type="button" className="exec-text-button"
             onClick={() => {
@@ -354,15 +355,6 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
           <ChevronRight size={14} aria-hidden="true" />
           <span aria-current="page">{title}</span>
         </nav>}
-        {view === "invoices" && <Invoices client={client} tenant={tenant} model={invoiceModel} />}
-        {view !== "overview" && view !== "invoices" && <section className="intel-page-hero mi-compact-report-hero" data-area={selectedArea && searchText(selectedArea.name)}>
-          <div><span className="exec-kicker">{period}</span><h2>{title}</h2>
-            {selectedArea?.description && <p>{selectedArea.description}</p>}
-            {activeDepartment && activeDepartment.counts.blocked > 0 && <p className="mi-department-attention"><CircleAlert size={16} aria-hidden="true" />
-              {activeDepartment.counts.blocked} {activeDepartment.counts.blocked === 1 ? "active blocker" : "active blockers"}</p>}
-            {contact && <p>{contact.role}</p>}
-          </div>
-        </section>}
         {unavailable && <p className="intel-empty" role="status">This link is unavailable for your approved report.</p>}
         {(view === "engagements" || (view === "projects" && !useExplorer)) && delivery.parentRows.length > 0 && <section className="mi-exec-panel" aria-label="Parent projects">
           <div className="mi-exec-heading"><div><h3>Parent projects</h3><p>Open an engagement or select a count to see its delivery projects.</p></div></div>

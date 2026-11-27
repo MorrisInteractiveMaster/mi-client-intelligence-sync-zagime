@@ -39,6 +39,7 @@ import { ProjectManagement } from "./ProjectManagement";
 import { StaffOverview } from "./StaffOverview";
 import { staffPulseStatus } from "./staff-overview-metrics";
 import { ReportingPeriod } from "./ReportingPeriod";
+import { WorkspaceBanner } from "./WorkspaceToolbar";
 import { WorkspaceNavigation, type WorkspaceGroup } from "./WorkspaceNavigation";
 import { ReceiptText } from "lucide-react";
 import { Invoices, useInvoices, invoiceNavNotice } from "./Invoices";
@@ -510,11 +511,14 @@ export function ProjectStaffWorkspace({
     ] }] : []),
   ];
   const pageTitle = staffRoute === "time" ? "QuickBooks Time status" : area === "projects" && editorRoute === "new" ? "Create Project" : area === "projects" && editing ? "Project setup" :
+    area === "management" && managed ? allProjects.find(project => project.id === managed)?.name ?? "Project details" :
     area === "departments" && department ? portfolio?.areas.find(row => row.id === department)?.name ?? "Department" : sections[area];
+  const showPeriod = !editorRoute && ["overview", "projects", "management", "departments", "portfolio", "health", "milestones"].includes(area);
   const content = <>
-      {area !== "portfolio" && area !== "invoices" && <header className="mi-page-heading"><p className="mi-kicker">{area === "overview" ? workspace.tenant.name : "Morris workspace"}</p>
-      <h2 id="staff-page-title" ref={areaHeading} tabIndex={-1}>{pageTitle}</h2></header>}
-    {area !== "hours" && area !== "invoices" && <ReportingPeriod month={month} availableMonths={overviewTrend?.hours.byPeriod.map(row => row.label)}
+    {area !== "hours" && area !== "invoices" && area !== "preview" && <WorkspaceBanner title={pageTitle} headingId="staff-page-title" headingRef={areaHeading}
+      eyebrow={area === "overview" ? workspace.tenant.name : "Morris workspace"}
+      description={area === "projects" && editorRoute === "new" ? "Set up a parent or delivery project in five steps." : undefined}
+      period={showPeriod && <ReportingPeriod month={month} availableMonths={overviewTrend?.hours.byPeriod.map(row => row.label)}
       latestMonth={overviewTrend?.hours.byPeriod.at(-1)?.label}
       onMonth={value => { if (permit()) portalNavigate({ month: value, period: null }); }}
       onRange={nativeWorkspace && area === "overview" ? range => { if (!permit()) return;
@@ -523,7 +527,7 @@ export function ProjectStaffWorkspace({
         portalNavigate({ period: range.preset === "last-year" ? "previous-year" : range.preset === "custom" ? "range" : range.preset,
           "overview-start": range.preset === "custom" && range.from ? range.from + "-01" : null,
           "overview-end": range.preset === "custom" ? end ?? null : null });
-      } : undefined} />}
+      } : undefined} />} />}
 
       {area !== "overview" && (department || managed || editorRoute || location.has("subsection")) && <nav className="exec-breadcrumb" aria-label="Breadcrumb">
         <button className="exec-text-button" type="button" onClick={() => changeArea("overview")}>Morris Overview</button>
@@ -938,7 +942,7 @@ export function ProjectStaffWorkspace({
                 </div>
               </dl>
             ))}
-        {area === "hours" && <TimeAllocation client={client} tenant={tenant} month={month} projects={allProjects}
+        {area === "hours" && <TimeAllocation client={client} tenant={tenant} month={month} projects={allProjects} pageBanner
           portfolio={portfolio} canPublish={workspace.canPublish} operatorKey={workspace.operatorKey} onDenied={onDenied} onSaved={() => setEpoch(value => value + 1)}
           initialConsultant={location.get("consultant") ?? undefined} initialPeriod={location.get("period")}
           initialStart={location.get("start")} initialEnd={location.get("end")} initialStatus={location.get("time-status")}

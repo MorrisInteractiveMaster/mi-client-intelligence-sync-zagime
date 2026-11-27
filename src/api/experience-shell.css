@@ -72,7 +72,6 @@
 .nordic.secure-shell .mi-preview-controls select { width: auto; max-width: 100%; }
 .mi-preview-controls label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .platform-client-preview .mi-preview-controls { position: sticky; inset-block-start: 0; z-index: 6; background: var(--mi-background); }
-.nordic.secure-shell.platform-shell:has(> main:is(.platform-workspace,.platform-client-report,.platform-client-preview)) { padding-block-start: 12px; }
 .platform-client-preview .mi-workspace-sidebar { inset-block-start: 10px; max-height: calc(100dvh - 24px); }
 .nordic.secure-shell .mi-preview-controls .delivery-watermark {
   position: static; width: fit-content; margin: 0; box-shadow: none; pointer-events: auto;
@@ -116,6 +115,18 @@
 .mi-department-project { min-width: 0; padding: 12px; background: var(--mi-surface,#fff); border: 1px solid var(--mi-line,#dce4e9); border-radius: 12px; }
 .nordic.secure-shell.platform-shell .mi-department-project button.mi-department-card { height: auto; padding: 4px; min-height: 44px; border: 0; box-shadow: none; }
 .mi-department-snapshot { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,290px),1fr)); gap: 12px; }
+.mi-department-snapshot.mi-exec-panel { padding: 16px; margin-block: 8px 16px; }
+.nordic.secure-shell .mi-department-snapshot h2 { font-size: 1.1rem; font-weight: 750; }
+.mi-department-metrics { display:flex; flex-wrap:wrap; gap: 12px 24px; margin-block: 10px; }
+.mi-department-metrics dt { color:var(--mi-muted); font-size:.82rem; }
+.mi-department-metrics dd { margin:0; font-size:1.2rem; font-weight:750; }
+.nordic.secure-shell .mi-department-card strong { font-size:1rem; font-weight:750; line-height:1.3; }
+.mi-department-status { display:inline-block; margin: 3px 4px 3px 0; padding:2px 7px; border-radius:99px; background:var(--mi-background); color:var(--mi-ink); }
+.mi-leadership-snapshot { display:grid; grid-template-columns:minmax(12rem, 1fr) minmax(0, 2fr); gap:16px; align-items:center; }
+.nordic.secure-shell .mi-leadership-snapshot h2 { font-size:1.2rem; }
+@container client-report (max-width: 540px) {
+  .mi-leadership-snapshot { grid-template-columns: minmax(0, 1fr); }
+}
 .mi-related-settings { margin-block: 12px; }
 .mi-overview-actions { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .nordic.secure-shell .mi-overview-actions :is(.mi-create-project,.mi-client-launch,.mi-overview-more summary) {

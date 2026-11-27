@@ -5,7 +5,6 @@ import { reportMonth } from "./dashboard-format";
 import { validMonth } from "./portal-location";
 import { followingTimeMonth, historyRange, reportingMonthOptions, type ReportingMonthRange } from "./reporting-period";
 import "./reporting-period.css";
-import { WorkspaceToolbarControls } from "./WorkspaceToolbar";
 
 export function ReportingMonthField({ month, onMonth }: { month: string; onMonth: (month: string) => void }) {
   const [native] = useState(() => {
@@ -99,7 +98,6 @@ export function ReportingPeriod({ month, currentMonth = reportingTimeMonth(), av
         </div>
         {action}
       </div>
-      <WorkspaceToolbarControls />
     </div>
     {range && <p className="reporting-period__hint">{range.from && range.through ?
       "Trend range: " + reportMonth(range.from) + " to " + reportMonth(range.through) : "Trend range: All available history"}</p>}

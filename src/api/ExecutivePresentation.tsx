@@ -9,6 +9,7 @@ import { Sparkline } from "./ReportingPlots";
 import { portalNavigate, usePortalLocation } from "./portal-location";
 import { PresentationContent, publishedChapters } from "./PresentationChapters";
 import { clientDelivery, type ProjectFilter } from "./client-delivery";
+import { WorkspaceBanner } from "./WorkspaceToolbar";
 
 export default function ExecutivePresentation({ report, onClose, scope = "overview", scopeTitle, onLink, draft, linked }: {
   report: ProjectReport; onClose: () => void; scope?: string; scopeTitle?: string;
@@ -104,11 +105,11 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
       }
     }}>
     <div className="exec-presentation-stage intel-presentation-stage" data-chapter={current} ref={stage}>
-    <header className="exec-presentation-top">
-      <img src={brandAsset("branding/zagime/zagime-main-logo.png")} alt={ZAGIME_CLIENT_DISPLAY_NAME} />
-      {draft && <strong className="mi-presentation-draft">Draft · Morris staff only</strong>}
-      <button className="exec-icon" type="button" aria-label="Close presentation" onClick={onClose}><X size={20} /></button>
-    </header>
+    <WorkspaceBanner title={chapter?.title ?? scene.title} headingId="presentation-title"
+      eyebrow={period + " · Chapter " + (current + 1) + " of " + (chapters?.length ?? scenes.length)}
+      actions={<><img className="mi-presentation-banner-logo" src={brandAsset("branding/zagime/zagime-main-logo.png")} alt={ZAGIME_CLIENT_DISPLAY_NAME} />
+        {draft && <strong className="mi-presentation-draft">Draft · Morris staff only</strong>}
+        <button className="exec-icon" type="button" aria-label="Close presentation" onClick={onClose}><X size={20} /></button></>} />
     <div className="exec-presentation-body mi-presentation-body" onTouchStart={event => {
       gesture.current = undefined;
       if (event.touches.length !== 1 || (event.target instanceof Element && event.target.closest("button, select, summary, .mi-trend-viewport"))) return;
@@ -121,15 +122,11 @@ export default function ExecutivePresentation({ report, onClose, scope = "overvi
       if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { go(current + (dx < 0 ? 1 : -1)); setPlaying(false); }
     }} onTouchCancel={() => { gesture.current = undefined; }}>
       {chapter ? <div className="platform-chapter mi-presentation-chapter" data-layout={chapter.timeline ? "trend" : chapter.people ? "team" : chapter.data ? "chart" : current === 0 ? "opening" : "narrative"} key={current} aria-live={playing ? "off" : "polite"}>
-        <span className="exec-kicker">{period} · {current + 1} / {chapters?.length}</span>
-        <h2 id="presentation-title">{chapter.title}</h2>
         {chapter.text && <p>{chapter.text}</p>}
         <PresentationContent chapter={chapter} onLink={onLink} month={report.month} draft={draft} />
         {onLink && <button className="mi-presentation-link mi-presentation-return" type="button" onClick={() => onLink(chapter.link)}>Open live report</button>}
       </div> : <>
       <div className="exec-scene mi-presentation-chapter" data-layout={current === 0 ? "opening" : "legacy"} key={current} aria-live={playing ? "off" : "polite"}>
-        <span className="exec-kicker">{period} · {current + 1} / {scenes.length}</span>
-        <h2 id="presentation-title">{scene.title}</h2>
         {scene.value && <p className="exec-scene-value">{scene.value}</p>}
         {((scope === "overview" && current === 2) || (scope !== "overview" && current === 1)) && <Sparkline rows={history} />}
         {scene.rows.length ? <ul>{scene.rows.map((row, i) => <li key={i}>{row}</li>)}</ul> : <p>No published allocations for this chapter.</p>}

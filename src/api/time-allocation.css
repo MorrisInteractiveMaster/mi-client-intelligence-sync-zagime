@@ -1,4 +1,5 @@
 .time-allocation-panel { min-inline-size: 0; }
+.nordic.secure-shell .delivery-allocation[data-page="true"] { margin-block-start: 0; }
 .delivery-allocation {
   --mi-time-ink: light-dark(#162d45, #eef4fb);
   --mi-time-muted: light-dark(#52667b, #aabed3);
@@ -294,6 +295,15 @@
 .time-drawer-notes span { color: var(--mi-time-muted); }
 .nordic.secure-shell .time-alloc-drawer .time-drawer-notes textarea { min-height: 62px; resize: vertical; }
 .nordic.secure-shell .time-alloc-drawer .time-drawer-notes textarea[aria-label="Reporting description"] { min-height: 76px; }
+.nordic.secure-shell .time-alloc-drawer { width:min(100%, 44rem); }
+.time-drawer-annotations { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr)); gap:12px; }
+.nordic.secure-shell .time-alloc-drawer .time-drawer-annotations textarea { min-height: 98px; }
+.nordic.secure-shell .time-drawer-footer { z-index:2; gap:8px; }
+.nordic.secure-shell .time-drawer-footer p { flex:1 0 100%; color:var(--mi-time-muted); margin:0; }
+.nordic.secure-shell .time-drawer-footer button { min-height:44px; margin:0; }
+.nordic.secure-shell .delivery-allocation .time-entries tr:has(input[type="checkbox"]:checked) > :is(td,th) {
+  background: light-dark(#edf5ff, #1d3a55);
+}
 .time-drawer-footer { position: sticky; bottom: -16px; padding-block: 7px; margin-top: 8px;
   justify-content: flex-end; background: var(--mi-time-surface); border-block-start: 1px solid var(--mi-time-line); }
 .nordic.secure-shell .time-drawer-footer button { margin: 0; }
