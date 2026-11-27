@@ -101,5 +101,10 @@
 .mi-qbo-inventory li { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; padding-block:10px; border-top:1px solid var(--mi-line); }
 .mi-qbo-inventory li p,.mi-qbo-diagnostics { font-size:.83rem; }
 .mi-qbo-link-actions { gap:7px; }
+.mi-qbo-setup button:has(svg) { display:inline-flex; align-items:center; gap:6px; }
+.nordic.secure-shell .mi-qbo-choice-list button:has(svg) { display:grid; }
+.mi-qbo-create-link { display:inline-flex; align-items:center; min-height:40px; padding:5px 10px; border:1px solid var(--mi-line); border-radius:8px; color:var(--mi-ink); text-decoration:none; font-size:.85rem; font-weight:700; }
+.mi-qbo-create-link:hover { background:var(--mi-background); text-decoration:underline; }
+.mi-qbo-create-link:focus-visible { outline:2px solid #5386a5; outline-offset:2px; }
 .mi-qbo-link-project { padding:12px; border:1px solid var(--mi-line); border-radius:10px; }
 .mi-qbo-diagnostics summary { cursor:pointer; }

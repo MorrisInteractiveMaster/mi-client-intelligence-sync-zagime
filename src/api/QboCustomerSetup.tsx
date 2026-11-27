@@ -107,7 +107,7 @@ export function QboCustomerSetup({ client, tenant, setup, reload, month }: {
               <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
                 setSelected(project); setTarget(project.suggestions.length === 1 ? project.suggestions[0] : ""); setTargetFilter("");
               }}><Link2 size={15} aria-hidden="true" /> Link to Existing Project</button>
-              <PlatformLink href={periodHref("/workspace/projects/new", month, { "qbo-source": project.key })}>Create Project</PlatformLink>
+              <PlatformLink className="mi-qbo-create-link" href={periodHref("/workspace/projects/new", month, { "qbo-source": project.key })}>Create Project</PlatformLink>
             </div>}
         </li>)}
       </ul>

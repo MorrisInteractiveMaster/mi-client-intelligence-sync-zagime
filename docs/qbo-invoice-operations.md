@@ -248,8 +248,20 @@ qcreate_schedule() {
     --oidc-service-account-email="$Q_EMAIL" --oidc-token-audience="$Q_AUDIENCE" \
     --attempt-deadline=180s --max-retry-attempts=1 --min-backoff=60s --max-backoff=60s
 }
-# After explicit activation approval:
+# For an existing V6 invoice job, verify its original target and identity before resuming it.
+qresume_schedule() {
+  [[ -n "${Q_SCHED_REV:-}" ]] || return 1
+  qg run services describe "$Q_SERVICE" --project="$Q_PROJECT" --region="$Q_REGION" --format=json > "$Q_EVIDENCE/automation-serving.json" || return 1
+  [[ $(qtraffic "$Q_EVIDENCE/automation-serving.json") == "$Q_SCHED_REV=100" ]] || return 1
+  qg scheduler jobs describe "$Q_JOB" --project="$Q_PROJECT" --location="$Q_REGION" --format=json > "$Q_EVIDENCE/invoice-job.json" || return 1
+  jq -e --arg audience "$Q_AUDIENCE" --arg caller "$Q_EMAIL" '
+    .state=="PAUSED" and .schedule=="0 7 * * *" and .timeZone=="America/Regina" and .httpTarget.uri==$audience and
+    .httpTarget.oidcToken.audience==$audience and .httpTarget.oidcToken.serviceAccountEmail==$caller' "$Q_EVIDENCE/invoice-job.json" >/dev/null || return 1
+  qg scheduler jobs resume "$Q_JOB" --project="$Q_PROJECT" --location="$Q_REGION"
+}
+# After explicit activation approval, choose one for the verified Cloud Scheduler state.
 # if qcreate_schedule; then qg scheduler jobs describe "$Q_JOB" --project="$Q_PROJECT" --location="$Q_REGION"; fi
+# if qresume_schedule; then printf 'Existing invoice schedule resumed.\n'; fi
 # Optionally run after approval and inspect the invoice timestamp and Scheduler result:
 # qg scheduler jobs run "$Q_JOB" --project="$Q_PROJECT" --location="$Q_REGION"
 ```
