@@ -12,6 +12,7 @@ import { key } from "../server/firestore-store";
 import { apiServer, RequestLimit } from "../server/http";
 import { seedProjectSynthetic } from "../server/project-operator";
 import { ProjectBackend, ProjectStore } from "../server/project-workspace";
+import { invoiceSchedulePath } from "../server/qbo-invoice-scheduler";
 import { QboInvoices } from "../server/qbo-invoices";
 import { QboInvoicesProvider } from "../server/qbo-invoices-provider";
 import { projectView, type Project } from "../src/projects/model";
@@ -47,8 +48,11 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
     PrivateNote: "QBO-PRIVATE-NOTE", Line: [{ Description: "Related work order WO1267." }],
   };
   const paid = { ...fixture, Id: "2", DocNumber: "1018", Balance: 0, TxnDate: "2026-10-21", Line: [] };
+  const unmapped = { ...fixture, Id: "4", DocNumber: "1031", ProjectRef: undefined, Line: [], DueDate: "2026-12-12" };
   const next = { ...fixture, Id: "3", DocNumber: "1030", TotalAmt: 2100, Balance: 2100, DueDate: "2026-12-04", Line: [] };
-  let fixtureRows = [fixture, paid, next], refreshes = 0, disconnected = false, upstreamFailure = false;
+  let queryBarrier: Promise<void> | undefined;
+  let reportQuery: (() => void) | undefined;
+  let fixtureRows = [fixture, paid, next, unmapped], refreshes = 0, disconnected = false, upstreamFailure = false;
   const cfg = {
     tenant, realm: "123", customerIds: ["600"], currency: "CAD", clientId: "fixture", clientSecret: "fixture",
     key: Buffer.alloc(32, 1), sandbox: true, redirect: "",
@@ -66,11 +70,17 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       return Response.json({ access_token: "synthetic-access", refresh_token: "synthetic-refresh-" + refreshes });
     }
     if (url.pathname.endsWith("tokens/revoke")) { disconnected = true; return new Response(null, { status: 200 }); }
+    reportQuery?.();
+    await queryBarrier;
     assert.match(url.searchParams.get("query")!, /from Invoice where CustomerRef = '600'/);
     return upstreamFailure ? new Response(null, { status: 502 }) : Response.json({ QueryResponse: { Invoice: fixtureRows } });
   });
   const options = { projects, invoices: new QboInvoices(store, provider, now), frontend: directory,
-    allowedOrigin: "", limit: new RequestLimit(2000) };
+    allowedOrigin: "", limit: new RequestLimit(2000),
+    authorizeInvoiceSchedule: async (auth: string) => {
+      if (auth !== "Bearer synthetic-schedule") throw Error("Unauthenticated");
+      return "invoice-scheduler@example.invalid";
+    } };
   const server = apiServer(undefined as unknown as ReportingBackend, options);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -81,7 +91,9 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
     fetch(origin + "/api/v2/tenants/" + scope + "/invoices" + action, { headers: {
       Authorization: "Bearer " + role, ...(body && { "Content-Type": "application/json" }),
     }, ...(body && { method: "POST", body: JSON.stringify(body) }) });
+  const scheduled = (role = "synthetic-schedule") => fetch(origin + invoiceSchedulePath, { method: "POST", headers: { Authorization: "Bearer " + role } });
   try {
+    assert.equal((await scheduled("owner")).status, 401);
     await build({
       stdin: { contents: `import React from "react"; import {createRoot} from "react-dom/client";
         import {PlatformApplication} from "./src/api/PlatformApplication"; import {SecuredApiClient} from "./src/api/client";
@@ -135,10 +147,16 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       }
       await page.getByText("QuickBooks Online connected. Sync invoices to review them.").waitFor();
       await page.getByRole("button", { name: "Sync invoices" }).click();
-      await page.getByText("3 invoices synced from QuickBooks Online.").waitFor();
+      await page.getByText("4 invoices synced from QuickBooks Online.").waitFor();
       await page.getByRole("article", { name: "Invoice 1024" }).waitFor();
-      assert.equal(await page.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Invoices" }).getAttribute("aria-description"), "2 outstanding");
+      assert.equal(await page.getByRole("navigation", { name: "Morris workspace sections" }).getByRole("button", { name: "Invoices" }).getAttribute("aria-description"), "3 outstanding");
       await page.screenshot({ path: join(evidence, "staff-1440-light.png"), fullPage: true, animations: "disabled" });
+      const aligned = await page.evaluate(() => {
+        const sidebar = document.querySelector(".mi-workspace-sidebar")!.getBoundingClientRect();
+        const content = document.querySelector(".mi-workspace-body")!.getBoundingClientRect();
+        return Math.abs(sidebar.top - content.top) <= 2;
+      });
+      assert.equal(aligned, true, "workspace sidebar and content start together");
       await page.getByRole("button", { name: "Collapse navigation" }).click();
       assert.equal(await page.locator('.mi-workspace-sidebar button[aria-label="Invoices"] .mi-nav-notice').isVisible(), true);
       await page.getByRole("button", { name: "Expand navigation" }).click();
@@ -153,6 +171,19 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
         await row.getByRole("button", { name: "Approve for client" }).click();
         await row.getByText("Approved for client", { exact: true }).waitFor();
       }
+      const unlinkedRow = page.getByRole("article", { name: "Invoice 1031" });
+      const unlinked = (await (await call("owner")).json()).invoices.find((row: { number: string }) => row.number === "1031");
+      const explicit = { id: unlinked.id, revision: unlinked.approval.revision, approved: true };
+      assert.equal((await call("owner", "/approval", explicit)).status, 400);
+      assert.equal((await call("owner", "/approval", { ...explicit, audience: ["unrelated-profile"] })).status, 400);
+      await unlinkedRow.getByRole("button", { name: "Review client audience" }).click();
+      const audienceDialog = page.getByRole("dialog", { name: "Choose who can see invoice 1031" });
+      await audienceDialog.getByRole("checkbox", { name: new RegExp(key("empty").slice(-8)) }).check();
+      await audienceDialog.getByRole("button", { name: "Approve selected profiles" }).click();
+      await unlinkedRow.getByText("Approved for client", { exact: true }).waitFor();
+      assert.equal((await (await call("empty")).json()).invoices.length, 1);
+      await unlinkedRow.getByRole("button", { name: "Withdraw approval" }).click();
+      await unlinkedRow.getByText("Staff only", { exact: true }).waitFor();
       const limited = (await (await call("limited")).json()).invoices;
       assert.deepEqual(limited.map((row: { number: string }) => row.number), ["1030"]);
       const client = await browser.newContext({ viewport: { width: 768, height: 1024 }, reducedMotion: "reduce" });
@@ -161,7 +192,9 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       await portal.goto(origin + "/clients/zagime/invoices");
       await portal.getByRole("article", { name: "Invoice 1024" }).getByText("Due today").waitFor();
       assert.equal(await portal.getByRole("button", { name: "Sync invoices" }).count(), 0);
-      assert.doesNotMatch(JSON.stringify(await (await call("client")).json()), /QBO-PRIVATE-NOTE|Synthetic private customer|approval|customerId/);
+      const published = await (await call("client")).json();
+      assert.doesNotMatch(JSON.stringify(published), /QBO-PRIVATE-NOTE|Synthetic private customer|approval|customerId|connected|configured|token|audience/);
+      assert.notEqual(published.invoices.find((r: { number: string }) => r.number === "1024").id, "1");
       await portal.getByLabel("Payment status").selectOption("partiallyPaid");
       await portal.getByText("1 matching invoice · 2 total").waitFor();
       await portal.getByLabel("Project", { exact: true }).selectOption(p2);
@@ -188,6 +221,28 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
         } finally { await mobile.close(); }
       }
 
+      upstreamFailure = true;
+      assert.equal((await scheduled()).status, 503);
+      await portal.reload();
+      await portal.getByText("Balances may be out of date").waitFor();
+      await portal.screenshot({ path: join(evidence, "client-stale-768-light.png"), fullPage: true, animations: "disabled" });
+      await page.reload();
+      await page.getByText("Balances may be out of date").waitFor();
+      await page.screenshot({ path: join(evidence, "staff-stale-1440-light.png"), fullPage: true, animations: "disabled" });
+      upstreamFailure = false;
+      fixtureRows = [{ ...fixture, Balance: 0 }, paid, next, unmapped];
+      assert.equal((await scheduled()).status, 200);
+      await portal.goto(origin + "/clients/zagime/invoices");
+      await portal.getByRole("article", { name: "Invoice 1024" }).getByText("Paid", { exact: true }).waitFor();
+      assert.equal(await portal.locator('button[aria-label="Invoices"][aria-description]').count(), 0);
+      await page.goto(origin + "/clients/zagime?month=2026-11&previewScope=" + key("client"));
+      const previewMode = page.getByLabel("Preview mode");
+      await previewMode.waitFor();
+      const period = page.locator(".reporting-period__stepper");
+      const [stepperBox, previewBox] = await Promise.all([period.boundingBox(), previewMode.boundingBox()]);
+      assert.ok(stepperBox && previewBox && Math.abs((stepperBox.y + stepperBox.height / 2) - (previewBox.y + previewBox.height / 2)) <= 2,
+        "preview picker and reporting stepper share a center line");
+      await page.screenshot({ path: join(evidence, "staff-published-preview-1440-light.png"), fullPage: true, animations: "disabled" });
       const empty = await browser.newContext({ viewport: { width: 390, height: 844 } });
       await empty.addInitScript(() => { Reflect.set(window, "__role", "empty"); });
       const noProjects = await empty.newPage();
@@ -201,16 +256,34 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
 
     const before = (await (await call("owner")).json()).invoices.find((row: { number: string }) => row.number === "1024");
     fixtureRows = [{ ...fixture, Balance: 0 }, paid, next];
-    assert.equal((await call("owner", "/sync", {})).status, 200);
+    let unblock!: () => void;
+    queryBarrier = new Promise<void>(resolve => { unblock = resolve; });
+    const fetching = new Promise<void>(resolve => { reportQuery = resolve; });
+    const scheduledSync = scheduled();
+    await fetching;
+    try {
+      assert.equal((await call("owner", "/sync", {})).status, 409);
+      assert.equal((await scheduled()).status, 409);
+    } finally { unblock(); }
+    assert.equal((await scheduledSync).status, 200);
+    queryBarrier = undefined;
+    reportQuery = undefined;
     assert.equal((await (await call("client")).json()).invoices.find((row: { number: string }) => row.number === "1024").balance, 0);
     upstreamFailure = true;
     assert.equal((await call("owner", "/sync", {})).status, 503);
-    assert.equal((await (await call("client")).json()).invoices.length, 2, "failed refresh retains the approved mirror");
+    const stale = await (await call("client")).json();
+    assert.equal(stale.invoices.length, 2, "failed refresh retains the approved mirror");
+    assert.equal(stale.freshness, "stale");
+    assert.equal(typeof stale.syncedAt, "string");
     upstreamFailure = false;
     fixtureRows = [{ ...fixture, TotalAmt: 6000 }, paid, next];
     assert.equal((await call("owner", "/sync", {})).status, 200);
     assert.equal((await call("owner", "/approval", { id: "1", approved: true, revision: before.approval.revision })).status, 409);
     assert.equal((await (await call("client")).json()).invoices.length, 1);
+    assert.equal((await (await call("client")).json()).freshness, "current");
+    fixtureRows = [{ ...next, TotalAmt: 0, Balance: 0, PrivateNote: "Voided — fixture" }];
+    assert.equal((await scheduled()).status, 200);
+    assert.deepEqual((await (await call("owner")).json()).invoices, [], "successful full mirror removes deleted and voided rows");
     await root.collection("projectViews").doc(p1).update({ published: false });
     assert.deepEqual((await (await call("client")).json()).invoices, []);
     assert.equal((await call("owner", "/disconnect", {})).status, 200);

@@ -35,7 +35,10 @@
 .mi-invoice-details { margin:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; font-size:.88rem; }
 .mi-invoice-details dd { margin:3px 0 0; overflow-wrap:anywhere; font-weight:600; }
 .mi-invoice-balance { display:grid; gap:4px; min-width:0; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
-.mi-invoice-balance progress { width:100%; height:8px; accent-color:#388a78; }
+.mi-invoice-balance progress { width:100%; height:8px; display:block; appearance:none; border:0; border-radius:8px; overflow:hidden; background:var(--mi-line,#dce7eb); }
+.mi-invoice-balance progress::-webkit-progress-bar { background:var(--mi-line,#dce7eb); }
+.mi-invoice-balance progress::-webkit-progress-value { background:linear-gradient(90deg,#237968,#69c3a2); border-radius:8px; }
+.mi-invoice-balance progress::-moz-progress-bar { background:linear-gradient(90deg,#237968,#69c3a2); border-radius:8px; }
 .mi-invoice-chips { display:flex; flex-wrap:wrap; gap:4px; }
 .mi-invoice-chips span { padding:3px 7px; background:#e8edf4; color:#253649; border-radius:999px; font-size:.74rem; font-weight:700; }
 .mi-invoice-chips [data-tone=paid] { background:#d9f4e8; color:#16483a; }
@@ -46,6 +49,15 @@
 .mi-invoice-empty { padding:16px; }
 .mi-invoice-empty p,.mi-invoice-feedback { margin:6px 0 0; }
 .mi-invoice-register .mi-invoice-empty { margin:0 16px 16px; }
+.mi-invoice-stale { display:flex; align-items:flex-start; gap:10px; padding:12px; border:1px solid #a17a34; border-radius:10px; background:#fff2d7; color:#583708; }
+.mi-invoice-stale svg { flex:none; }
+.mi-invoice-stale p { margin:2px 0 0; }
+[data-theme=dark] .mi-invoice-stale { background:#3c301d; color:#ffe4a6; }
+.mi-invoice-audience { width:min(30rem,calc(100vw - 24px)); max-height:calc(100vh - 24px); color:var(--mi-ink); background:var(--mi-surface,#fff); border:1px solid var(--mi-line); border-radius:12px; }
+.mi-invoice-audience::backdrop { background:#071222ad; }
+.mi-invoice-audience fieldset { display:grid; gap:8px; border:1px solid var(--mi-line); }
+.mi-invoice-audience fieldset label { display:flex; align-items:center; gap:8px; overflow-wrap:anywhere; }
+.mi-invoice-audience fieldset input { width:auto; min-height:0; }
 .mi-nav-item .mi-nav-notice { display:block; width:8px; height:8px; border-radius:50%; background:#f26670; outline:1px solid #7e242c; flex:0 0 8px; margin-inline-start:auto; }
 .mi-workspace-frame[data-collapsed=true] .mi-nav-item:has(.mi-nav-notice) { position:relative; }
 .mi-workspace-frame[data-collapsed=true] .mi-nav-item .mi-nav-notice { position:absolute; inset:5px 5px auto auto; }

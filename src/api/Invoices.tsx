@@ -16,8 +16,14 @@ export function useInvoices(client: SecuredApiClient, tenant: string, preview?: 
     const controller = new AbortController();
     client.call<InvoiceView>(tenant, endpoint, { signal: controller.signal }).then(view => {
       if (!controller.signal.aborted) setResult({ key, client, view });
-    }).catch(() => {
-      if (!controller.signal.aborted) setResult({ key, client, error: "Invoices are temporarily unavailable. Please try again." });
+    }).catch(problem => {
+      if (controller.signal.aborted) return;
+      const authorizationFailed = problem instanceof ApiError && [401, 403, 404, 409].includes(problem.status);
+      setResult(prior => ({
+        key, client, error: "Invoices could not be refreshed. Please try again.",
+        ...(prior?.key === key && prior.client === client && prior.view?.syncedAt && !authorizationFailed &&
+          { view: { ...prior.view, freshness: "stale" as const } }),
+      }));
     });
     return () => controller.abort();
   }, [client, tenant, endpoint, epoch, key]);
@@ -37,7 +43,8 @@ export function invoiceNavNotice(view: InvoiceView | undefined, staff: boolean) 
     const state = invoiceState(invoice, view.today);
     return staff ? state.outstanding : state.overdue || state.dueToday;
   }).length;
-  if (flagged) return staff ? flagged + " outstanding" : flagged + " overdue or due today";
+  if (flagged) return (staff ? flagged + " outstanding" : flagged + " overdue or due today") +
+    (view.freshness === "stale" ? " · last available balances" : "");
 }
 
 function money(amount: number, currency: string) {
@@ -52,6 +59,10 @@ function shortDate(value?: string) {
   return value ? new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value)) : "No due date";
 }
 const pageSize = 12;
+const syncDate = new Intl.DateTimeFormat("en-CA", {
+  dateStyle: "medium", timeStyle: "short", timeZone: "America/Regina",
+});
+type ClientAudience = { id: string; label: string };
 
 export function Invoices({ client, tenant, staff, model }: {
   client: SecuredApiClient; tenant: string; staff?: boolean; model: ReturnType<typeof useInvoices>;
@@ -61,6 +72,22 @@ export function Invoices({ client, tenant, staff, model }: {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [failure, setFailure] = useState("");
+  const [approval, setApproval] = useState<Invoice>();
+  const approvalDialog = useRef<HTMLDialogElement>(null);
+  const [profiles, setProfiles] = useState<ClientAudience[]>();
+  const [audience, setAudience] = useState<string[]>([]);
+  useEffect(() => { if (approval && !approvalDialog.current?.open) approvalDialog.current?.showModal(); }, [approval]);
+  async function reviewAudience(invoice: Invoice) {
+    setFailure("");
+    setAudience(invoice.approval?.audience ?? []);
+    setProfiles(undefined);
+    setApproval(invoice);
+    try {
+      setProfiles(await client.call<ClientAudience[]>(tenant, "client-preview/scopes"));
+    } catch {
+      setProfiles([]);
+    }
+  }
   const cancelConnection = useRef<() => void>(undefined);
   useEffect(() => () => cancelConnection.current?.(), []);
   async function connect() {
@@ -144,7 +171,7 @@ export function Invoices({ client, tenant, staff, model }: {
     } catch (problem) {
       reload();
       setFailure(problem instanceof ApiError && problem.status === 409 ? "The invoice or connection changed. Review the refreshed information and try again."
-        : problem instanceof ApiError && problem.status === 400 ? "Check that each linked project is published before approving this invoice."
+        : problem instanceof ApiError && problem.status === 400 ? "Check that linked projects are published and selected client profiles are active."
         : "This action could not be completed. Check the QuickBooks Online connection and retry.");
     } finally { setBusy(false); }
   }
@@ -159,11 +186,15 @@ export function Invoices({ client, tenant, staff, model }: {
     <header className="mi-invoice-hero">
       <div><div className="mi-kicker"><ReceiptText size={15} aria-hidden="true" /> Billing</div>
         <h2 id={staff ? "staff-page-title" : undefined} tabIndex={-1}>Invoices</h2><p>{staff ? "Review balances and control which invoices are visible to the client." : "See approved invoices, upcoming due dates, and what remains to be paid."}</p></div>
-      {view?.syncedAt && <p className="mi-invoice-freshness">Last synced <time dateTime={view.syncedAt}>{shortDate(view.syncedAt.slice(0, 10))}</time></p>}
+      {view?.syncedAt && <p className="mi-invoice-freshness">Last successful sync <time dateTime={view.syncedAt}>{syncDate.format(new Date(view.syncedAt))} Regina</time></p>}
     </header>
     {(notice || busy) && <p role="status" className="mi-invoice-feedback">{busy ? "Working with QuickBooks Online…" : notice}</p>}
     {(error || failure) && <p role="alert" className="mi-invoice-feedback">{failure || error} {error && <button type="button" onClick={reload}>Retry</button>}</p>}
     {!view && !error && <p role="status" className="mi-invoice-empty">Loading invoices…</p>}
+    {view?.freshness === "stale" && <aside className="mi-invoice-stale" role="status">
+      <CalendarClock size={20} aria-hidden="true" /><div><strong>Balances may be out of date</strong>
+      <p>Amounts and alerts use the last successful sync. Recent payments or credits may still be missing.</p></div>
+    </aside>}
     {view?.canManage && view.configured && <div className="mi-invoice-operator">
       <span><strong>QuickBooks Online</strong> · {view.connected ? "Connected" : "Disconnected"}</span>
       <div>{view.connected ? <>
@@ -174,9 +205,13 @@ export function Invoices({ client, tenant, staff, model }: {
         }}>Disconnect</button>
       </> : <button type="button" disabled={busy} onClick={() => void connect()}>Connect QuickBooks Online</button>}</div>
     </div>}
-    {view && !all.length && <div className="mi-invoice-empty"><ReceiptText size={28} aria-hidden="true" /><h3>{staff ? "No invoices synced" : "No approved invoices yet"}</h3>
-      <p>{staff ? view.configured ? "An administrator can connect the approved company and sync its invoices." : "Invoice visibility has not been configured for this workspace." :
-        "Invoices will appear here once Morris Interactive has approved them for your workspace."}</p></div>}
+    {view && !all.length && <div className="mi-invoice-empty"><ReceiptText size={28} aria-hidden="true" />
+      <h3>{view.freshness === "unavailable" ? "Invoice balances unavailable" : staff ? "No invoices in the last sync" : "No approved invoices yet"}</h3>
+      <p>{view.freshness === "unavailable" ? staff && view.configured
+        ? "Connect the approved company and complete a successful sync to see verified balances."
+        : "Verified invoice balances are unavailable. Contact Morris Interactive if you need a current balance."
+        : staff ? "The last complete snapshot contained no invoices in the verified customer scope."
+        : "Invoices will appear here once Morris Interactive approves them for your workspace."}</p></div>}
     {all.length > 0 && <>
       <div className="mi-invoice-summary" aria-label="Invoice balances across all approved dates">
         {summary.map(({ label, rows, field, hint, icon: Icon }) => <article key={label}><Icon size={19} aria-hidden="true" />
@@ -221,10 +256,12 @@ export function Invoices({ client, tenant, staff, model }: {
               <small>{invoice.approval.approved ? "Approved for client" : "Staff only"}</small>
               {invoice.note && <details><summary>Private memo</summary><p>{invoice.note}</p></details>}
               {view?.canManage && <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
-                if (!invoice.approval!.approved && !window.confirm("Approve this invoice for eligible client members?" +
-                  (invoice.projects.length ? " Members need access to every linked project." : " This invoice has no project links. Every approved client member can see it."))) return;
+                if (!invoice.approval!.approved) {
+                  if (!invoice.projects.length) { void reviewAudience(invoice); return; }
+                  if (!window.confirm("Approve this invoice for client members who can access every linked project?")) return;
+                }
                 void manage("approval", { id: invoice.id, revision: invoice.approval!.revision, approved: !invoice.approval!.approved });
-              }}>{invoice.approval.approved ? "Withdraw approval" : "Approve for client"}</button>}
+              }}>{invoice.approval.approved ? "Withdraw approval" : invoice.projects.length ? "Approve for client" : "Review client audience"}</button>}
             </div>}
           </article>;
         })}
@@ -235,5 +272,24 @@ export function Invoices({ client, tenant, staff, model }: {
         </nav>}
       </section>
     </>}
+    {approval && <dialog className="mi-invoice-audience" aria-labelledby="mi-invoice-audience-title" ref={approvalDialog} onClose={() => setApproval(undefined)}>
+      <form onSubmit={e => {
+        e.preventDefault();
+        approvalDialog.current?.close();
+        void manage("approval", { id: approval.id, revision: approval.approval!.revision, approved: true, audience });
+      }}>
+        <h3 id="mi-invoice-audience-title">Choose who can see invoice {approval.number}</h3>
+        <p>This invoice has no linked project. It stays private unless you select its intended client access profiles.</p>
+        {!profiles ? <p role="status">Loading approved profiles…</p> : profiles.length ? <fieldset><legend>Approved profiles</legend>
+          {profiles.map(profile => <label key={profile.id}><input type="checkbox" checked={audience.includes(profile.id)}
+            onChange={e => setAudience(old => e.target.checked ? [...old, profile.id] : old.filter(id => id !== profile.id))} />
+            {profile.label} · {profile.id.slice(-8)}</label>)}</fieldset> :
+          <p>No approved client profiles are available to select.</p>}
+        <div className="mi-invoice-pagination">
+          <button type="button" className="secure-secondary" onClick={() => approvalDialog.current?.close()}>Cancel</button>
+          <button type="submit" disabled={!profiles?.length || !audience.length || busy}>Approve selected profiles</button>
+        </div>
+      </form>
+    </dialog>}
   </section>;
 }

@@ -1,14 +1,20 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import type { DocumentReference, Transaction } from "firebase-admin/firestore";
 import { deliveryDate } from "../src/projects/delivery";
-import type { Invoice, InvoiceView } from "../src/projects/invoices";
+import { invoiceFreshness, type Invoice, type InvoiceView } from "../src/projects/invoices";
 import type { VerifiedIdentity } from "./contracts";
 import type { ProjectStore } from "./project-workspace";
+import { assertProductionTenant, assertProjectDatabase } from "./database-target";
+import { key } from "./firestore-store";
 import { numericQboId, type InvoiceSource, type QboInvoicesProvider } from "./qbo-invoices-provider";
 
-type Mirror = { scope: string; syncedAt: string; rows: InvoiceSource[]; approvals: Record<string, string> };
+type Approval = string | { revision: string; audience: string[] };
+type Mirror = { scope: string; syncedAt: string; rows: InvoiceSource[]; approvals: Record<string, Approval> };
+const revisionOf = (approval?: Approval) => typeof approval === "string" ? approval : approval?.revision;
+const audienceOf = (approval?: Approval) => typeof approval === "object" ? approval.audience : undefined;
+type Authorize = (tx: Transaction) => Promise<{ root: DocumentReference; scope: string }>;
 type Connection = {
-  scope?: string; token?: string; busy?: { id: string; expires: number };
+  scope?: string; token?: string; lastFailedAt?: string; busy?: { id: string; expires: number };
   pending?: { hash: string; actor: string; expires: number };
 };
 
@@ -59,8 +65,8 @@ export class QboInvoices {
       const a = await this.store.access(tx, tenant, who);
       if (request.preview && !a.staff) throw Error("Forbidden");
       const staff = a.staff && !request.preview;
-      const empty = { today: deliveryDate(new Date(this.now())), configured: Boolean(scope), invoices: [],
-        ...(staff && { canManage: a.platformAdmin, connected: false }) };
+      const empty = { today: deliveryDate(new Date(this.now())), invoices: [], freshness: "unavailable" as const,
+        ...(staff && { configured: Boolean(scope), canManage: a.platformAdmin, connected: false }) };
       if (!scope) return empty;
       const [mirrorSnapshot, connectionSnapshot] = await tx.getAll(this.mirror(a.root), this.connection(a.root));
       const mirror = mirrorSnapshot.data() as Mirror | undefined;
@@ -70,15 +76,20 @@ export class QboInvoices {
       const grants = new Set(request.preview ? await this.store.clientPreviewProjectIds(tx, a.root, request.scope) : a.projectIds);
       const names = await this.projectNames(tx, a.root, [...new Set(mirror.rows.flatMap(row => row.projectIds))].filter(id => staff || grants.has(id)), !staff);
       result.syncedAt = mirror.syncedAt;
+      result.freshness = connection?.scope !== scope || !connection.token ? "stale" : invoiceFreshness(this.now(), mirror.syncedAt, connection.lastFailedAt);
+      const member = request.preview ? request.scope : key(who.subject);
       result.invoices = mirror.rows.flatMap(row => {
         const revision = invoiceRevision(row);
-        const approved = mirror.approvals[row.id] === revision;
-        if (!staff && (!approved || row.projectIds.some(id => !names.has(id)))) return [];
+        const approval = mirror.approvals[row.id];
+        const audience = audienceOf(approval);
+        const approved = revisionOf(approval) === revision && (row.projectIds.length > 0 || Boolean(audience?.length));
+        const allowed = row.projectIds.length ? row.projectIds.every(id => names.has(id)) : Boolean(member && audience?.includes(member));
+        if (!staff && (!approved || !allowed)) return [];
         // Finance notes and QBO identifiers belong to the staff projection exclusively.
         const view: Invoice = { id: staff ? row.id : digest(scope + ":" + row.id), number: row.number,
           txnDate: row.txnDate, ...(row.dueDate && { dueDate: row.dueDate }), currency: row.currency,
           total: row.total, balance: row.balance, projects: row.projectIds.map(id => ({ id, name: names.get(id) ?? "Unavailable project" })),
-          ...(staff && { customer: row.customer ?? row.customerId, ...(row.note && { note: row.note }), approval: { approved, revision } }),
+          ...(staff && { customer: row.customer ?? row.customerId, ...(row.note && { note: row.note }), approval: { approved, revision, ...(audience?.length && { audience }) } }),
         };
         return [view];
       }).sort((a, b) => b.txnDate.localeCompare(a.txnDate) || a.number.localeCompare(b.number));
@@ -93,9 +104,11 @@ export class QboInvoices {
     return { root: a.root, scope };
   }
   async approve(tenant: string, who: VerifiedIdentity, input: Record<string, unknown>) {
-    const { id, revision, approved } = input;
+    const { id, revision, approved, audience } = input;
     if (!numericQboId(id) || typeof revision !== "string" || !/^[a-f0-9]{64}$/.test(revision) || typeof approved !== "boolean")
       throw Error("Invalid invoice approval");
+    if (audience !== undefined && (!Array.isArray(audience) || audience.length < 1 || audience.length > 100 ||
+        !audience.every(shortId) || new Set(audience).size !== audience.length)) throw Error("Invalid invoice audience");
     return this.store.db.runTransaction(async tx => {
       const { root, scope } = await this.operator(tx, tenant, who);
       const ref = this.mirror(root);
@@ -105,19 +118,30 @@ export class QboInvoices {
       if (!row || !mirror || invoiceRevision(row) !== revision) throw Error("Revision conflict");
       if (approved && (await this.projectNames(tx, root, row.projectIds, true)).size !== row.projectIds.length)
         throw Error("Invalid unpublished invoice project");
-      if ((mirror.approvals[id] === revision) === approved) return { ok: true };
+      if (audience !== undefined && (!approved || row.projectIds.length)) throw Error("Invalid invoice audience");
+      if (approved && !row.projectIds.length) {
+        if (!Array.isArray(audience)) throw Error("Invalid invoice audience");
+        const memberships = await tx.getAll(...audience.map(id => root.collection("memberships").doc(id)));
+        if (memberships.some(doc => {
+          const m = doc.data();
+          return m?.tenantId !== tenant || m.schemaVersion !== 2 || m.role !== "client" || m.approved !== true || m.enabled !== true ||
+            typeof m.subject !== "string" || key(m.subject) !== doc.id ||
+            (assertProjectDatabase(this.store.db).mode === "production" && (typeof m.googleSubject !== "string" || !m.googleSubject));
+        })) throw Error("Invalid invoice audience");
+      }
       const approvals = { ...mirror.approvals };
-      if (approved) approvals[id] = revision;
+      if (approved) approvals[id] = row.projectIds.length ? revision : { revision, audience: [...audience as string[]].sort() };
       else delete approvals[id];
+      if (JSON.stringify(approvals) === JSON.stringify(mirror.approvals)) return { ok: true };
       tx.update(ref, { approvals });
-      this.audit(tx, root, who, approved ? "invoice-approved" : "invoice-withdrawn", id);
+      this.audit(tx, root, who.subject, approved ? "invoice-approved" : "invoice-withdrawn", id, audience as string[] | undefined);
       return { ok: true };
     });
   }
-  private audit(tx: Transaction, root: DocumentReference, who: VerifiedIdentity, action: string, entityId: string) {
+  private audit(tx: Transaction, root: DocumentReference, actor: string, action: string, entityId: string, audience?: string[]) {
     const uid = randomUUID();
     tx.create(root.collection("invoiceAudit").doc(uid), {
-      id: uid, tenantId: root.id, actor: who.subject, action, entityId, at: new Date(this.now()).toISOString(),
+      id: uid, tenantId: root.id, actor, action, entityId, at: new Date(this.now()).toISOString(), ...(audience && { audience }),
     });
   }
   async connect(tenant: string, who: VerifiedIdentity) {
@@ -131,15 +155,15 @@ export class QboInvoices {
       return { url: this.provider!.authorizationUrl(state) };
     });
   }
-  private async claim(tenant: string, who: VerifiedIdentity, callback?: { state: string; realm: string }) {
+  private async claim(authorize: Authorize, callback?: { state: string; realm: string; actor: string }) {
     const id = randomUUID();
     return this.store.db.runTransaction(async tx => {
-      const { root, scope } = await this.operator(tx, tenant, who);
+      const { root, scope } = await authorize(tx);
       const ref = this.connection(root);
       const current = (await tx.get(ref)).data() as Connection | undefined;
       if (current?.busy && current.busy.expires > this.now()) throw Error("Revision conflict");
       if (callback) {
-        if (callback.realm !== this.provider!.config.realm || !current?.pending || current.pending.actor !== who.subject ||
+        if (callback.realm !== this.provider!.config.realm || !current?.pending || current.pending.actor !== callback.actor ||
             current.pending.expires <= this.now() || current.pending.hash !== digest(callback.state)) throw Error("Forbidden");
       } else if (current?.scope !== scope || !current.token) throw Error("QBO invoices unavailable");
       const busy = { id, expires: this.now() + 600_000 };
@@ -161,18 +185,35 @@ export class QboInvoices {
     const { state, realm, code } = input;
     if (!shortId(state) || state.length !== 43 || !numericQboId(realm) || typeof code !== "string" || !code || code.length > 2048)
       throw Error("Invalid QBO callback");
-    const lease = await this.claim(tenant, who, { state, realm });
+    const lease = await this.claim(tx => this.operator(tx, tenant, who), { state, realm, actor: who.subject });
     try {
       const token = await this.provider!.token({ code });
       await this.guarded(lease, async tx => {
         tx.update(lease.ref, { scope: lease.scope, token: this.seal(token.refresh, lease.scope), busy: null });
-        this.audit(tx, lease.root, who, "qbo-invoices-connected", tenant);
+        this.audit(tx, lease.root, who.subject, "qbo-invoices-connected", tenant);
       });
       return { ok: true };
     } finally { await this.release(lease); }
   }
   async sync(tenant: string, who: VerifiedIdentity) {
-    const lease = await this.claim(tenant, who);
+    return this.synchronize(tx => this.operator(tx, tenant, who), who.subject);
+  }
+  async syncScheduled(actor: string) {
+    const tenant = this.provider?.config.tenant;
+    const scope = tenant && this.scope(tenant);
+    if (!tenant || !scope) throw Error("QBO invoices unavailable");
+    const target = assertProjectDatabase(this.store.db);
+    assertProductionTenant(target, tenant);
+    const root = this.store.db.collection("tenants").doc(tenant);
+    return this.synchronize(async tx => {
+      const meta = (await tx.get(root)).data();
+      if (meta?.schemaVersion !== 2) throw Error("Forbidden");
+      assertProductionTenant(target, tenant, meta);
+      return { root, scope };
+    }, actor);
+  }
+  private async synchronize(authorize: Authorize, actor: string) {
+    const lease = await this.claim(authorize);
     try {
       const token = await this.provider!.token({ refresh: this.unseal(lease.token!, lease.scope) });
       await this.guarded(lease, async tx => {
@@ -184,24 +225,31 @@ export class QboInvoices {
         const ref = this.mirror(lease.root);
         const previous = (await tx.get(ref)).data() as Mirror | undefined;
         const approvals = Object.fromEntries(rows.filter(row => previous?.scope === lease.scope &&
-          previous.approvals[row.id] === invoiceRevision(row)).map(row => [row.id, invoiceRevision(row)]));
+          revisionOf(previous.approvals[row.id]) === invoiceRevision(row) &&
+          (row.projectIds.length || audienceOf(previous.approvals[row.id])?.length)).map(row => [row.id, previous!.approvals[row.id]]));
         const doc = { scope: lease.scope, rows, approvals, syncedAt, configRevision: this.configRevision() };
         if (Buffer.byteLength(JSON.stringify(doc), "utf8") > 700_000) throw Error("QBO invoice scope too large");
         tx.set(ref, doc);
-        tx.update(lease.ref, { busy: null });
-        this.audit(tx, lease.root, who, "qbo-invoices-synced", tenant);
+        tx.update(lease.ref, { busy: null, lastFailedAt: null });
+        this.audit(tx, lease.root, actor, "qbo-invoices-synced", lease.root.id);
       });
       return { count: rows.length };
+    } catch (error) {
+      await this.guarded(lease, async tx => {
+        tx.update(lease.ref, { lastFailedAt: new Date(this.now()).toISOString() });
+        this.audit(tx, lease.root, actor, "qbo-invoices-sync-failed", lease.root.id);
+      }).catch(() => undefined);
+      throw error;
     } finally { await this.release(lease); }
   }
   async disconnect(tenant: string, who: VerifiedIdentity) {
-    const lease = await this.claim(tenant, who);
+    const lease = await this.claim(tx => this.operator(tx, tenant, who));
     try {
       await this.provider!.revoke(this.unseal(lease.token!, lease.scope));
       await this.guarded(lease, async tx => {
         tx.delete(lease.ref);
         tx.delete(this.mirror(lease.root));
-        this.audit(tx, lease.root, who, "qbo-invoices-disconnected", tenant);
+        this.audit(tx, lease.root, who.subject, "qbo-invoices-disconnected", tenant);
       });
       return { ok: true };
     } finally { await this.release(lease); }

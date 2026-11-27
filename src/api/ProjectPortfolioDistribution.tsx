@@ -55,7 +55,7 @@ export function ProjectPortfolioDistribution({ delivery, onLink }: { delivery: R
           <button type="button" className="exec-text-button mi-distribution-label" onClick={row.open}
             >{row.label}<ArrowUpRight size={14} aria-hidden="true" /></button>
           <DottedTrack label={row.label + " portfolio share"} value={share} tone="teal" />
-          <div className="mi-distribution-count"><b>{row.count} · {share === undefined ? "—" : percentText(share)}</b><small>{row.count} of {total} projects</small></div>
+          <div className="mi-distribution-count"><b>{row.count} · {share === undefined ? "—" : percentText(share)}</b></div>
           <ContextHelp watch=".mi-distribution-label" label={"Explain " + row.label + " distribution"}>{explanation}</ContextHelp>
         </li>;
       })}

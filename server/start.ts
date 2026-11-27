@@ -7,6 +7,7 @@ import { ProjectBackend, ProjectStore } from "./project-workspace";
 import { configureTime } from "./time-config";
 import { QboInvoices } from "./qbo-invoices";
 import { qboConfig, QboInvoicesProvider } from "./qbo-invoices-provider";
+import { invoiceSchedulerAuthorization } from "./qbo-invoice-scheduler";
 import { readFile } from "node:fs/promises";
 import {
   STAGING_DATABASE, COMPANY_PROJECT, EXPECTED_STAGING_UID,
@@ -74,8 +75,15 @@ try {
 } catch {
   console.error("QBO Invoice integration disabled: review its runtime configuration.");
 }
+let authorizeInvoiceSchedule: ReturnType<typeof invoiceSchedulerAuthorization>;
+try {
+  if (invoiceProvider) authorizeInvoiceSchedule = invoiceSchedulerAuthorization(process.env);
+} catch {
+  console.error("QBO Invoice scheduling disabled: review its runtime configuration.");
+}
 const server = apiServer(backend, {
   invoices: new QboInvoices(projectStore, invoiceProvider),
+  authorizeInvoiceSchedule,
   allowedOrigin: process.env.ALLOWED_ORIGIN,
   projects: new ProjectBackend(projectStore, identity, { issuer: `https://securetoken.google.com/${projectId}`, audience: projectId, now: Date.now }),
   time: configureTime(projectStore, mode, process.env),

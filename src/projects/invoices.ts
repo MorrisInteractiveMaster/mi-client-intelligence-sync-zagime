@@ -14,17 +14,27 @@ export type Invoice = {
   projects: { id: string; name: string }[];
   customer?: string;
   note?: string;
-  approval?: { approved: boolean; revision: string };
+  approval?: { approved: boolean; revision: string; audience?: string[] };
 };
 
 export type InvoiceView = {
   invoices: Invoice[];
   today: string;
-  configured: boolean;
+  configured?: boolean;
   connected?: boolean;
   canManage?: boolean;
   syncedAt?: string;
+  freshness: InvoiceFreshness;
 };
+
+export type InvoiceFreshness = "unavailable" | "current" | "stale";
+
+export function invoiceFreshness(now: number, syncedAt?: string, failedAt?: string): InvoiceFreshness {
+  const success = Date.parse(syncedAt ?? "");
+  if (!Number.isFinite(success)) return "unavailable";
+  const failed = Date.parse(failedAt ?? "");
+  return now - success >= 26 * 60 * 60 * 1000 || failed >= success ? "stale" : "current";
+}
 
 export function invoiceState(invoice: Pick<Invoice, "balance" | "total" | "dueDate">, today: string) {
   const days = invoice.dueDate
