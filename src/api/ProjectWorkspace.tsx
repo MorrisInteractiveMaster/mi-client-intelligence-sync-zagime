@@ -608,7 +608,6 @@ export function ProjectStaffWorkspace({
         onDepartment={selectDepartment} onProject={id => { if (permit()) portalNavigate({ staff: "management", managed: id, department: null }); }}
         onSettings={() => openConfiguration("areas")} />}
       {area === "health" && <div className="mi-related-settings"><button type="button" className="secure-secondary" onClick={() => openConfiguration("engagements")}>Reporting configuration</button></div>}
-      {area === "preview" && <div className="mi-related-settings"><button type="button" className="secure-secondary" onClick={() => openConfiguration("notes")}>Manage executive updates</button></div>}
       {area === "health" && overCapOnly && <div className="delivery-section-heading" role="status">
         <p>Showing projects that exceed a monthly or lifetime cap.</p>
         <button type="button" className="secure-secondary" onClick={() => { if (permit()) portalNavigate({ "budget-filter": null }); }}>Show all caps</button>
@@ -617,7 +616,8 @@ export function ProjectStaffWorkspace({
         client={client} tenant={tenant} onDirty={setManagementDirty} onRefresh={refresh} onDenied={onDenied}
         onOpen={id => { if (permit()) openDeliveryProject(id); }} />}
       {area === "milestones" && <DeliveryMilestones month={month} client={client} tenant={tenant} projects={allProjects} onSaved={refresh} onOpen={openDeliveryProject} />}
-      {area === "preview" && <DeliveryPreview client={client} tenant={tenant} month={month} />}
+      {area === "preview" && <DeliveryPreview client={client} tenant={tenant} month={month}
+        workspaceAction={<button type="button" className="secure-secondary" onClick={() => openConfiguration("notes")}>Manage executive updates</button>} />}
       {error && (
         <p className="secure-message secure-error" role="alert">
           {error}

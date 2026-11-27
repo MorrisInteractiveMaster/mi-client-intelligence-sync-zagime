@@ -50,7 +50,7 @@
   padding: 24px;
   margin: 16px 0;
 }
-.nordic strong {
+.nordic:not(.secure-shell) strong {
   display: block;
   font-size: 46px;
   font-weight: 400;

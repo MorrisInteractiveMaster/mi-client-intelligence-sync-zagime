@@ -1,4 +1,4 @@
-.nordic.secure-shell.platform-shell > main:is(.platform-workspace,.platform-client-report,.platform-client-preview) {
+.nordic.secure-shell.platform-shell > main:is(.platform-home,.platform-workspace,.platform-client-report,.platform-client-preview) {
   max-width: none;
   padding: 0;
   margin: 0;
@@ -28,7 +28,7 @@
 }
 .mi-sidebar-search kbd { margin-inline-start: auto; font: inherit; opacity: .85; }
 @media (min-width: 861px) {
-  .nordic.secure-shell .mi-page-tools .mi-workspace-tools { display: none; }
+  .nordic.secure-shell .mi-page-tools .mi-workspace-tools:not([data-embedded]) { display: none; }
 }
 .nordic.secure-shell .mi-skip-link { position: fixed; inset: 8px auto auto 8px; z-index: 10; padding: 12px; color: #112537; background: #fff; border-radius: 8px; }
 .mi-skip-link:not(:focus) { clip-path: inset(50%); }
@@ -43,7 +43,7 @@
 .platform-shell .mi-workspace-tools button { padding: 6px 10px; }
 .mi-workspace-frame.mi-workspace-embedded { display: block; }
 .nordic.secure-shell .mi-workspace-embedded .mi-workspace-tools { justify-content: flex-start; margin-block-end: 8px; }
-.nordic.secure-shell .mi-workspace-embedded button.mi-mobile-navigation { display: inline-flex; }
+.nordic.secure-shell .mi-workspace-embedded [data-embedded] button.mi-mobile-navigation { display: inline-flex; }
 .mi-nav-branch > div:first-child { display: grid; grid-template-columns: minmax(0,1fr) 44px; }
 .mi-nav-subtree { margin: 2px 0 6px 13px; padding-inline-start: 7px; border-inline-start: 1px solid #7c9db474; }
 .nordic.secure-shell :is(.mi-workspace-sidebar,.mi-navigation-dialog) .mi-nav-subtree button { line-height: 1.22; }

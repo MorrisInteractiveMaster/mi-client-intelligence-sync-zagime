@@ -41,8 +41,9 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
   const store = new ProjectStore(runtime.db, "owner");
   const projects = new ProjectBackend(store, { async verify(value) {
     const subject = value.slice(7);
-    return { subject, issuer: "fixture", audience: "fixture", expiresAt: now() + 60_000, disabled: false, revoked: false,
-      ...(subject === "owner" || subject === "staff" ? { corporatePolicy: true, staffTenantId: tenant } : {}) };
+    return { subject, issuer: "fixture", audience: "fixture", expiresAt: now() + 60_000, disabled: subject === "disabled-staff", revoked: false,
+      ...(["owner", "staff", "disabled-staff"].includes(subject) ? { corporatePolicy: true, staffTenantId: tenant } : {}),
+      ...(subject === "other-staff" && { corporatePolicy: true, staffTenantId: "unrelated-tenant" }) };
   } }, { issuer: "fixture", audience: "fixture", now });
   const fixture = { Id: "1", DocNumber: "1024", TxnDate: "2026-11-01", DueDate: "2026-11-27", TotalAmt: 7800, Balance: 5800,
     CustomerRef: { value: "600", name: "Synthetic private customer" }, ProjectRef: { value: "31" },
@@ -144,6 +145,9 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
     assert.equal((await (await call("staff")).json()).canManage, true);
     assert.equal((await (await call("client")).json()).canManage, undefined);
     assert.equal((await call("stranger", "/connect", {})).status, 403);
+    assert.equal((await call("disabled-staff", "/connect", {})).status, 401);
+    assert.equal((await call("other-staff", "/connect", {})).status, 403);
+    assert.equal((await call("staff@morrisinteractive.ca", "/connect", {})).status, 403);
     assert.equal((await call("owner", "", undefined, "unrelated-tenant")).status, 403);
     assert.equal((await call("client", "?preview=published")).status, 403);
     const begin = await call("owner", "/connect", {});
@@ -313,6 +317,8 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       const previewMode = page.getByLabel("Preview mode");
       await previewMode.waitFor();
       const period = page.locator(".reporting-period__stepper");
+      await period.waitFor();
+      await page.screenshot({ path: join(evidence, "staff-published-preview-1440-light.png"), fullPage: true, animations: "disabled" });
       const [stepperBox, previewBox] = await Promise.all([period.boundingBox(), previewMode.boundingBox()]);
       assert.ok(stepperBox && previewBox && Math.abs((stepperBox.y + stepperBox.height / 2) - (previewBox.y + previewBox.height / 2)) <= 2,
         "preview picker and reporting stepper share a center line");
@@ -409,7 +415,8 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
     assert.equal((await call("client", "/disconnect", { confirm: true })).status, 403);
     assert.equal((await call("staff", "/disconnect", { confirm: true })).status, 200);
     const audit = (await root.collection("invoiceAudit").get()).docs.map(doc => doc.data());
-    for (const action of ["qbo-authorization-started", "qbo-invoices-connected", "qbo-company-confirmed", "qbo-customer-searched", "qbo-customer-bound", "qbo-project-linked", "qbo-invoices-disconnected"]) {
+    for (const action of ["qbo-authorization-started", "qbo-invoices-connected", "qbo-company-confirmed", "qbo-customer-searched",
+      "qbo-customer-bound", "qbo-project-linked", "qbo-invoices-synced", "invoice-approved", "invoice-withdrawn", "qbo-invoices-disconnected"]) {
       assert.ok(audit.some(item => item.actor === "staff" && item.action === action), action);
     }
     assert.equal(disconnected, true);

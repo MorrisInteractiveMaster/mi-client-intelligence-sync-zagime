@@ -46,6 +46,9 @@ body:has(.platform-shell[data-workspace="true"]) { margin: 0; }
 }
 .nordic.secure-shell.platform-shell .mi-workspace-banner .mi-page-tools { margin: 0; flex: 0 0 auto; align-items: center; }
 .nordic.secure-shell.platform-shell .mi-workspace-banner .mi-workspace-tools { margin: 0; }
+.nordic.secure-shell.platform-shell .mi-workspace-banner .mi-page-tools :is(.mi-theme-icon, .mi-account summary, .mi-workspace-tools button) {
+  width:var(--banner-control-height); min-height:var(--banner-control-height); height:var(--banner-control-height);
+}
 .nordic.secure-shell.platform-shell .mi-workspace-banner :is(.reporting-period__hint, .reporting-period__label, .time-history-toolbar label, .mi-report-month label) { color: #dae6f0; }
 .nordic.secure-shell.platform-shell .mi-workspace-banner :is(button, select, input, summary, .platform-back) { min-height: var(--banner-control-height); }
 .nordic.secure-shell .mi-workspace-banner .reporting-period__stepper { background: var(--mi-surface); color: var(--mi-ink); }
@@ -54,9 +57,11 @@ body:has(.platform-shell[data-workspace="true"]) { margin: 0; }
 .nordic.secure-shell .mi-workspace-banner .time-history-toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
 .mi-workspace-banner .time-history-toolbar > :is(div, label) { flex:0 1 12rem; }
 .nordic.secure-shell .mi-workspace-banner .mi-preview-controls {
-  position: static; background: transparent; margin:0; padding:0; align-items:center; color:#dae6f0;
+  position: static; background: transparent; margin:0; padding:0; align-items:center; color:#dae6f0; min-width:0; max-width:100%;
 }
 .nordic.secure-shell .mi-workspace-banner :is(.mi-preview-controls label,.reporting-period__month) { color:#dae6f0; margin:0; }
+.nordic.secure-shell .mi-workspace-banner .mi-preview-controls label { display:flex; align-items:center; gap:8px; width:auto; }
+.nordic.secure-shell .mi-workspace-banner .mi-preview-controls select { width:auto; max-width:100%; }
 .nordic.secure-shell .mi-workspace-banner .mi-preview-controls a { color:#fff; }
 @media (min-width: 1100px) {
   .nordic.secure-shell .mi-workspace-banner .reporting-period__actions { display:contents; }
@@ -69,4 +74,11 @@ body:has(.platform-shell[data-workspace="true"]) { margin: 0; }
   .nordic.secure-shell.platform-shell[data-workspace="true"] { --workspace-gutter: 12px; }
   .mi-banner-copy { flex-basis: 100%; }
   .mi-banner-top { gap: 12px; }
+  .nordic.secure-shell .mi-workspace-banner .mi-preview-controls {
+    display:grid; grid-template-columns:minmax(0,1fr); justify-items:start; width:100%;
+  }
+  .nordic.secure-shell .mi-workspace-banner .mi-preview-controls label {
+    display:grid; grid-template-columns:minmax(0,1fr); gap:4px;
+  }
+  .nordic.secure-shell .mi-workspace-banner .mi-preview-controls select { width:100%; }
 }

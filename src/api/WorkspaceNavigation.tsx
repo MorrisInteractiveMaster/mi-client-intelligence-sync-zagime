@@ -103,9 +103,9 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
       </div>)}
     </nav>;
   }
-  const commands = <div className="mi-workspace-tools">
+  const commands = <div className="mi-workspace-tools" data-embedded={embedded || undefined}>
     <button type="button" className="secure-secondary mi-mobile-navigation" ref={mobileButton}
-      aria-haspopup="dialog" onClick={() => menu.current?.showModal()}><Menu aria-hidden="true" /> <span>{mobileLabel}</span></button>
+      aria-label={mobileLabel} title={mobileLabel} aria-haspopup="dialog" onClick={() => menu.current?.showModal()}><Menu aria-hidden="true" /> <span>{mobileLabel}</span></button>
     <button type="button" className="secure-secondary mi-toolbar-search" ref={searchButton} onClick={showSearch} aria-label={searchLabel}><Search aria-hidden="true" />
       <span>{searchLabel}</span>{!embedded && <kbd>Ctrl K</kbd>}</button>
   </div>;

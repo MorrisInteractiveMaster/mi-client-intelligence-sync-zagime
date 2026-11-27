@@ -997,7 +997,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         personId: "7909", consultantName: "Avery Morgan", notes: "Review department rollout requirements" });
       await first.page.getByLabel("Period", { exact: true }).selectOption("all");
       await first.page.getByRole("button", { name: "Apply period", exact: true }).click();
-      await first.page.getByRole("heading", { name: "Recorded time · All history", exact: true }).waitFor();
+      await first.page.locator(".mi-workspace-banner").getByText(/^All history · Review source records/).waitFor();
       await first.page.getByRole("button", { name: "Consultants", exact: true }).click();
       await first.page.getByRole("button", { name: "Avery Morgan", exact: true }).click();
       await first.page.getByRole("status").filter({ hasText: /Consultant: Avery Morgan.*1 match out of/ }).waitFor();
@@ -1018,9 +1018,9 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await first.page.getByText("Reporting scope saved on this device.", { exact: true }).waitFor();
       await first.page.getByLabel("Period", { exact: true }).selectOption("specific");
       await first.page.getByRole("button", { name: "Apply period", exact: true }).click();
-      await first.page.getByRole("heading", { name: "Recorded time · November 2026", exact: true }).waitFor();
+      await first.page.locator(".mi-workspace-banner").getByText(/^November 2026 · Review source records/).waitFor();
       await first.page.getByRole("button", { name: "Use saved scope", exact: true }).click();
-      await first.page.getByRole("heading", { name: "Recorded time · All history", exact: true }).waitFor();
+      await first.page.locator(".mi-workspace-banner").getByText(/^All history · Review source records/).waitFor();
       await historicRow.getByText("5 h", { exact: true }).waitFor();
       assert.ok(await first.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       const desktopTimeViewport = first.page.viewportSize()!;
