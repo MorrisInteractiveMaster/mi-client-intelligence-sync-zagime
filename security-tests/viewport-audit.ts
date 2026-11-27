@@ -22,7 +22,7 @@ export async function auditViewport(page: Page, route: string, width: number, he
         return true;
       }).slice(0, 8).map(element => ({ element: element.tagName, text: (element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 70) }));
     return { pageWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth, outside, sidebars: sidebars.length,
-      sidebarGap: masthead && sidebar ? Math.round(sidebar.top - masthead.bottom) : null };
+      sidebarGap: sidebar ? Math.round(sidebar.top - (masthead?.bottom ?? 0)) : null };
   });
   const label = `${route} at ${width}×${height}`;
   assert.equal(result.viewportWidth, width, `${label} uses the requested viewport width`);
@@ -30,7 +30,7 @@ export async function auditViewport(page: Page, route: string, width: number, he
   assert.deepEqual(result.outside, [], `${label} clipped controls`);
   if (compactSidebar && width >= 1024) {
     assert.equal(result.sidebars, 1, `${label} has one desktop sidebar`);
-    assert.ok(result.sidebarGap !== null && result.sidebarGap >= -2 && result.sidebarGap <= 90, `${label} sidebar is offset ${result.sidebarGap}px from the masthead`);
+    assert.ok(result.sidebarGap !== null && result.sidebarGap >= -2 && result.sidebarGap <= 90, `${label} sidebar is offset ${result.sidebarGap}px from the top of the workspace`);
   }
   return { route, width, height, ...result };
 }

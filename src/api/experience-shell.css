@@ -10,16 +10,6 @@
   padding-block: 6px;
 }
 .platform-shell .secure-identity { min-width: 0; }
-.nordic.secure-shell.platform-shell .secure-masthead.mi-compact-masthead {
-  display: flex;
-  justify-content: space-between;
-  min-height: 52px;
-  padding: 3px 0;
-  gap: 8px;
-}
-.platform-shell .mi-compact-masthead .secure-identity { padding: 0; border: 0; }
-.platform-shell .mi-compact-masthead .mi-masthead-actions { width: auto; flex-shrink: 0; gap: 4px; }
-.platform-shell .mi-compact-masthead .mi-account summary { width: 44px; padding: 0; justify-content: center; }
 .platform-shell .mi-theme-icon {
   position: relative; display: grid; place-items: center; width: 44px; height: 44px;
   color: var(--mi-ink); border: 1px solid var(--mi-line); border-radius: 10px; background: var(--mi-surface);
@@ -30,35 +20,27 @@
 .platform-shell .mi-theme-icon:focus-within { outline: 3px solid #276a9c; outline-offset: 2px; }
 .mi-sidebar-brand { display: grid; justify-items: center; gap: 8px; margin: 2px 4px 4px; }
 .mi-sidebar-brand img { display: block; width: min(100%, 166px); height: auto; max-height: 48px; object-fit: contain; }
-.mi-sidebar-brand img:first-child { background: #f9fbfc; border-radius: 7px; }
-.mi-workspace-frame[data-collapsed="true"] .mi-sidebar-brand img:first-child {
-  width: 40px; height: 40px; object-fit: cover; object-position: 12% center;
-}
-.mi-workspace-frame[data-collapsed="true"] .mi-sidebar-brand img:last-child,
-.mi-workspace-frame[data-collapsed="true"] .mi-sidebar-search :is(span,kbd) { display: none; }
+.mi-sidebar-partner { display: flex; align-items: center; justify-content: center; gap: 7px; color: #f2f7fe; font-size: .9rem; font-weight: 650; }
+.mi-sidebar-brand .mi-sidebar-partner-mark { width: 32px; height: 32px; flex: none; }
+.mi-workspace-frame[data-collapsed="true"] :is(.mi-sidebar-partner > span:last-child, .mi-sidebar-brand > img, .mi-sidebar-search span, .mi-sidebar-search kbd) { display: none; }
 .nordic.secure-shell .mi-workspace-sidebar button.mi-sidebar-search {
   margin-bottom: 8px; border-color: #7c9db474; font-size: .78rem;
 }
 .mi-sidebar-search kbd { margin-inline-start: auto; font: inherit; opacity: .85; }
 @media (min-width: 861px) {
-  .nordic.secure-shell :is(#mi-workspace-commands,.mi-workspace-frame:not(.mi-workspace-embedded)) .mi-workspace-tools .mi-toolbar-search { display: none; }
-}
-@media (max-width: 480px) {
-  .platform-shell .mi-compact-masthead .secure-identity h1 { font-size: .92rem; }
+  .nordic.secure-shell .mi-page-tools .mi-workspace-tools { display: none; }
 }
 .nordic.secure-shell .mi-skip-link { position: fixed; inset: 8px auto auto 8px; z-index: 10; padding: 12px; color: #112537; background: #fff; border-radius: 8px; }
 .mi-skip-link:not(:focus) { clip-path: inset(50%); }
 .platform-shell .mi-page-heading { margin-block-end: 8px; }
 .platform-shell .mi-page-heading h2 { margin: 0; }
 .platform-shell .mi-page-heading .mi-kicker { margin-block-end: 5px; }
-.platform-shell .mi-workspace-frame { gap: clamp(12px,1.5vw,24px); margin-block-start: 10px; }
+.platform-shell .mi-workspace-frame { gap: clamp(12px,1.5vw,24px); margin-block-start: 0; }
 .platform-shell .mi-workspace-frame[data-collapsed="false"] { grid-template-columns: clamp(228px,17vw,248px) minmax(0,1fr); }
 .platform-shell .mi-workspace-tools { margin-block-end: 0; }
 .platform-shell .mi-workspace-body { position: relative; }
 .platform-shell .mi-workspace-body > .exec-content { min-width: 0; }
 .platform-shell .mi-workspace-tools button { padding: 6px 10px; }
-#mi-workspace-commands:empty { display: none; }
-#mi-workspace-commands .mi-workspace-tools { flex-wrap: nowrap; }
 .mi-workspace-frame.mi-workspace-embedded { display: block; }
 .nordic.secure-shell .mi-workspace-embedded .mi-workspace-tools { justify-content: flex-start; margin-block-end: 8px; }
 .nordic.secure-shell .mi-workspace-embedded button.mi-mobile-navigation { display: inline-flex; }
@@ -154,9 +136,6 @@
 .mi-overview-menu a { display: flex; align-items: center; min-height: 44px; padding-inline: 8px; }
 @media (max-width: 860px) {
   .platform-shell .mi-workspace-tools { margin-block-end: 8px; }
-  #mi-workspace-commands .mi-workspace-tools { margin: 0; }
-  #mi-workspace-commands button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  #mi-workspace-commands .mi-workspace-tools button { justify-content: center; min-width: 44px; }
   .platform-shell .secure-masthead img { max-width: 100%; object-fit: contain; }
   .mi-preview-controls { row-gap: 6px; }
 }
@@ -171,3 +150,63 @@
   .platform-shell .mi-workspace-tools button[aria-label="Search workspace"] span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 }
 @media (prefers-reduced-motion: reduce) { .mi-nav-expand svg { transition: none; } }
+
+.mi-page-tools, .mi-control-toolbar, .mi-home-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.mi-page-tools { margin-inline-start: auto; flex: none; }
+.nordic.secure-shell.platform-shell .mi-page-tools :is(.mi-theme-icon, .mi-account summary, .mi-workspace-tools button) {
+  box-sizing: border-box; display: grid; place-items: center; width: 36px; height: 36px;
+  min-width: 36px; min-height: 36px; padding: 0; margin: 0; border: 1px solid var(--mi-line);
+  border-radius: 8px; box-shadow: none; color: var(--mi-ink); background: var(--mi-surface);
+}
+.mi-page-tools :is(.mi-workspace-tools, .mi-account) { margin: 0; }
+.mi-page-tools .mi-workspace-tools { flex-wrap: nowrap; gap: 5px; }
+.mi-page-tools .mi-workspace-tools :is(span, kbd) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.mi-account:not([open]) .mi-account-menu { display: none; }
+.mi-account-menu a { display: block; padding: 7px; border-radius: 6px; }
+.mi-account-menu a:hover { background: var(--mi-background); }
+.reporting-period__actions > .mi-preview-controls { padding: 0; border: 0; box-shadow: none; background: transparent; position: static; }
+.nordic.secure-shell .reporting-period__main :is(button, select) { min-height: 36px; }
+.nordic.secure-shell .reporting-period__stepper button { min-width: 36px; }
+.nordic.secure-shell .reporting-period__actions > .mi-preview-controls label { gap: 5px; }
+.mi-report-top:has(.reporting-period) { display: block; margin-block: 0 6px; }
+.nordic.secure-shell .platform-workspace .mi-page-heading { margin-block-end: 5px; }
+.nordic.secure-shell .platform-workspace .mi-page-heading h2 { font-size: clamp(1.6rem, 2.4vw, 2.3rem); }
+.nordic.secure-shell .platform-control-card .mi-control-toolbar :is(form, label) { margin-block: 0; }
+.reporting-period__actions { display: contents; }
+@media (max-width: 850px) {
+  .reporting-period__main { gap: 5px 8px; }
+  .reporting-period__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+  .reporting-period__main > .mi-page-tools { flex-wrap: nowrap; gap: 4px; }
+  .reporting-period__main .reporting-period__label { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }
+  .reporting-period__main .reporting-period__stepper { max-width: 330px; }
+  .reporting-period__main .reporting-period__month { flex: 1 1 0; }
+  .nordic.secure-shell .reporting-period__main .reporting-period__month select { width: 100%; padding-inline: 4px; font-size: .82rem; }
+  .nordic.secure-shell .reporting-period__main .reporting-period__stepper button { min-width: 27px; min-height: 34px; margin: 0; }
+  .nordic.secure-shell.platform-shell .reporting-period__main .mi-page-tools :is(.mi-theme-icon, .mi-account summary, .mi-workspace-tools button) {
+    width: 33px; height: 35px; min-width: 33px; min-height: 35px;
+  }
+}
+@media (max-width: 680px) {
+  .nordic.secure-shell .reporting-period__main { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .reporting-period__main .reporting-period__stepper { grid-column: 1; grid-row: 1; }
+  .reporting-period__main > .mi-page-tools { grid-column: 2; grid-row: 1; justify-self: end; }
+  .reporting-period__actions { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (max-width: 360px) {
+  .nordic.secure-shell.platform-shell .mi-page-tools .mi-workspace-tools button.mi-toolbar-search { display: none; }
+}
+
+.nordic.secure-shell.platform-shell :is(.mi-explorer-toolbar, .delivery-filters, .time-workbench-controls, .time-destination-controls, .time-bulk-destination)
+  :is(input[type="search"], select) {
+  min-height: 38px; border: 1px solid var(--mi-line); border-radius: 8px; color: var(--mi-ink);
+  background-color: var(--mi-surface); font-size: .875rem; box-shadow: none;
+}
+.nordic.secure-shell.platform-shell :is(.mi-explorer-toolbar, .delivery-filters, .time-workbench-controls, .time-destination-controls, .time-bulk-destination)
+  select:hover { border-color: #6d8ba4; }
+.nordic.secure-shell.platform-shell .mi-explorer { margin-block-start: 10px; gap: 10px; }
+.nordic.secure-shell.platform-shell .mi-explorer-toolbar { margin-block: 3px 5px; gap: 8px; }
+.nordic.secure-shell.platform-shell .mi-explorer-toolbar :is(select, input) { font-size: .82rem; padding-inline: 7px; }
+.mi-navigation-search { display: none; }
+@media (max-width: 360px) {
+  .nordic.secure-shell .mi-navigation-dialog .mi-navigation-search { display: flex; }
+}

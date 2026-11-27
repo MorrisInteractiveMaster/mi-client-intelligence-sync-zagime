@@ -3,6 +3,7 @@ import type { AnchorHTMLAttributes, MouseEvent } from "react";
 import { brandAsset, branding } from "../config/branding";
 import type { ProjectWorkspace } from "../projects/model";
 import { navigatePlatform, periodHref } from "./portal-location";
+import { WorkspaceToolbarControls } from "./WorkspaceToolbar";
 import { clientBase } from "./platform-routes";
 
 export function PlatformLink({ href, beforeNavigate, onClick, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string; beforeNavigate?: () => boolean }) {
@@ -27,7 +28,7 @@ export function PlatformHome({ workspace, month }: { workspace: ProjectWorkspace
       <div className="mi-home-stage-content"><span>Client Intelligence Platform</span>
         <h2>Morris Interactive</h2>
         <p>Manage delivery and report progress for {workspace.tenant.name}.</p>
-        <PlatformLink className="mi-home-primary" href={periodHref("/workspace", month)}>Go to workspace <ArrowRight size={18} aria-hidden="true" /></PlatformLink>
+        <div className="mi-home-actions"><PlatformLink className="mi-home-primary" href={periodHref("/workspace", month)}>Go to workspace <ArrowRight size={18} aria-hidden="true" /></PlatformLink><WorkspaceToolbarControls /></div>
       </div>
     </section>
     <nav className="platform-destinations" aria-label="Your destinations">
