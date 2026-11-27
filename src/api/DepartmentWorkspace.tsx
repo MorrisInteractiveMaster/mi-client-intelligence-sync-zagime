@@ -8,13 +8,12 @@ import { DottedTrack } from "./EffortVisuals";
 import { metricPercent } from "./insight-metrics";
 import { SortControls, useSortedRows } from "./SortHeader";
 
-export function DepartmentWorkspace({ portfolio, projects, selected, onDepartment, onProject, onSettings }: {
+export function DepartmentWorkspace({ portfolio, projects, selected, onDepartment, onProject }: {
   portfolio?: Portfolio;
   projects: StaffProjectSummary[];
   selected: string | null;
   onDepartment: (id: string | null) => void;
   onProject: (id: string) => void;
-  onSettings: () => void;
 }) {
   const [filter, setFilter] = useState<{ department: string; status: string }>();
   const placements = new Map(portfolio?.placements.map(item => [item.id, item]));
@@ -45,7 +44,6 @@ export function DepartmentWorkspace({ portfolio, projects, selected, onDepartmen
     <div className="delivery-section-heading">
       {selected ? <button type="button" className="secure-secondary" onClick={() => onDepartment(null)}>All departments</button>
         : <p>{areas.length} configured {areas.length === 1 ? "department" : "departments"}</p>}
-      <button type="button" className="secure-secondary" onClick={onSettings}>Manage departments</button>
     </div>
     {selected ? department ? <>
       {department.description && <p>{department.description}</p>}

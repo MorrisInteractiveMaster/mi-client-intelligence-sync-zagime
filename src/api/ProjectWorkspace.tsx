@@ -541,12 +541,16 @@ export function ProjectStaffWorkspace({
     <button type="button" disabled={busy || page.revision === 0} onClick={() => { if (permit()) portalNavigate({ staff: "projects", editor: "new" }); }}>Create project</button>
     <button type="button" className="secure-secondary" disabled={busy} onClick={() => { setError(""); setNotice(""); setEpoch(value => value + 1); }}>Refresh workspace</button>
   </div>;
+  const configurationAction = area === "departments" || area === "health" ?
+    <button type="button" className="secure-secondary" onClick={() => openConfiguration(area === "departments" ? "areas" : "engagements")}>
+      {area === "departments" ? "Manage departments" : "Reporting configuration"}
+    </button> : undefined;
   const content = <>
     {area !== "hours" && area !== "invoices" && area !== "preview" && <WorkspaceBanner title={pageTitle} headingId="staff-page-title" headingRef={areaHeading}
       eyebrow={area === "overview" ? workspace.tenant.name : "Morris workspace"}
       description={area === "projects" && editorRoute === "new" ? "Set up a parent or delivery project in five steps." :
         area === "projects" && !editorRoute ? "Manage delivery, plans and what the client can see." : undefined}
-      actions={overviewActions || projectActions}
+      actions={overviewActions || projectActions || configurationAction}
       period={showPeriod && <ReportingPeriod month={month} availableMonths={overviewTrend?.hours.byPeriod.map(row => row.label)}
       latestMonth={overviewTrend?.hours.byPeriod.at(-1)?.label}
       onMonth={value => { if (permit()) portalNavigate({ month: value, period: null }); }}
@@ -611,9 +615,7 @@ export function ProjectStaffWorkspace({
       {area === "directory" && <DeliveryDirectory client={client} tenant={tenant} portfolio={portfolio} revision={page.revision} onSaved={() => setEpoch(value => value + 1)} onDenied={onDenied} />}
       {area === "directory" && <div className="mi-related-settings"><button type="button" className="secure-secondary" onClick={() => openConfiguration("directory")}>Manage directory records</button></div>}
       {area === "departments" && <DepartmentWorkspace portfolio={portfolio} projects={allProjects} selected={department}
-        onDepartment={selectDepartment} onProject={id => { if (permit()) portalNavigate({ staff: "management", managed: id, department: null }); }}
-        onSettings={() => openConfiguration("areas")} />}
-      {area === "health" && <div className="mi-related-settings"><button type="button" className="secure-secondary" onClick={() => openConfiguration("engagements")}>Reporting configuration</button></div>}
+        onDepartment={selectDepartment} onProject={id => { if (permit()) portalNavigate({ staff: "management", managed: id, department: null }); }} />}
       {area === "health" && overCapOnly && <div className="delivery-section-heading" role="status">
         <p>Showing projects that exceed a monthly or lifetime cap.</p>
         <button type="button" className="secure-secondary" onClick={() => { if (permit()) portalNavigate({ "budget-filter": null }); }}>Show all caps</button>

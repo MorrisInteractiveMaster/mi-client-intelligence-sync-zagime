@@ -2158,7 +2158,8 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           const query = new URLSearchParams({ month: "2026-11", view });
           const page = legacyClient.page;
           await page.goto(`${origin}/?${query}#/secure`);
-          await page.getByRole("heading", { name: heading, exact: true, level: 1 }).waitFor();
+          await page.locator(".intel-workspace .mi-workspace-banner")
+            .getByRole("heading", { name: heading, exact: true, level: 1 }).waitFor();
           assert.equal(await page.getByText("This link is unavailable for your approved report.").count(), 0, view);
           if (view === "engagements") {
             await page.getByRole("region", { name: "Parent projects" }).waitFor();

@@ -188,9 +188,9 @@
 .platform-shell :focus-visible { outline-color: #236597; }
 @media (max-width: 860px) {
   .platform-control-layout { grid-template-columns: minmax(0,1fr); }
-  .platform-control-rail { position: static; max-height: none; overflow: visible; }
-  .platform-control-wide-nav { display: none; }
-  .platform-control-compact-nav { display: block; }
+  .platform-control-rail { display: none; }
+  .platform-control-compact-nav { display: block; min-width: 0; max-width: 100%; }
+  .platform-control-compact-nav[open] { flex-basis: 100%; }
   .nordic.secure-shell .platform-control-compact-nav > summary {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     min-height: 44px; padding: 8px 12px; border: 1px solid var(--mi-line); border-radius: 10px;

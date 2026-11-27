@@ -341,12 +341,24 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
   ];
   const presentationButton = !unavailable && <button type="button" className="mi-present-button" onClick={event => openOverlay("present", "1", event.currentTarget)}>
     <PresentationIcon size={17} aria-hidden="true" />{view === "overview" ? nativeClient ? "Presentation" : "At a Glance" : "Present this view"}</button>;
+  const reportActions = activeProject && project && kind === "project" && <div className="secure-actions">
+    {nativeClient && <button className="secure-secondary" type="button" onClick={() => {
+      const prior = explorerReturn.current;
+      if (prior?.project === project.id) navigatePlatform(prior.url);
+      else choose("projects");
+    }}><ChevronLeft size={16} aria-hidden="true" />Back to Project Explorer</button>}
+    {activeProject.delivery?.kind === "engagement" && <button type="button" className="secure-secondary" onClick={() => choose("group:" + project.id)}>Open engagement</button>}
+    <button className="secure-secondary" onClick={() => choose("timeline:" + project.id)}>Project timeline</button>
+    {allowExport && <CsvExport filename={csvPrefix + "_" + project.name} label="Export project CSV"
+      load={exportProjectRows([project])} onDenied={onDenied} />}
+  </div>;
+  const presentationActions = (!nativeClient || !showReportPeriod) && (previewToolbar || presentationButton) && <>{previewToolbar}{presentationButton}</>;
   return reportShell(<>
       <div className="exec-content intel-workspace mi-v4-client" tabIndex={-1} ref={page}>
         <WorkspaceBanner title={title} eyebrow={report.tenant.name}
           description={selectedArea?.description || contact?.role || (view === "overview" ? "Track approved delivery, milestones and project effort." : undefined)}
           period={showReportPeriod && (nativeClient ? periodToolbar(<>{previewToolbar}{presentationButton}</>) : legacyMonth)}
-          actions={(!nativeClient || !showReportPeriod) && (previewToolbar || presentationButton) && <>{previewToolbar}{presentationButton}</>} />
+          actions={(presentationActions || reportActions) && <>{presentationActions}{reportActions}</>} />
         {view === "overview" && <ExecutiveOverview report={report} delivery={delivery} platform={nativeClient} draft={preview?.mode === "draft"} onLink={choose} effortUnit={effortUnit}
           onEffortUnit={unit => portalNavigate({ "effort-unit": unit === "hours" ? unit : null }, true)}
           onChart={(type, trigger) => openOverlay("chart", type, trigger)} />}
@@ -471,18 +483,7 @@ function ScopedClientReport({ client, tenant, month, onDenied, preview, previewT
         <p>{portfolio?.narrative || "No executive narrative has been published for this period."}</p>
         {portfolio?.action && <><h3>Next decision</h3><p>{portfolio.action}</p></>}</article>}
       {activeProject && project && kind === "project" && <article className="intel-detail mi-v4-project-detail">
-        <div className="intel-detail-links">
-          {nativeClient && <button className="exec-text-button" type="button" onClick={() => {
-            const prior = explorerReturn.current;
-            if (prior?.project === project.id) navigatePlatform(prior.url);
-            else choose("projects");
-          }}><ChevronLeft size={16} aria-hidden="true" />Back to Project Explorer</button>}
-          {activeProject.delivery?.kind === "engagement" && <button type="button" className="exec-text-button" onClick={() => choose("group:" + project.id)}>Open engagement</button>}
-          <button className="exec-text-button" onClick={() => choose("timeline:" + project.id)}>Project timeline</button>
-          {allowExport && <CsvExport filename={csvPrefix + "_" + project.name} label="Export project CSV"
-            load={exportProjectRows([project])} onDenied={onDenied} />}
-          {report.sourceUpdatedAt && <span>Source updated {reportTimestamp(report.sourceUpdatedAt)}</span>}
-        </div>
+        {report.sourceUpdatedAt && <p className="mi-project-source-time">Source updated {reportTimestamp(report.sourceUpdatedAt)}</p>}
         <ProjectReportingCard project={project} period={period} placement={activeProject.placement} team={directoryFor(project.id)} onLink={choose}
           delivery={activeProject.delivery} department={activeProject.department}
           parent={activeProject.parent && { ...activeProject.parent, budget: hierarchy[activeProject.parent.id] }}

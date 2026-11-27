@@ -112,23 +112,23 @@ export function PlatformControl({ client, workspace, section, month, onDenied, o
       {homeLink}
     </nav>;
   }
+  const sectionPicker = <details className="platform-control-compact-nav" ref={sectionMenu} onKeyDown={event => {
+    if (event.key !== "Escape" || !event.currentTarget.open) return;
+    event.stopPropagation();
+    event.currentTarget.open = false;
+    event.currentTarget.querySelector("summary")?.focus();
+  }}>
+    <summary>Control Panel sections <ChevronDown size={16} aria-hidden="true" /></summary>
+    {sectionLinks(true)}
+  </details>;
   return <main id="platform-content" className="platform-control">
     <div className="platform-control-layout">
       <aside className="platform-control-rail">
         <div className="platform-control-wide-nav">{sectionLinks()}</div>
-        <details className="platform-control-compact-nav" ref={sectionMenu} onKeyDown={event => {
-          if (event.key !== "Escape" || !event.currentTarget.open) return;
-          event.stopPropagation();
-          event.currentTarget.open = false;
-          event.currentTarget.querySelector("summary")?.focus();
-        }}>
-          <summary>Control Panel sections <ChevronDown size={16} aria-hidden="true" /></summary>
-          {sectionLinks(true)}
-        </details>
       </aside>
       <section className="platform-control-card" aria-label={title}>
         <WorkspaceBanner title={title} eyebrow={workspace.tenant.name}
-          actions={<PlatformLink href={periodHref("/workspace", month)} beforeNavigate={permit} className="platform-back"><ArrowLeft size={16} aria-hidden="true" /> Back to Morris Workspace</PlatformLink>} />
+          actions={<>{sectionPicker}<PlatformLink href={periodHref("/workspace", month)} beforeNavigate={permit} className="platform-back"><ArrowLeft size={16} aria-hidden="true" /> Back to Morris Workspace</PlatformLink></>} />
         <div className="platform-control-content">
         {error && <p role="alert" className="secure-message secure-error">{error} <button type="button" className="secure-secondary" disabled={busy} onClick={() => { if (permit()) refresh(); }}>Reload</button></p>}
         {notice && <p role="status" className="secure-message">{notice}</p>}
