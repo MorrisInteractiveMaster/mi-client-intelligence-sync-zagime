@@ -111,7 +111,7 @@ export class QboInvoices {
       if (request.preview && !a.staff) throw Error("Forbidden");
       const staff = a.staff && !request.preview;
       const empty = { today: deliveryDate(new Date(this.now())), invoices: [], freshness: "unavailable" as const,
-        ...(staff && { configured: Boolean(scope), canManage: a.platformAdmin, connected: false }) };
+        ...(staff && { configured: Boolean(scope), canManage: true, connected: false }) };
       if (!scope) return empty;
       const [mirrorSnapshot, connectionSnapshot] = await tx.getAll(this.mirror(a.root), this.connection(a.root));
       const mirror = mirrorSnapshot.data() as Mirror | undefined;
@@ -122,7 +122,7 @@ export class QboInvoices {
       const visibleScope = activeSetup && binding ? this.bindingScope(tokenScope, binding) : scope;
       const result: InvoiceView = { ...empty, ...(staff && { connected: connection?.scope === tokenScope && Boolean(connection.token) }) };
       if (staff && activeSetup) {
-        const choices = a.platformAdmin && binding ? await this.projectChoices(tx, a.root) : [];
+        const choices = binding ? await this.projectChoices(tx, a.root) : [];
         const setup: QboSetup = { company: activeSetup.company, confirmed: activeSetup.confirmed, native: activeSetup.native,
           projects: (binding?.projects ?? []).map(project => {
             const alias = singleWorkOrder(project.name);
@@ -130,7 +130,7 @@ export class QboInvoices {
               suggestions: alias ? choices.filter(choice => choice.workOrder === alias).map(choice => choice.id) : [],
               newlyDiscovered: binding!.newlyDiscovered.includes(project.key) };
           }), choices, ...(binding && { root: binding.root, binding: binding.id, discoveredAt: binding.discoveredAt, held: binding.held }) };
-        if (a.platformAdmin) result.setup = setup;
+        result.setup = setup;
         result.readyToSync = Boolean(activeSetup.confirmed && binding);
       }
       if (!mirror || mirror.scope !== visibleScope || (activeSetup ? !activeSetup.confirmed || !binding :
@@ -168,7 +168,8 @@ export class QboInvoices {
   }
   private async operator(tx: Transaction, tenant: string, who: VerifiedIdentity) {
     const a = await this.store.access(tx, tenant, who);
-    if (!a.platformAdmin) throw Error("Forbidden");
+    // ProjectStore access checks server-verified corporate identity and the bound staff tenant.
+    if (!a.staff) throw Error("Forbidden");
     const scope = this.scope(tenant);
     if (!scope) throw Error("QBO invoices unavailable");
     return { root: a.root, scope };
@@ -228,6 +229,7 @@ export class QboInvoices {
       const existing = (await tx.get(ref)).data() as Connection | undefined;
       if (existing?.busy && existing.busy.expires > this.now()) throw Error("Revision conflict");
       tx.set(ref, { pending: { hash: digest(state), actor: who.subject, expires: this.now() + 600_000 } }, { merge: true });
+      this.audit(tx, root, who.subject, "qbo-authorization-started", tenant);
       return { url: this.provider!.authorizationUrl(state) };
     });
   }
@@ -301,7 +303,9 @@ export class QboInvoices {
       if (action === "search") {
         customerQueryTerm(term);
         if (typeof page !== "number" || !Number.isInteger(page) || page < 1 || page > 25) throw Error("Invalid customer page");
-        return await this.provider!.search(await this.rotate(lease), company.realm, term as string, page);
+        const results = await this.provider!.search(await this.rotate(lease), company.realm, term as string, page);
+        await this.guarded(lease, async tx => { this.audit(tx, lease.root, who.subject, "qbo-customer-searched", tenant); });
+        return results;
       }
       const binding = setup.binding;
       if ((binding?.id ?? null) !== bindingId) throw Error("Revision conflict");

@@ -15,7 +15,7 @@ import { TimeHistorySummary } from "./TimeHistorySummary";
 import { CsvExport } from "./CsvExport";
 import { allAuthorizedRows, authorizedPages, sourceCsv } from "./report-csv";
 import { PlatformLink } from "./PlatformHome";
-import { WorkspaceToolbarControls } from "./WorkspaceToolbar";
+import { WorkspaceBanner } from "./WorkspaceToolbar";
 import { TimeConsultantFilter } from "./TimeConsultantFilter";
 import { SearchableCombobox } from "./SearchableCombobox";
 import { MAX_BULK_ALLOCATION_ENTRIES, type BulkAllocationRequest, type BulkAllocationResponse } from "../projects/bulk-allocation";
@@ -70,6 +70,7 @@ type Props = {
   onUnsavedChange?: (dirty: boolean) => void;
   canPublish?: boolean;
   operatorKey?: string;
+  pageBanner?: boolean;
   initialConsultant?: string;
   initialWorkOrder?: string;
   initialPeriod?: string | null;
@@ -81,7 +82,7 @@ export function TimeAllocation(props: Props) {
   return <MonthAllocation key={JSON.stringify([props.tenant, props.month, props.sourceLink?.id, props.initialConsultant, props.initialWorkOrder, props.initialPeriod, props.initialStart, props.initialEnd, props.initialStatus])} {...props} />;
 }
 
-function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied, onSaved, sourceLink, onUnsavedChange, initialConsultant, initialWorkOrder, initialPeriod, initialStart, initialEnd, initialStatus, canPublish, operatorKey }: Props) {
+function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied, onSaved, sourceLink, onUnsavedChange, initialConsultant, initialWorkOrder, initialPeriod, initialStart, initialEnd, initialStatus, canPublish, operatorKey, pageBanner }: Props) {
   const journalKey = operatorKey ? "morris-time-pending-" + operatorKey : undefined;
   const linkedConsultant = initialConsultant && /^[A-Za-z0-9_-]{1,128}$/.test(initialConsultant) ? initialConsultant : "";
   const linkedWorkOrder = initialWorkOrder && /^[A-Za-z0-9_-]{1,128}$/.test(initialWorkOrder) ? initialWorkOrder : "";
@@ -491,11 +492,7 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       setHistoryCursor(p.nextCursor);
     } catch (e) { failed(e); }
   }
-  return <div className="delivery-allocation">
-    <div className="delivery-section-heading time-workbench-heading"><div><h3>Recorded time · {periodLabel}</h3><p>Review QuickBooks Time records and classify hours when a delivery project is known.</p></div>
-      <button type="button" className="secure-secondary" disabled={busy} onClick={() => void load(undefined, applied, appliedMonth, Boolean(linkedId))}>Load authorized time</button>{linkedId && <WorkspaceToolbarControls />}</div>
-    {linkedId && sourceLink && <PlatformLink href={sourceLink.backHref}>Back to Time Allocation</PlatformLink>}
-    {!linkedId && <div className="time-workbench-controls"><form className="time-history-toolbar" aria-label="Reporting period" onSubmit={event => { event.preventDefault(); changePeriod(chosenScope); }}>
+  const period = <form className="time-history-toolbar" aria-label="Reporting period" onSubmit={event => { event.preventDefault(); changePeriod(chosenScope); }}>
       <div><label htmlFor={periodSelectId}>Period</label><select id={periodSelectId} value={preset} onChange={e => setPreset(e.target.value as TimePreset)}>
         {Object.entries(timePresets).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
       </select></div>
@@ -515,8 +512,20 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
       <button type="button" className="secure-secondary" disabled={busy} onClick={saveScope}>Save reporting scope</button>
       <button type="button" className="secure-secondary" disabled={busy} onClick={restoreScope}>Use saved scope</button>
       </div></details>
-      <WorkspaceToolbarControls />
-    </form>
+    </form>;
+  const reloadAction = <button type="button" className="secure-secondary" disabled={busy} onClick={() => void load(undefined, applied, appliedMonth, Boolean(linkedId))}>Load authorized time</button>;
+  const allocationBlocked = busy ? "An update is in progress." : editor?.conflict ? "Resolve the source or allocation conflict before saving." :
+    notesOnly ? "Use Save notes to keep the current allocation." :
+    remaining < 0 ? "Reduce the splits to fit the original recorded time." :
+    !portions.length && !editor?.portions.length ? "Select a delivery project before saving an allocation." :
+    new Set(portions.map(part => part.projectId)).size !== portions.length ? "Choose a different project for each split." :
+    portions.some(part => !part.projectId || !Number.isSafeInteger(part.seconds) || part.seconds <= 0) ? "Choose a project and enter positive whole seconds for each split." : "";
+  return <div className="delivery-allocation" data-page={pageBanner || undefined}>
+    {pageBanner ? <WorkspaceBanner title={linkedId ? "Time entry" : "Time Allocation"} eyebrow="Morris workspace" headingId="staff-page-title"
+      description={periodLabel + " · Review source records and classify delivery effort."} period={!linkedId && period} actions={reloadAction} /> :
+      <div className="delivery-section-heading time-workbench-heading"><div><h3>Recorded time · {periodLabel}</h3><p>Review QuickBooks Time records and classify hours when a delivery project is known.</p></div>{reloadAction}</div>}
+    {linkedId && sourceLink && <PlatformLink href={sourceLink.backHref}>Back to Time Allocation</PlatformLink>}
+    {!linkedId && <div className="time-workbench-controls">{!pageBanner && period}
     <form className="time-filter-form" aria-label="Time entry filters" onSubmit={event => {
       event.preventDefault();
       const url = new URL(window.location.href);
@@ -777,10 +786,10 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
           else setPortions(old => [...old, { projectId: "", seconds: 0, description: "" }]);
         }}>{advancedSplit ? "Add split" : "Advanced split allocation"}</button>
       </section>
-      <label className="time-drawer-notes">Reporting description<textarea aria-label="Reporting description" value={annotations.reportingDescription} maxLength={1000}
+      <div className="time-drawer-annotations"><label className="time-drawer-notes">Reporting description<textarea aria-label="Reporting description" value={annotations.reportingDescription} maxLength={1000}
         onChange={e => setAnnotations({ ...annotations, reportingDescription: e.target.value })} /></label>
       <label className="time-drawer-notes">Internal note <span>Private to Morris staff</span><textarea aria-label="Internal note" value={annotations.internalNote} maxLength={4000}
-        onChange={e => setAnnotations({ ...annotations, internalNote: e.target.value })} /></label>
+        onChange={e => setAnnotations({ ...annotations, internalNote: e.target.value })} /></label></div>
       <p>{remaining >= 0 ? reportHours(remaining) + " h will remain at the work order." : "The split exceeds the original recorded time."}</p>
       <div className="time-drawer-utilities">
         {!history && <button type="button" className="secure-secondary" disabled={busy} onClick={() => void revisions(editor)}>Activity History</button>}
@@ -800,14 +809,13 @@ function MonthAllocation({ client, tenant, month, projects, portfolio, onDenied,
         {!editor.conflict && <button type="button" className="secure-secondary" onClick={() => { setAdvancedSplit(item.portions.length > 1 || item.portions.some(part => part.seconds !== editor.seconds)); setPortions(item.portions); setAnnotations(item.annotations ?? blank); setParent(item.annotations?.parentId ?? ""); setClassification(item.annotations?.areaId ?? ""); }}>Use this revision as a draft</button>}</details>)}
       {historyCursor && <button type="button" className="secure-secondary" onClick={() => void revisions(editor, historyCursor)}>More allocation history</button>}
       <footer className="time-drawer-footer">
+        {allocationBlocked && <p id="allocation-save-hint">{allocationBlocked}</p>}
         <button type="button" className="secure-secondary" disabled={busy} onClick={() => close()}>Cancel</button>
         {notesOnly && notesChanged && <button type="button" className="secure-secondary" disabled={busy || editor.conflict}
           onClick={() => void save(editor, portions, {
             ...priorAnnotations, reportingDescription: annotations.reportingDescription, internalNote: annotations.internalNote,
           }, revision, true, true)}>Save notes</button>}
-        <button type="button" disabled={busy || editor.conflict || notesOnly || remaining < 0 ||
-          (!portions.length && !editor.portions.length) || new Set(portions.map(p => p.projectId)).size !== portions.length ||
-          portions.some(p => !p.projectId || !Number.isSafeInteger(p.seconds) || p.seconds <= 0)}
+        <button type="button" disabled={Boolean(allocationBlocked)} aria-describedby={allocationBlocked ? "allocation-save-hint" : undefined}
           onClick={() => void save(editor, portions, draftAnnotations)}>Save allocation</button>
       </footer>
     </dialog>}

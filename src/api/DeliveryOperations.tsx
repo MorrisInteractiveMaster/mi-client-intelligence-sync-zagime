@@ -1,6 +1,6 @@
 import { isBoardRole } from "../projects/directory-role";
 import { isOtherContact } from "../projects/other-contacts";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { capRollup, deliveryKindNames, MAX_DELIVERY_PROJECTS, measureDelivery, rollup } from "../projects/delivery";
 import type { Project, ProjectPage, StaffProjectSummary } from "../projects/model";
 import type { DirectoryEntry, Portfolio } from "../projects/portfolio";
@@ -15,6 +15,7 @@ import { BudgetHealthBoard } from "./BudgetHealthBoard";
 import { OtherContacts } from "./OtherContacts";
 import { PlatformLink } from "./PlatformHome";
 import { SortControls, SortHeader, useSortedRows } from "./SortHeader";
+import { WorkspaceBanner } from "./WorkspaceToolbar";
 
 const peopleSort = { name: "Name", role: "Role", visibility: "Client visibility" } as const;
 const hierarchySort = { path: "Project / parent", department: "Department / type", managers: "Managers", effort: "Allocated effort",
@@ -130,7 +131,9 @@ export function DeliveryDirectory({ client, tenant, portfolio, revision, onSaved
   </section>;
 }
 
-export function DeliveryPreview({ client, tenant, month, standalone = false }: { client: SecuredApiClient; tenant: string; month: string; standalone?: boolean }) {
+export function DeliveryPreview({ client, tenant, month, standalone = false, workspaceAction }: {
+  client: SecuredApiClient; tenant: string; month: string; standalone?: boolean; workspaceAction?: ReactNode;
+}) {
   const [profiles, setProfiles] = useState<{id: string; label: string}[]>();
   const location = usePortalLocation();
   const requestedScope = location.get("previewScope");
@@ -156,16 +159,17 @@ export function DeliveryPreview({ client, tenant, month, standalone = false }: {
       {mode === "published" && !standalone && <label>Client access profile<select value={scope} onChange={e => { portalNavigate({ previewScope: e.target.value || null }); setError(""); }}><option value="">Select an approved profile</option>{profiles?.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>}
       {entitled && mode === "draft" && <p className="delivery-watermark" data-draft="true">DRAFT PREVIEW · MORRIS STAFF ONLY</p>}
     </div>;
-  return <section aria-label="Preview as client">
-    {!standalone && <div className="delivery-section-heading"><p>Published preview follows the selected client access profile. Draft preview includes saved changes and private projects.</p>
-      <button type="button" className="secure-secondary" onClick={() => portalNavigate({
+  const back = !standalone && <button type="button" className="secure-secondary" onClick={() => portalNavigate({
         staff: previewProject ? "projects" : "overview", editor: previewProject, previewProject: null, previewMode: null,
         view: null, q: null, status: null, present: null, chart: null,
-      })}>{previewProject ? "Back to project" : "Back to overview"}</button></div>}
-    {!standalone && controls}
+      })}>{previewProject ? "Back to project" : "Back to overview"}</button>;
+  const actions = <>{back}{controls}{workspaceAction}</>;
+  return <section aria-label="Preview as client">
+    {!entitled && <WorkspaceBanner title="Client Preview" eyebrow="Morris workspace"
+      description="Select an approved client profile to see its published view, or switch to the staff draft." actions={actions} />}
     {error && <p role="alert">{error}</p>}
     {entitled && <div className="delivery-preview-frame">
-      <ProjectClientReport client={client} tenant={tenant} month={month} previewToolbar={standalone ? controls : undefined} preview={{ mode, ...(mode === "published" && (!standalone ? scope : requestedScope && scope === requestedScope) ? { scope } : {}) }}
+      <ProjectClientReport client={client} tenant={tenant} month={month} previewToolbar={actions} preview={{ mode, ...(mode === "published" && (!standalone ? scope : requestedScope && scope === requestedScope) ? { scope } : {}) }}
         onDenied={onPreviewDenied} /></div>}
   </section>;
 }

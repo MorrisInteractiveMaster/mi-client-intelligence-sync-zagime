@@ -52,7 +52,7 @@ export function QboCustomerSetup({ client, tenant, setup, reload, month }: {
     <header className="mi-qbo-company">
       <Building2 size={22} aria-hidden="true" />
       <div><p className="mi-kicker">Connected company</p><h3>{setup.company.name}</h3>
-        <p>{setup.company.currency} home currency · {setup.confirmed ? "Verified by owner" : "Awaiting owner confirmation"}</p></div>
+        <p>{setup.company.currency} home currency · {setup.confirmed ? "Confirmed by Morris staff" : "Awaiting staff confirmation"}</p></div>
       {setup.confirmed ? <span className="mi-qbo-confirmed"><Check size={15} aria-hidden="true" /> Confirmed</span> :
         <button type="button" disabled={busy} onClick={() => void submit("confirm-company", {}, "Company confirmed. Search for the customer to connect.")}>Confirm company</button>}
     </header>

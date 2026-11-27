@@ -1,10 +1,11 @@
 import { ArrowDownRight, CalendarClock, CircleCheck, CircleDollarSign, ReceiptText } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoiceFraction, invoiceState, invoiceStatuses, type Invoice, type InvoiceStatus, type InvoiceView } from "../projects/invoices";
 import { ApiError, type SecuredApiClient } from "./client";
 import { reportMonth } from "./dashboard-format";
 import { portalNavigate, usePortalLocation } from "./portal-location";
-import { WorkspaceToolbarControls } from "./WorkspaceToolbar";
+import { WorkspaceBanner } from "./WorkspaceToolbar";
+import { PlatformLink } from "./PlatformHome";
 import { QboCustomerSetup } from "./QboCustomerSetup";
 import "./invoices.css";
 
@@ -65,14 +66,15 @@ const syncDate = new Intl.DateTimeFormat("en-CA", {
 });
 type ClientAudience = { id: string; label: string };
 
-export function Invoices({ client, tenant, staff, model }: {
-  client: SecuredApiClient; tenant: string; staff?: boolean; model: ReturnType<typeof useInvoices>;
+export function Invoices({ client, tenant, staff, model, bannerActions }: {
+  client: SecuredApiClient; tenant: string; staff?: boolean; model: ReturnType<typeof useInvoices>; bannerActions?: ReactNode;
 }) {
   const location = usePortalLocation();
   const { view, error, reload } = model;
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [failure, setFailure] = useState("");
+  const [authorizationFailed, setAuthorizationFailed] = useState(false);
   const [approval, setApproval] = useState<Invoice>();
   const approvalDialog = useRef<HTMLDialogElement>(null);
   const [profiles, setProfiles] = useState<ClientAudience[]>();
@@ -94,8 +96,9 @@ export function Invoices({ client, tenant, staff, model }: {
   async function connect() {
     setNotice("");
     setFailure("");
+    setAuthorizationFailed(false);
     const popup = typeof BroadcastChannel === "function" ? window.open("", "_blank", "popup,width=660,height=760") : null;
-    if (!popup) { setFailure("Allow pop-ups for this dashboard and try connecting again."); return; }
+    if (!popup) { setAuthorizationFailed(true); setFailure("Allow pop-ups for this dashboard and try connecting again."); return; }
     popup.opener = null;
     setBusy(true);
     let channel: BroadcastChannel | undefined;
@@ -110,6 +113,7 @@ export function Invoices({ client, tenant, staff, model }: {
     cancelConnection.current = cleanup;
     const fail = () => {
       cleanup();
+      setAuthorizationFailed(true);
       setFailure("QuickBooks Online did not verify the connection. Try again and select the approved company.");
       setBusy(false);
     };
@@ -188,13 +192,35 @@ export function Invoices({ client, tenant, staff, model }: {
     { label: "Due this month", rows: dueMonth, field: "balance", hint: reportMonth(currentMonth || "2000-01"), icon: ArrowDownRight },
     { label: "Paid · issued this month", rows: paidIssued, field: "total", hint: paidIssued.length + " fully paid", icon: CircleCheck },
   ] as const;
+  const setupState = !view ? undefined : !view.canManage ? "Administrator permission required" :
+    !view.configured ? "Integration disabled" : authorizationFailed ? "Authorization failed" : !view.connected ? "Connect QuickBooks Online" :
+    view.setup && !view.setup.confirmed ? "Company confirmation required" : view.readyToSync === false ? "Customer selection required" : "Ready to sync";
   return <section className="mi-invoices" aria-label="Invoices" aria-busy={busy}>
-    <div className="mi-invoice-tools"><WorkspaceToolbarControls /></div>
-    <header className="mi-invoice-hero">
-      <div><div className="mi-kicker"><ReceiptText size={15} aria-hidden="true" /> Billing</div>
-        <h2 id={staff ? "staff-page-title" : undefined} tabIndex={-1}>Invoices</h2><p>{staff ? "Review balances and control which invoices are visible to the client." : "See approved invoices, upcoming due dates, and what remains to be paid."}</p></div>
-      {view?.syncedAt && <p className="mi-invoice-freshness">Last successful sync <time dateTime={view.syncedAt}>{syncDate.format(new Date(view.syncedAt))} Regina</time></p>}
-    </header>
+    <WorkspaceBanner title="Invoices" headingId={staff ? "staff-page-title" : undefined}
+      eyebrow={<><ReceiptText size={15} aria-hidden="true" /> Billing</>}
+      description={staff ? "Review balances and control which invoices are visible to the client." : "See approved invoices, upcoming due dates, and what remains to be paid."}
+      actions={(bannerActions || view?.syncedAt) && <>{bannerActions}{view?.syncedAt && <p className="mi-invoice-freshness">Last successful sync <time dateTime={view.syncedAt}>{syncDate.format(new Date(view.syncedAt))} Regina</time></p>}</>} />
+    {staff && setupState && <div className="mi-invoice-operator" aria-label="QuickBooks Online connection">
+      <div className="mi-invoice-connection-copy"><span className="mi-invoice-connection-icon"><ReceiptText size={23} aria-hidden="true" /></span><div>
+        <p>QuickBooks Online · {view?.configured && view.canManage ? view.connected ? "Connected" : "Disconnected" : "Setup"}</p>
+        <h2>{setupState === "Connect QuickBooks Online" ? "Connect your accounting workspace" : setupState}</h2>
+        <p>{!view?.canManage ? "Sign in with your authorized Morris Microsoft work account to manage invoice connections." :
+          !view.configured ? "Ask the platform administrator to enable the QuickBooks Online integration for this workspace." :
+          authorizationFailed ? "Retry authorization with the intended QuickBooks company." :
+          !view.connected ? "Authorize invoice access, confirm your company and customer, then run a staff-only sync." :
+          view.setup && !view.setup.confirmed ? "Review the company identity below before choosing a customer." :
+          view.readyToSync === false ? "Find and verify the customer that belongs to this workspace." :
+          "Sync verified invoices for staff review. Client visibility requires separate approval."}</p>
+      </div></div>
+      {view?.canManage && view.configured ? <div className="mi-invoice-connection-actions">{view.connected ? <>
+        <button type="button" disabled={busy || view.readyToSync === false} onClick={() => void manage("sync")}>Sync invoices</button>
+        <button type="button" className="secure-secondary" disabled={busy} onClick={() => void connect()}>Reconnect</button>
+        <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
+          if (window.confirm("Disconnect QuickBooks Online? This removes the synced invoice view and its client approvals from both workspaces.")) void manage("disconnect", { confirm: true });
+        }}>Disconnect</button>
+      </> : <button type="button" disabled={busy} onClick={() => void connect()}>Connect QuickBooks Online</button>}</div> :
+        <PlatformLink href="/control/staff">Administrator access settings</PlatformLink>}
+    </div>}
     {(notice || busy) && <p role="status" className="mi-invoice-feedback">{busy ? "Working with QuickBooks Online…" : notice}</p>}
     {(error || failure) && <p role="alert" className="mi-invoice-feedback">{failure || error} {error && <button type="button" onClick={reload}>Retry</button>}</p>}
     {!view && !error && <p role="status" className="mi-invoice-empty">Loading invoices…</p>}
@@ -202,21 +228,11 @@ export function Invoices({ client, tenant, staff, model }: {
       <CalendarClock size={20} aria-hidden="true" /><div><strong>Balances may be out of date</strong>
       <p>Amounts and alerts use the last successful sync. Recent payments or credits may still be missing.</p></div>
     </aside>}
-    {view?.canManage && view.configured && <div className="mi-invoice-operator">
-      <span><strong>QuickBooks Online</strong> · {view.connected ? "Connected" : "Disconnected"}</span>
-      <div>{view.connected ? <>
-        <button type="button" disabled={busy || view.readyToSync === false} onClick={() => void manage("sync")}>Sync invoices</button>
-        <button type="button" className="secure-secondary" disabled={busy} onClick={() => void connect()}>Reconnect</button>
-        <button type="button" className="secure-secondary" disabled={busy} onClick={() => {
-          if (window.confirm("Disconnect QuickBooks Online and remove this invoice mirror from both workspaces?")) void manage("disconnect");
-        }}>Disconnect</button>
-      </> : <button type="button" disabled={busy} onClick={() => void connect()}>Connect QuickBooks Online</button>}</div>
-    </div>}
-    {view?.setup && view.canManage && <QboCustomerSetup key={view.setup.company.realm} client={client} tenant={tenant} setup={view.setup} reload={reload} month={view.today.slice(0, 7)} />}
-    {view && !all.length && <div className="mi-invoice-empty"><ReceiptText size={28} aria-hidden="true" />
+    {view?.connected && view.setup && view.canManage && <QboCustomerSetup key={view.setup.company.realm} client={client} tenant={tenant} setup={view.setup} reload={reload} month={view.today.slice(0, 7)} />}
+    {view && !all.length && (!staff || view.freshness !== "unavailable" || setupState === "Ready to sync") && <div className="mi-invoice-empty"><ReceiptText size={28} aria-hidden="true" />
       <h3>{view.freshness === "unavailable" ? "Invoice balances unavailable" : staff ? "No invoices in the last sync" : "No approved invoices yet"}</h3>
       <p>{view.freshness === "unavailable" ? staff && view.configured
-        ? "Connect the approved company and complete a successful sync to see verified balances."
+        ? "Run the first successful sync to see verified balances."
         : "Verified invoice balances are unavailable. Contact Morris Interactive if you need a current balance."
         : staff ? "The last complete snapshot contained no invoices in the verified customer scope."
         : "Invoices will appear here once Morris Interactive approves them for your workspace."}</p></div>}

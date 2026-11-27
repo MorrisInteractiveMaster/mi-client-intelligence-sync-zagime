@@ -1,0 +1,91 @@
+.nordic.secure-shell.platform-shell[data-workspace="true"] {
+  --workspace-gutter: clamp(16px, 1.25vw, 24px);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: var(--workspace-gutter) var(--workspace-gutter) 32px;
+}
+
+body:has(.platform-shell[data-workspace="true"]) { margin: 0; }
+
+.nordic.secure-shell .mi-workspace-banner {
+  --banner-control-height: 44px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  margin: 0 0 16px;
+  padding: clamp(16px, 2vw, 32px);
+  border: 1px solid #375470;
+  border-radius: var(--mi-radius, 16px);
+  background: linear-gradient(110deg, #101f35 28%, #1c405b);
+  color: #f6f9fc;
+}
+.mi-banner-top, .mi-banner-context {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  min-width: 0;
+}
+.mi-banner-context { align-items: center; justify-content: flex-start; border-top: 1px solid #b1c9df40; padding-top: 12px; }
+.nordic.secure-shell .mi-banner-context > .secure-actions { margin:0; gap:8px; }
+.nordic.secure-shell .mi-banner-context :is(.secure-actions, .mi-overview-actions) button { margin:0; }
+.nordic.secure-shell.platform-shell .mi-workspace-banner .mi-overview-actions .mi-create-project { background:var(--mi-action); color:#fff; }
+.mi-banner-copy { flex: 1 1 14rem; min-width: 0; }
+.mi-banner-eyebrow { display: flex; align-items: center; gap: 8px; color: #f1d675; font-size: .78rem; font-weight: 750; }
+.nordic.secure-shell .mi-workspace-banner .mi-banner-copy h1 {
+  color: #fff;
+  margin: 3px 0;
+  font: 750 clamp(1.65rem, 2.4vw, 2.55rem)/1.12 "Manrope Variable", sans-serif;
+  letter-spacing: -.035em;
+}
+.nordic.secure-shell .mi-workspace-banner .mi-banner-copy p { color: #dae6f0; margin: 6px 0 0; }
+.nordic.secure-shell.platform-shell .mi-workspace-banner .reporting-period {
+  background: none; border: 0; padding: 0; margin: 0; box-shadow: none; min-width: 0;
+}
+.nordic.secure-shell .mi-workspace-banner :is(.reporting-period__main, .reporting-period__actions) {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.nordic.secure-shell.platform-shell .mi-workspace-banner .mi-page-tools { margin: 0; flex: 0 0 auto; align-items: center; }
+.nordic.secure-shell.platform-shell .mi-workspace-banner .mi-workspace-tools { margin: 0; }
+.nordic.secure-shell.platform-shell .mi-workspace-banner .mi-page-tools :is(.mi-theme-icon, .mi-account summary, .mi-workspace-tools button) {
+  width:var(--banner-control-height); min-height:var(--banner-control-height); height:var(--banner-control-height);
+}
+.nordic.secure-shell.platform-shell .mi-workspace-banner :is(.reporting-period__hint, .reporting-period__label, .time-history-toolbar label, .mi-report-month label) { color: #dae6f0; }
+.nordic.secure-shell.platform-shell .mi-workspace-banner :is(button, select, input, summary, .platform-back) { min-height: var(--banner-control-height); }
+.nordic.secure-shell .mi-workspace-banner .platform-back {
+  background:light-dark(#eaf2fa,#18334d); color:light-dark(#132f4b,#e7f2fb);
+  border-radius:8px; padding-inline:12px;
+}
+.nordic.secure-shell .mi-workspace-banner .reporting-period__stepper { background: var(--mi-surface); color: var(--mi-ink); }
+.nordic.secure-shell .mi-workspace-banner :focus-visible { outline-color: #f1d675; }
+.nordic.secure-shell .mi-workspace-banner .time-history-toolbar { flex: 1 1 auto; background: none; padding: 0; border: 0; margin: 0; }
+.nordic.secure-shell .mi-workspace-banner .time-history-toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+.mi-workspace-banner .time-history-toolbar > :is(div, label) { flex:0 1 12rem; }
+.nordic.secure-shell .mi-workspace-banner .mi-preview-controls {
+  position: static; background: transparent; margin:0; padding:0; align-items:center; color:#dae6f0; min-width:0; max-width:100%;
+}
+.nordic.secure-shell .mi-workspace-banner :is(.mi-preview-controls label,.reporting-period__month) { color:#dae6f0; margin:0; }
+.nordic.secure-shell .mi-workspace-banner .mi-preview-controls label { display:flex; align-items:center; gap:8px; width:auto; }
+.nordic.secure-shell .mi-workspace-banner .mi-preview-controls select { width:auto; max-width:100%; }
+.nordic.secure-shell .mi-workspace-banner .mi-preview-controls a { color:#fff; }
+@media (min-width: 1100px) {
+  .nordic.secure-shell .mi-workspace-banner .reporting-period__actions { display:contents; }
+}
+.nordic.secure-shell .mi-workspace-banner .mi-presentation-banner-logo { width:auto; max-width:110px; height:34px; object-fit:contain; }
+.nordic.secure-shell .mi-workspace-banner .mi-presentation-banner-logo ~ .exec-icon { margin-inline-start:auto; }
+.nordic.secure-shell .mi-workspace-banner .time-period-options summary { color: var(--mi-ink); background: var(--mi-surface); }
+
+@media (max-width: 860px) {
+  .nordic.secure-shell.platform-shell[data-workspace="true"] { --workspace-gutter: 12px; }
+  .mi-banner-copy { flex-basis: 100%; }
+  .mi-banner-top { gap: 12px; }
+  .nordic.secure-shell .mi-workspace-banner .mi-preview-controls {
+    display:grid; grid-template-columns:minmax(0,1fr); justify-items:start; width:100%;
+  }
+  .nordic.secure-shell .mi-workspace-banner .mi-preview-controls label {
+    display:grid; grid-template-columns:minmax(0,1fr); gap:4px;
+  }
+  .nordic.secure-shell .mi-workspace-banner .mi-preview-controls select { width:100%; }
+}

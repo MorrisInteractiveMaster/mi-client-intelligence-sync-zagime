@@ -41,8 +41,9 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
   const store = new ProjectStore(runtime.db, "owner");
   const projects = new ProjectBackend(store, { async verify(value) {
     const subject = value.slice(7);
-    return { subject, issuer: "fixture", audience: "fixture", expiresAt: now() + 60_000, disabled: false, revoked: false,
-      ...(subject === "owner" || subject === "staff" ? { corporatePolicy: true, staffTenantId: tenant } : {}) };
+    return { subject, issuer: "fixture", audience: "fixture", expiresAt: now() + 60_000, disabled: subject === "disabled-staff", revoked: false,
+      ...(["owner", "staff", "disabled-staff"].includes(subject) ? { corporatePolicy: true, staffTenantId: tenant } : {}),
+      ...(subject === "other-staff" && { corporatePolicy: true, staffTenantId: "unrelated-tenant" }) };
   } }, { issuer: "fixture", audience: "fixture", now });
   const fixture = { Id: "1", DocNumber: "1024", TxnDate: "2026-11-01", DueDate: "2026-11-27", TotalAmt: 7800, Balance: 5800,
     CustomerRef: { value: "600", name: "Synthetic private customer" }, ProjectRef: { value: "31" },
@@ -120,15 +121,15 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
     await build({
       stdin: { contents: `import React from "react"; import {createRoot} from "react-dom/client";
         import {PlatformApplication} from "./src/api/PlatformApplication"; import {SecuredApiClient} from "./src/api/client";
-        import {ThemeSelector,usePlatformTheme} from "./src/api/PlatformTheme"; import "./src/api/secure.css";
+        import {ThemeSelector,usePlatformTheme} from "./src/api/PlatformTheme"; import {WorkspaceSessionControls,WorkspaceAccount} from "./src/api/WorkspaceToolbar"; import "./src/reporting/nordic.css"; import "./src/api/secure.css";
         import "./src/api/platform.css"; import "./src/api/platform-theme.css";
         const api = new SecuredApiClient(true, location.origin, async () => window.__role, undefined, undefined, "projects");
         const tenant = ${JSON.stringify(tenant)};
         function App({workspace}) { const {theme,appearance,change} = usePlatformTheme();
-          return <section className="nordic secure-shell platform-shell" data-theme={appearance}>
-            <ThemeSelector theme={theme} onChange={change} />
+          return <WorkspaceSessionControls.Provider value={<><ThemeSelector theme={theme} onChange={change} compact /><WorkspaceAccount onSignOut={()=>{}} /></>}>
+          <section className="nordic secure-shell platform-shell" data-theme={appearance} data-workspace="true">
             <PlatformApplication client={api} workspace={workspace} month="2026-11" unsaved={false} onUnsavedChange={()=>{}} onDenied={()=>{}} />
-          </section>; }
+          </section></WorkspaceSessionControls.Provider>; }
         api.call(tenant, "workspace").then(workspace => createRoot(document.getElementById("root")).render(<App workspace={workspace}/>));`,
         resolveDir: process.cwd(), loader: "jsx" },
       bundle: true, outfile: join(directory, "test.js"), jsx: "automatic", external: ["/branding/*"],
@@ -140,7 +141,13 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
     for (const ext of ["html", "js"]) await cp(resolve("public/qbo-invoice-callback." + ext), join(directory, "qbo-invoice-callback." + ext));
     assert.equal((await call("stranger")).status, 403);
     assert.equal((await call("client", "/connect", {})).status, 403);
-    assert.equal((await call("staff", "/connect", {})).status, 403);
+    assert.equal((await call("staff", "/connect", {})).status, 200);
+    assert.equal((await (await call("staff")).json()).canManage, true);
+    assert.equal((await (await call("client")).json()).canManage, undefined);
+    assert.equal((await call("stranger", "/connect", {})).status, 403);
+    assert.equal((await call("disabled-staff", "/connect", {})).status, 401);
+    assert.equal((await call("other-staff", "/connect", {})).status, 403);
+    assert.equal((await call("staff@morrisinteractive.ca", "/connect", {})).status, 403);
     assert.equal((await call("owner", "", undefined, "unrelated-tenant")).status, 403);
     assert.equal((await call("client", "?preview=published")).status, 403);
     const begin = await call("owner", "/connect", {});
@@ -155,7 +162,7 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
     const browser = await chromium.launch();
     try {
       const staff = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
-      await staff.addInitScript(() => { Reflect.set(window, "__role", "owner"); });
+      await staff.addInitScript(() => { Reflect.set(window, "__role", "staff"); });
       await staff.route("https://appcenter.intuit.com/**", route => {
         const state = new URL(route.request().url()).searchParams.get("state")!;
         return route.fulfill({ status: 302, headers: { location: cfg.redirect + "?code=synthetic-code&realmId=123&state=" + state } });
@@ -164,9 +171,46 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       const browserErrors: string[] = [];
       page.on("pageerror", error => browserErrors.push(error.message));
       page.on("console", message => { if (message.type() === "error") browserErrors.push(message.text()); });
+      const invoiceRead = origin + "/api/v2/tenants/" + tenant + "/invoices";
+      let finishLoading!: () => void;
+      const delayed = new Promise<void>(resolve => { finishLoading = resolve; });
+      await page.route(invoiceRead, async route => { await delayed; await route.continue(); });
       await page.goto(origin + "/workspace/invoices");
+      await page.getByText("Loading invoices…", { exact: true }).waitFor();
+      await page.screenshot({ path: join(evidence, "qbo-loading-verified-staff-1440.png") });
+      finishLoading();
       try {
-        await page.getByRole("button", { name: "Connect QuickBooks Online" }).click({ timeout: 8000 });
+        const connect = page.getByRole("button", { name: "Connect QuickBooks Online", exact: true });
+        await connect.waitFor({ timeout: 8000 });
+        await page.screenshot({ path: join(evidence, "qbo-disconnected-verified-staff-1440.png") });
+        await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+        for (const [width, height] of [[768, 1024], [390, 844]]) {
+          await page.setViewportSize({ width, height });
+          assert.ok(await connect.isVisible());
+          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+          await page.screenshot({ path: join(evidence, "qbo-disconnected-verified-staff-dark-" + width + ".png") });
+        }
+        await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.unroute(invoiceRead);
+        for (const state of [
+          { name: "disabled", heading: "Integration disabled", configured: false, canManage: true },
+          { name: "restricted", heading: "Administrator permission required", configured: true, canManage: false },
+        ]) {
+          await page.route(invoiceRead, route => route.fulfill({ json: { ...state, today: "2026-11-27", freshness: "unavailable", invoices: [] } }));
+          await page.reload();
+          await page.getByRole("heading", { name: state.heading, exact: true }).waitFor();
+          assert.equal(await connect.count(), 0);
+          await page.screenshot({ path: join(evidence, "qbo-" + state.name + "-1440.png") });
+          await page.unroute(invoiceRead);
+        }
+        await page.route(invoiceRead, route => route.fulfill({ status: 503, json: { error: "unavailable" } }));
+        await page.reload();
+        await page.getByRole("alert").filter({ hasText: "Invoices could not be refreshed" }).waitFor();
+        await page.screenshot({ path: join(evidence, "qbo-load-error-1440.png") });
+        await page.unroute(invoiceRead);
+        await page.getByRole("button", { name: "Retry", exact: true }).click();
+        await connect.click();
       } catch (error) {
         throw new Error("Staff invoice screen did not load: " + JSON.stringify(browserErrors) + " " + (await page.locator("body").innerText()).slice(0, 1200), { cause: error });
       }
@@ -307,10 +351,13 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
       const previewMode = page.getByLabel("Preview mode");
       await previewMode.waitFor();
       const period = page.locator(".reporting-period__stepper");
+      const distribution = page.getByRole("region", { name: "Project Portfolio Distribution" });
+      await distribution.waitFor();
+      await period.waitFor();
+      await page.screenshot({ path: join(evidence, "staff-published-preview-1440-light.png"), fullPage: true, animations: "disabled" });
       const [stepperBox, previewBox] = await Promise.all([period.boundingBox(), previewMode.boundingBox()]);
       assert.ok(stepperBox && previewBox && Math.abs((stepperBox.y + stepperBox.height / 2) - (previewBox.y + previewBox.height / 2)) <= 2,
         "preview picker and reporting stepper share a center line");
-      const distribution = page.getByRole("region", { name: "Project Portfolio Distribution" });
       const [options, sortBox] = await Promise.all([
         distribution.getByRole("button", { name: "Departments" }).boundingBox(), distribution.getByLabel("Sort groups").boundingBox(),
       ]);
@@ -399,7 +446,14 @@ test("invoice connection, mirror, publication, and responsive workspaces are ten
     assert.equal((await call("owner", "/discovery", { action: "bind", realm: "123", rootId: "900", bindingId: binding })).status, 200);
     assert.equal((await (await call("owner")).json()).setup.root.id, "900");
     assert.deepEqual((await (await call("client")).json()).invoices, []);
-    assert.equal((await call("owner", "/disconnect", {})).status, 200);
+    assert.equal((await call("staff", "/disconnect", {})).status, 400);
+    assert.equal((await call("client", "/disconnect", { confirm: true })).status, 403);
+    assert.equal((await call("staff", "/disconnect", { confirm: true })).status, 200);
+    const audit = (await root.collection("invoiceAudit").get()).docs.map(doc => doc.data());
+    for (const action of ["qbo-authorization-started", "qbo-invoices-connected", "qbo-company-confirmed", "qbo-customer-searched",
+      "qbo-customer-bound", "qbo-project-linked", "qbo-invoices-synced", "invoice-approved", "invoice-withdrawn", "qbo-invoices-disconnected"]) {
+      assert.ok(audit.some(item => item.actor === "staff" && item.action === action), action);
+    }
     assert.equal(disconnected, true);
     assert.equal((await root.collection("invoiceIntegration").doc("mirror").get()).exists, false);
     assert.deepEqual((await timeSentinel.get()).data(), { untouched: true });

@@ -1,5 +1,5 @@
 import { ArrowUpRight, ChevronDown, ChevronsLeft, ChevronsRight, Menu, Search, X, type LucideIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { WorkspaceNavigationControls } from "./WorkspaceToolbar";
 import { branding, brandAsset } from "../config/branding";
@@ -103,12 +103,13 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
       </div>)}
     </nav>;
   }
-  const commands = <div className="mi-workspace-tools">
+  const commands = <div className="mi-workspace-tools" data-embedded={embedded || undefined}>
     <button type="button" className="secure-secondary mi-mobile-navigation" ref={mobileButton}
-      aria-haspopup="dialog" onClick={() => menu.current?.showModal()}><Menu aria-hidden="true" /> <span>{mobileLabel}</span></button>
+      aria-label={mobileLabel} title={mobileLabel} aria-haspopup="dialog" onClick={() => menu.current?.showModal()}><Menu aria-hidden="true" /> <span>{mobileLabel}</span></button>
     <button type="button" className="secure-secondary mi-toolbar-search" ref={searchButton} onClick={showSearch} aria-label={searchLabel}><Search aria-hidden="true" />
       <span>{searchLabel}</span>{!embedded && <kbd>Ctrl K</kbd>}</button>
   </div>;
+  const parentCommands = useContext(WorkspaceNavigationControls);
   return <div className={"mi-workspace-frame" + (embedded ? " mi-workspace-embedded" : "")} data-collapsed={collapsed}>
     {!embedded && <aside className="mi-workspace-sidebar">
       <div className="mi-sidebar-brand">
@@ -130,8 +131,7 @@ export function WorkspaceNavigation({ groups, collapsed, onCollapse, busy, child
       {navigation()}
     </aside>}
     <div className="mi-workspace-body">
-      {embedded && commands}
-      <WorkspaceNavigationControls.Provider value={embedded ? null : commands}>{children}</WorkspaceNavigationControls.Provider>
+      <WorkspaceNavigationControls.Provider value={embedded ? <>{parentCommands}{commands}</> : commands}>{children}</WorkspaceNavigationControls.Provider>
     </div>
     <dialog className="mi-navigation-dialog" aria-label={menuLabel} ref={menu} onClose={() => {
       if (!menuSelection.current) mobileButton.current?.focus();

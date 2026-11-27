@@ -1,6 +1,7 @@
 import { UserRound } from "lucide-react";
 import { navigatePlatform } from "./portal-location";
 import { createContext, useContext, type ReactNode } from "react";
+import "./workspace-banner.css";
 
 export const WorkspaceSessionControls = createContext<ReactNode>(null);
 export const WorkspaceNavigationControls = createContext<ReactNode>(null);
@@ -10,6 +11,28 @@ export function WorkspaceToolbarControls() {
   const navigation = useContext(WorkspaceNavigationControls);
   if (!session && !navigation) return null;
   return <div className="mi-page-tools">{navigation}{session}</div>;
+}
+
+export function WorkspaceBanner({ title, eyebrow, description, actions, period, headingId, headingRef }: {
+  title: string;
+  eyebrow?: ReactNode;
+  description?: ReactNode;
+  actions?: ReactNode;
+  period?: ReactNode;
+  headingId?: string;
+  headingRef?: React.Ref<HTMLHeadingElement>;
+}) {
+  return <header className="mi-workspace-banner">
+    <div className="mi-banner-top">
+      <div className="mi-banner-copy">
+        {eyebrow && <span className="mi-banner-eyebrow">{eyebrow}</span>}
+        <h1 id={headingId} ref={headingRef} tabIndex={headingRef ? -1 : undefined}>{title}</h1>
+        {description && <p>{description}</p>}
+      </div>
+      <WorkspaceToolbarControls />
+    </div>
+    {(period || actions) && <div className="mi-banner-context">{period}{actions}</div>}
+  </header>;
 }
 
 export function WorkspaceAccount({ returnHref, permit, onSignOut }: {

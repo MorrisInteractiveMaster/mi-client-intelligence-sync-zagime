@@ -6,7 +6,6 @@
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  max-width: 72rem;
   border: 1px solid light-dark(#c8d4df, #3b5570);
   border-radius: 16px;
   padding: clamp(12px, 2vw, 24px);
@@ -17,19 +16,12 @@
 .nordic.secure-shell .creation-wizard .creation-head {
   display: grid;
   gap: 4px;
-  padding: clamp(12px, 2vw, 20px);
+  padding: 4px 0 12px;
   border: 0;
   border-radius: 10px;
-  background: linear-gradient(108deg, #0b2035, #1b3a58);
-  color: #fff;
+  background: transparent;
 }
-.nordic.secure-shell .creation-head h3 {
-  color: #fff;
-  margin: 0;
-  font-size: clamp(1.4rem, 3vw, 2rem);
-  line-height: 1.1;
-}
-.nordic.secure-shell .creation-head p { margin: 0; color: #e0edf7; }
+.nordic.secure-shell .creation-head p { margin: 0; color: var(--mi-muted); }
 .creation-steps {
   display: grid;
   grid-auto-flow: column;
@@ -68,8 +60,8 @@
 .creation-steps li[data-completed] { background: light-dark(#e0ece6, #25423e); color: light-dark(#244737, #ccedda); }
 .creation-steps li[aria-current="step"] { background: light-dark(#183755, #31587c); color: #fff; font-weight: 700; }
 .creation-wizard .creation-body { display: grid; gap: 6px; }
-.creation-wizard .creation-body :is(p,h4) { margin: 0; }
-.creation-wizard .creation-body h4 {
+.creation-wizard .creation-body :is(p,h2) { margin: 0; }
+.creation-wizard .creation-body h2 {
   color: light-dark(#142f4b, #edf4fc);
   font-size: clamp(1.2rem, 3vw, 1.65rem);
   outline-offset: 2px;

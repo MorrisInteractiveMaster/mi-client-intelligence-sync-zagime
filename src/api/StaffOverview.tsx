@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { ArrowUpRight, CircleAlert, FolderKanban, Gauge, ListFilter } from "lucide-react";
 import type { StaffProjectSummary } from "../projects/model";
 import type { TimeStatus } from "../projects/time";
@@ -21,7 +21,7 @@ const pulseRows: { status: PulseStatus; label: string }[] = [
 
 type EventLink = { project: StaffProjectSummary; date: string };
 export function StaffOverview({
-  projects, time, timeError, trend, trendLoading, timeStatus, overCap, upcoming, training, toolbar, onMonth, onProject,
+  projects, time, timeError, trend, trendLoading, timeStatus, overCap, upcoming, training, onMonth, onProject,
   onProjects, onTime, onReviewTime, onHealth, onMix,
 }: {
   projects?: StaffProjectSummary[];
@@ -33,7 +33,6 @@ export function StaffOverview({
   overCap?: number;
   upcoming: EventLink[];
   training: EventLink[];
-  toolbar: ReactNode;
   onMonth: (month: string) => void;
   onProject: (id: string) => void;
   onProjects: (status: PulseStatus) => void;
@@ -60,7 +59,6 @@ export function StaffOverview({
   const blocked = rows.find(row => row.status === "blocked")?.count ?? 0;
 
   return <section className="mi-staff-cockpit" aria-label="Morris operating overview">
-    {toolbar && <div className="mi-cockpit-toolbar">{toolbar}</div>}
     <div className="mi-cockpit-grid">
       <section className="mi-cockpit-panel mi-staff-pulse" aria-label="Delivery pulse">
         <p className="mi-cockpit-kicker"><FolderKanban size={15} aria-hidden="true" /> Current portfolio</p>

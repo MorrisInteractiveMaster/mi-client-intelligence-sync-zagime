@@ -997,7 +997,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         personId: "7909", consultantName: "Avery Morgan", notes: "Review department rollout requirements" });
       await first.page.getByLabel("Period", { exact: true }).selectOption("all");
       await first.page.getByRole("button", { name: "Apply period", exact: true }).click();
-      await first.page.getByRole("heading", { name: "Recorded time · All history", exact: true }).waitFor();
+      await first.page.locator(".mi-workspace-banner").getByText(/^All history · Review source records/).waitFor();
       await first.page.getByRole("button", { name: "Consultants", exact: true }).click();
       await first.page.getByRole("button", { name: "Avery Morgan", exact: true }).click();
       await first.page.getByRole("status").filter({ hasText: /Consultant: Avery Morgan.*1 match out of/ }).waitFor();
@@ -1018,9 +1018,9 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
       await first.page.getByText("Reporting scope saved on this device.", { exact: true }).waitFor();
       await first.page.getByLabel("Period", { exact: true }).selectOption("specific");
       await first.page.getByRole("button", { name: "Apply period", exact: true }).click();
-      await first.page.getByRole("heading", { name: "Recorded time · November 2026", exact: true }).waitFor();
+      await first.page.locator(".mi-workspace-banner").getByText(/^November 2026 · Review source records/).waitFor();
       await first.page.getByRole("button", { name: "Use saved scope", exact: true }).click();
-      await first.page.getByRole("heading", { name: "Recorded time · All history", exact: true }).waitFor();
+      await first.page.locator(".mi-workspace-banner").getByText(/^All history · Review source records/).waitFor();
       await historicRow.getByText("5 h", { exact: true }).waitFor();
       assert.ok(await first.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       const desktopTimeViewport = first.page.viewportSize()!;
@@ -1338,15 +1338,15 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           await analytics.getByRole("table").waitFor();
           await page.screenshot({ path: join(evidence, "analytics.png"), animations: "disabled" });
           await analytics.getByRole("button", { name: /Browser saved project/ }).click();
-          await page.getByRole("heading", { name: "Browser saved project", level: 2, exact: true }).waitFor();
+          await page.getByRole("heading", { name: "Browser saved project", level: 1, exact: true }).waitFor();
           await page.reload({ waitUntil: "networkidle" });
-          await page.getByRole("heading", { name: "Browser saved project", level: 2, exact: true }).waitFor();
+          await page.getByRole("heading", { name: "Browser saved project", level: 1, exact: true }).waitFor();
           await page.screenshot({ path: join(evidence, "project-detail.png"), animations: "disabled" });
           await page.getByRole("button", { name: "Project timeline", exact: true }).click();
           await page.getByRole("heading", { name: "Project timeline", exact: true }).waitFor();
           await page.screenshot({ path: join(evidence, "project-timeline.png"), animations: "disabled" });
           await page.goBack();
-          await page.getByRole("heading", { name: "Browser saved project", level: 2, exact: true }).waitFor();
+          await page.getByRole("heading", { name: "Browser saved project", level: 1, exact: true }).waitFor();
           await page.goForward();
           await page.getByRole("heading", { name: "Project timeline", exact: true }).waitFor();
           await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("button", { name: "Browser saved project", exact: true }).click();
@@ -1989,7 +1989,8 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
         await page.getByRole("option", { name: persisted.name, exact: true }).waitFor();
         await picker.press("Enter");
         const management = page.getByRole("form", { name: "Delivery progress" });
-        await management.getByRole("heading", { name: persisted.name, exact: true }).waitFor();
+        await page.locator(".mi-workspace-banner").getByRole("heading", { name: persisted.name, exact: true }).waitFor();
+        await management.waitFor();
         assert.equal(new URL(page.url()).pathname, "/workspace/project-management/" + persisted.id);
         const slider = management.getByRole("slider", { name: "Project completion" });
         await management.getByRole("button", { name: "50%", exact: true }).click();
@@ -2157,7 +2158,8 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           const query = new URLSearchParams({ month: "2026-11", view });
           const page = legacyClient.page;
           await page.goto(`${origin}/?${query}#/secure`);
-          await page.getByRole("heading", { name: heading, exact: true, level: 2 }).waitFor();
+          await page.locator(".intel-workspace .mi-workspace-banner")
+            .getByRole("heading", { name: heading, exact: true, level: 1 }).waitFor();
           assert.equal(await page.getByText("This link is unavailable for your approved report.").count(), 0, view);
           if (view === "engagements") {
             await page.getByRole("region", { name: "Parent projects" }).waitFor();
@@ -2192,7 +2194,7 @@ client.call('${tenant}','workspace').then(workspace=>createRoot(document.getElem
           const query = new URLSearchParams({ month: "2026-11", staff });
           const page = legacyStaff.page;
           await page.goto(`${origin}/?${query}#/secure`, { waitUntil: "domcontentloaded" });
-          await page.locator("#platform-content h2:visible").first().waitFor();
+          await page.locator("#platform-content :is(h1,h2):visible").first().waitFor();
           await page.waitForLoadState("networkidle");
           for (const [width, height] of [[1440, 900], [768, 1024], [390, 844], [320, 568]]) {
             legacyStaffAudit.push(await auditViewport(page, `legacy staff ${staff}`, width, height, { compactSidebar: true }));
