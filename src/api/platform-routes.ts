@@ -2,7 +2,7 @@ export const clientBase = "/clients/zagime";
 export const staffSegments = {
   overview: "", clients: "clients", projects: "projects", management: "project-management", hours: "time", directory: "team",
   departments: "departments", milestones: "milestones", health: "delivery-health", preview: "preview", integrations: "integrations",
-  time: "integrations/time", mapping: "time/mapping", portfolio: "portfolio", activity: "audit",
+  invoices: "invoices", time: "integrations/time", mapping: "time/mapping", portfolio: "portfolio", activity: "audit",
 } as const;
 export type StaffSection = keyof typeof staffSegments;
 
@@ -18,7 +18,7 @@ type Destination = { kind: "home" } | { kind: "staff"; section: StaffSection; id
 const id = (value: string | undefined): value is string => Boolean(value && /^[a-zA-Z0-9_-]{1,128}$/.test(value));
 const clientSections: Record<string, string> = {
   overview: "", engagements: "engagements", areas: "departments", projects: "projects",
-  milestones: "milestones", directory: "team", history: "reports", notes: "updates",
+  milestones: "milestones", directory: "team", invoices: "invoices", history: "reports", notes: "updates",
 };
 const staffSections = new Map<string, StaffSection>(Object.entries(staffSegments).map(([section, segment]) => [segment, section as StaffSection]));
 const reportSections = new Map<string, string>(Object.entries(clientSections).map(([view, segment]) => [segment, view]));

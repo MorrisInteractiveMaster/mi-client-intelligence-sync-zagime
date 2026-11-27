@@ -1,7 +1,11 @@
 # MORRIS INTERACTIVE — ZAGIMĒ CLIENT INTELLIGENCE PLATFORM
 ## Master Implementation Contract: Project-Centric Data, Live Staging and QuickBooks Integrations
 
-## Controlling owner decision — 2026-11-19
+## Additive invoice authorization — 2026-11-27
+
+The owner approved an additive QuickBooks Online integration for **Invoice** records only, using a verified realm and explicitly allowed customer/job IDs. Client visibility is explicitly approved and project scoped. Connect and activate it only through the separate owner-controlled [invoice operations runbook](qbo-invoice-operations.md). QuickBooks Time remains the existing effort source and its rollout and scope are unchanged.
+
+## Controlling owner decision for QuickBooks Time — 2026-11-19
 
 - **QuickBooks Time is the only approved external source for this deployment.** The prior QuickBooks Online Accounting Projects, Accounting OAuth and financial-data requirements are superseded. WordPress and the Morris-internal team directory are later scope.
 - The exact Time customer label is **Zagimē Anishinabēk Nation**. Enroll the independently verified numeric Time account and customer parent jobcode IDs with the approved tenant and credential. The label is a setup cross-check. Use the verified hierarchy to discover current and future child work orders. Newly discovered work orders become unpublished Morris projects.

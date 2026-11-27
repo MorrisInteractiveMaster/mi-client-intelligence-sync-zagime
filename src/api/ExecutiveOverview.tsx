@@ -50,9 +50,11 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
     "due-soon": "Counts current projects with a published deadline in the next 14 days, using the Regina calendar.",
   };
   const narrative = portfolio?.narrative || portfolio?.action;
+  const hasEffortScope = projects.length > 0 || report.totalSeconds > 0 ||
+    Boolean(portfolio?.history.some(row => row.seconds > 0));
 
   return <div className="mi-client-cockpit">
-    <section className="mi-cockpit-hero" aria-labelledby="executive-title">
+    <section className="mi-cockpit-hero" aria-labelledby="executive-title" data-empty={counts.all === 0}>
       <div className="mi-cockpit-intro">
         <p>{report.tenant.name} <span aria-hidden="true">·</span> <time dateTime={report.month}>{period}</time></p>
         <h2 id="executive-title">Leadership summary</h2>
@@ -65,18 +67,23 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
           {!platform && <button className="mi-cockpit-secondary" type="button" onClick={event => onPresentation(event.currentTarget)}><Presentation size={16} aria-hidden="true" />At a Glance</button>}
         </div>
       </div>
-      <div className="mi-cockpit-portfolio" aria-label="All-time delivery projects">
+      {counts.all > 0 && <div className="mi-cockpit-portfolio" aria-label="All-time delivery projects">
         <p>All-time approved portfolio</p>
         <StatusComposition counts={counts} onFilter={openFilter} />
-      </div>
+      </div>}
     </section>
 
+    {counts.all === 0 && <section className="mi-exec-panel mi-empty-portfolio" aria-label="Project reporting status">
+      <FolderKanban size={22} aria-hidden="true" /><div><h3>No approved delivery projects yet</h3>
+        <p>Delivery charts and updates will appear as projects are approved for your workspace.</p></div>
+    </section>}
+    {counts.all > 0 && <>
     <section className="mi-cockpit-signals" aria-label="Delivery at a glance">
       {signals.map(({ label, value, icon: Icon, filter, tone }) => <div className="mi-signal-card" key={filter}><button className="mi-signal-action" type="button" data-tone={tone} onClick={() => openFilter(filter)}>
         <span className="mi-signal-glyph"><Icon size={18} aria-hidden="true" /></span>
         <span><small>{label}</small><strong>{value}</strong></span>
         <ArrowUpRight size={16} aria-hidden="true" />
-      </button><ContextHelp watch=".mi-signal-action" label={"Explain " + label}>{signalHelp[filter] + " Open Project Explorer to see the matching projects."}</ContextHelp></div>)}
+      </button><ContextHelp watch=".mi-signal-action" avoid=".mi-signal-card" label={"Explain " + label}>{signalHelp[filter] + " Open Project Explorer to see the matching projects."}</ContextHelp></div>)}
     </section>
 
     <ProjectPortfolioDistribution delivery={delivery} onLink={onLink} />
@@ -98,7 +105,8 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
         </section>
     </div>
     <div className="mi-v4-analytics-grid"><MilestonePerformance delivery={delivery} onLink={onLink} /><ParentPerformance delivery={delivery} onLink={onLink} /></div>
-    <section className="mi-v4-effort" aria-label="Approved effort and budget"><h3>Approved effort and budget</h3>
+    </>}
+    {hasEffortScope && <><section className="mi-v4-effort" aria-label="Approved effort and budget"><h3>Approved effort and budget</h3>
     <div className="mi-effort-pair">
     <section className="mi-exec-panel mi-effort-summary" aria-label="Published portfolio summary">
       <div><span>Reported effort · {period} <ContextHelp label="How are reported hours calculated?">Approved project allocations in this period are counted once across the departments and projects you can see.</ContextHelp></span>
@@ -120,7 +128,7 @@ export function ExecutiveOverview({ report, delivery, onPresentation, onLink, on
     </div>
       <MonthlyEffort report={report} delivery={delivery} unit={effortUnit} onLink={onLink} />
     </section>
-    <DotChart report={report} kind="trend" draft={draft} onLink={onLink} onOpen={trigger => onChart("trend", trigger)} />
+    <DotChart report={report} kind="trend" draft={draft} onLink={onLink} onOpen={trigger => onChart("trend", trigger)} /></>}
     {narrative && <section className="mi-exec-panel" aria-label="Executive notes"><h3>Executive notes</h3>
       <p>{narrative.length > 175 ? narrative.slice(0, 175) + "…" : narrative}</p>
       <button type="button" className="exec-text-button" onClick={() => onLink("notes")}>Read executive notes</button>

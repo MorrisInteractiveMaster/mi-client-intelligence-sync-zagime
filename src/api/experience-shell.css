@@ -72,7 +72,8 @@
 .nordic.secure-shell .mi-preview-controls select { width: auto; max-width: 100%; }
 .mi-preview-controls label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .platform-client-preview .mi-preview-controls { position: sticky; inset-block-start: 0; z-index: 6; background: var(--mi-background); }
-.platform-client-preview .mi-workspace-sidebar { inset-block-start: 64px; max-height: calc(100dvh - 76px); }
+.nordic.secure-shell.platform-shell:has(> main:is(.platform-workspace,.platform-client-report,.platform-client-preview)) { padding-block-start: 12px; }
+.platform-client-preview .mi-workspace-sidebar { inset-block-start: 10px; max-height: calc(100dvh - 24px); }
 .nordic.secure-shell .mi-preview-controls .delivery-watermark {
   position: static; width: fit-content; margin: 0; box-shadow: none; pointer-events: auto;
 }
@@ -173,6 +174,12 @@
 .nordic.secure-shell .platform-workspace .mi-page-heading h2 { font-size: clamp(1.6rem, 2.4vw, 2.3rem); }
 .nordic.secure-shell .platform-control-card .mi-control-toolbar :is(form, label) { margin-block: 0; }
 .reporting-period__actions { display: contents; }
+.platform-shell :is(.platform-workspace,.platform-client-report,.platform-client-preview) .reporting-period { padding-block: 0; }
+.nordic.secure-shell.platform-shell .reporting-period__main > .reporting-period__stepper { box-sizing: border-box; min-height: 38px; }
+.nordic.secure-shell.platform-shell .reporting-period__actions :is(.mi-preview-controls select, .reporting-period__options, .mi-present-button) {
+  box-sizing: border-box; height: 38px; min-height: 38px; margin-block: 0;
+}
+.nordic.secure-shell.platform-shell .reporting-period__actions .mi-preview-controls label { margin: 0; }
 @media (max-width: 850px) {
   .reporting-period__main { gap: 5px 8px; }
   .reporting-period__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { CircleHelp } from "lucide-react";
 
 const eventName = "portfolio-help-open";
-export function ContextHelp({ label, children, watch }: { label: string; children: string; watch?: string }) {
+export function ContextHelp({ label, children, watch, avoid }: { label: string; children: string; watch?: string; avoid?: string }) {
   const id = useId();
   const anchor = useRef<HTMLButtonElement>(null);
   const tip = useRef<HTMLDivElement>(null);
@@ -63,15 +63,16 @@ export function ContextHelp({ label, children, watch }: { label: string; childre
       if (!a || !panel || a.bottom < 0 || a.top > window.innerHeight) { close(); return; }
       const edge = 8;
       const left = Math.max(edge, Math.min(a.left + a.width / 2 - panel.width / 2, window.innerWidth - panel.width - edge));
-      const below = a.bottom + edge;
-      const y = below + panel.height <= window.innerHeight - edge ? below : a.top - panel.height - edge;
+      const region = avoid ? anchor.current?.closest(avoid)?.getBoundingClientRect() ?? a : a;
+      const below = region.bottom + edge;
+      const y = below + panel.height <= window.innerHeight - edge ? below : region.top - panel.height - edge;
       setPosition({ left, top: Math.max(edge, Math.min(y, window.innerHeight - panel.height - edge)) });
     }
     update();
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => { window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); };
-  }, [open, positionAnchor]);
+  }, [open, positionAnchor, avoid]);
   const scheduleClose = () => { if (!pinned) delay.current = window.setTimeout(close, 160); };
   return <>
     <button ref={anchor} type="button" className="exec-help" aria-label={label} aria-describedby={open ? id : undefined}

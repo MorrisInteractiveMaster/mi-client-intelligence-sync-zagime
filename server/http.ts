@@ -7,6 +7,9 @@ import { ReportingBackend } from "./backend";
 import { requestIdentity } from "./request-identity";
 import { serveFrontend } from "./static-frontend";
 import { projectRequest } from "./project-http";
+import { QboInvoices } from "./qbo-invoices";
+import { invoiceRequest } from "./qbo-invoices-http";
+import { invoiceSchedulePath } from "./qbo-invoice-scheduler";
 import type { ProjectBackend } from "./project-workspace";
 import type { TimeSync } from "./time-sync";
 const MAX_BYTES = 16384;
@@ -73,9 +76,10 @@ const only = (value: Record<string, unknown>, keys: string[]) => {
 };
 export function apiServer(
   backend: ReportingBackend,
-  options: { allowedOrigin?: string; limit?: RequestLimit; frontend?: string; previewOnly?: boolean; projects?: ProjectBackend; time?: TimeSync } = {},
+  options: { allowedOrigin?: string; limit?: RequestLimit; frontend?: string; previewOnly?: boolean; projects?: ProjectBackend; time?: TimeSync; invoices?: QboInvoices; authorizeInvoiceSchedule?: (authorization: string) => Promise<string> } = {},
 ) {
   const limit = options.limit ?? new RequestLimit();
+  const invoices = options.invoices ?? (options.projects && new QboInvoices(options.projects.store));
   return createServer((req, res) => requestIdentity.run({}, async () => {
     try {
       if (
@@ -108,6 +112,14 @@ export function apiServer(
       }
       const authorization = req.headers.authorization ?? "";
       if (options.previewOnly) return send(res, 503, { error: "staging_not_activated" });
+      if (req.url?.split("?")[0] === invoiceSchedulePath) {
+        if (!invoices || !options.authorizeInvoiceSchedule) return send(res, 404, { error: "not_found" });
+        if (req.method !== "POST" || req.url !== invoiceSchedulePath || req.headers["transfer-encoding"] ||
+            Number(req.headers["content-length"] ?? 0) !== 0) return send(res, 400, { error: "invalid_request" });
+        const actor = await options.authorizeInvoiceSchedule(authorization);
+        await invoices.syncScheduled(actor);
+        return send(res, 200, { status: "ok" });
+      }
       const idToken = req.headers["x-morris-microsoft-identity"];
       const accessToken = req.headers["x-morris-microsoft-access"];
       if (idToken !== undefined || accessToken !== undefined) {
@@ -123,7 +135,8 @@ export function apiServer(
         const cancel = () => disconnected.abort();
         res.once("close", cancel);
         try {
-          const result = await projectRequest(options.projects, req, () => body(req), options.time, disconnected.signal);
+          const result = (invoices && await invoiceRequest(invoices, options.projects, req, () => body(req))) ??
+            await projectRequest(options.projects, req, () => body(req), options.time, disconnected.signal);
           if (!res.destroyed) return send(res, result.status, result.body);
           return;
         } finally {
@@ -310,6 +323,7 @@ export function apiServer(
           ? [409, "project_draft_pending"]
           : msg === "Employee profile already linked"
           ? [409, "employee_profile_already_linked"]
+          : msg.startsWith("QBO ") ? [503, "invoices_unavailable"]
           : msg === "Time sync busy" || msg === "Time mapping conflict"
           ? [409, "time_conflict"]
           : options.projects && msg === "Invalid reporting summary"

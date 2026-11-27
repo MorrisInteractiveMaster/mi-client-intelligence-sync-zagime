@@ -18,6 +18,7 @@ export function ProjectPortfolioDistribution({ delivery, onLink }: { delivery: R
   const group = (Object.keys(dimensions) as Dimension[]).find(key => key === location.get("portfolio-group")) ?? "department";
   const order = (Object.keys(orders) as Order[]).find(key => key === location.get("portfolio-order") && (key !== "configured" || group === "department"));
   const total = delivery.counts.all;
+  if (total === 0) return null;
   const rows = group === "status" ? portfolioStatuses.map(([key, label]) => ({
     key, label, count: segmentCount(delivery.counts, key), open: () => onLink("projects", undefined, key),
   })) : group === "parent" ? [
@@ -54,7 +55,7 @@ export function ProjectPortfolioDistribution({ delivery, onLink }: { delivery: R
           <button type="button" className="exec-text-button mi-distribution-label" onClick={row.open}
             >{row.label}<ArrowUpRight size={14} aria-hidden="true" /></button>
           <DottedTrack label={row.label + " portfolio share"} value={share} tone="teal" />
-          <div className="mi-distribution-count"><b>{row.count} · {share === undefined ? "—" : percentText(share)}</b><small>{row.count} of {total} projects</small></div>
+          <div className="mi-distribution-count"><b>{row.count} · {share === undefined ? "—" : percentText(share)}</b></div>
           <ContextHelp watch=".mi-distribution-label" label={"Explain " + row.label + " distribution"}>{explanation}</ContextHelp>
         </li>;
       })}
